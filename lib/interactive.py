@@ -4,6 +4,7 @@ import socket
 import sys
 import threading
 import time
+import base64
 
 import google.protobuf.json_format as proto
 from matplotlib import patches
@@ -534,6 +535,8 @@ class interactiveSim():
     meshPacket.to = packet["to"]
     setattr(meshPacket, "from", packet["from"])
     meshPacket.id = packet["id"]
+    if "coverageFilter" in packet:
+      meshPacket.coverage_filter = base64.b64decode(packet["coverageFilter"])
     if "wantAck" in packet:
       meshPacket.want_ack = packet["wantAck"]
     if "hopLimit" in packet:
@@ -572,6 +575,8 @@ class interactiveSim():
       meshPacket.to = packet["to"]
       setattr(meshPacket, "from", packet["from"])
       meshPacket.id = packet["id"]
+      if "coverageFilter" in packet:
+        meshPacket.coverage_filter = base64.b64decode(packet["coverageFilter"])
       if "wantAck" in packet:
         meshPacket.want_ack = packet["wantAck"]
       if "hopLimit" in packet:

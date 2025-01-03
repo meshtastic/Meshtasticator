@@ -210,13 +210,50 @@ class MeshNode():
 					pAck = MeshPacket(self.nodes, self.nodeid, p.origTxNodeId, self.nodeid, conf.ACKLENGTH, messageSeq, env.now, False, True, p.seq) 
 					self.packets.append(pAck)
 					self.env.process(self.transmit(pAck))
-        # FloodingRouter: rebroadcasting received message 
-				elif not p.destId == self.nodeid and not ackReceived and not realAckReceived and not self.isClientMute and p.hopLimit > 0:
-					verboseprint('At time', round(self.env.now, 3), 'node', self.nodeid, 'rebroadcasts received packet', p.seq)
-					pNew = MeshPacket(self.nodes, p.origTxNodeId, p.destId, self.nodeid, p.packetLen, p.seq, p.genTime, p.wantAck, False, None) 
-					pNew.hopLimit = p.hopLimit-1
-					self.packets.append(pNew)
-					self.env.process(self.transmit(pNew))
+        		# Rebroadcasting Logic for received message. This is a broadcast or a DM not meant for us.
+				elif not p.destId == self.nodeid and not ackReceived and not realAckReceived and p.hopLimit > 0:
+					# FloodingRouter: rebroadcast received packet
+					if conf.SELECTED_ROUTER_TYPE == conf.ROUTER_TYPE.MANAGED_FLOOD:
+						if not self.isClientMute:
+							verboseprint('At time', round(self.env.now, 3), 'node', self.nodeid, 'rebroadcasts received packet', p.seq)
+							pNew = MeshPacket(self.nodes, p.origTxNodeId, p.destId, self.nodeid, p.packetLen, p.seq, p.genTime, p.wantAck, False, None) 
+							pNew.hopLimit = p.hopLimit-1
+							self.packets.append(pNew)
+							self.env.process(self.transmit(pNew))
+					# BloomRouter: rebroadcast received packet
+					elif conf.SELECTED_ROUTER_TYPE == conf.ROUTER_TYPE.BLOOM:
+						verboseprint('Packet', p.seq, 'received at node', self.nodeid, 'with coverage', p.coverageFilter)
+						pNew = MeshPacket(self.nodes, p.origTxNodeId, p.destId, self.nodeid, p.packetLen, p.seq, p.genTime, p.wantAck, False, None, p.coverageFilter)
+						pNew.hopLimit = p.hopLimit-1
+
+						rebroadcastProbabilityTest = random.random()
+						newCoverage = pNew.checkAdditionalCoverageRatio(p.coverageFilter)
+						rebroadcastProbability = conf.BASELINE_REBROADCAST_PROBABILITY + (newCoverage * conf.COVERAGE_RATIO_SCALE_FACTOR)
+
+						'''
+						# Check if this node covers any additional nodes by providing the old packets coverage
+						newCoverage = pNew.checkAdditionalCoverage(p.coverageFilter)
+
+						# Baseline rebroadcast probability is 0.2 to deal with FPR (False Positive Rate)
+						rebroadcastProbability = 0.2
+						
+						# Piecewise logic for rebroadcast probability
+						# If we can add a single node, 80% chance of rebroadcast
+						if (newCoverage == 1):
+							rebroadcastProbability = 0.8
+						# If we can add more than a single node, 100% chance of rebroadcast
+						elif (newCoverage > 1):
+							rebroadcastProbability = 1
+						'''
+						# Clamp to values that make sense
+						rebroadcastProbability = max(0.0, min(1.0, rebroadcastProbability))
+						# Check the random against the probability
+						if rebroadcastProbabilityTest <= rebroadcastProbability:
+							self.packets.append(pNew)
+							self.env.process(self.transmit(pNew))
+							verboseprint('At time', round(self.env.now, 3), 'node', self.nodeid, 'rebroadcasts received packet', p.seq, 'New Coverage:', newCoverage, 'Rnd:', rebroadcastProbabilityTest, 'Prob:', rebroadcastProbability)
+						else:
+							verboseprint('At time', round(self.env.now, 3), 'node', self.nodeid, 'drops received packet due to coverage', p.seq, 'New Coverage:', newCoverage, 'Rnd:', rebroadcastProbabilityTest, 'Prob:', rebroadcastProbability)
 
 
 if VERBOSE:

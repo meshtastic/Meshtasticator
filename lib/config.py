@@ -1,3 +1,4 @@
+from enum import Enum
 import numpy as np
 
 
@@ -46,7 +47,7 @@ SENSMODEM = np.array([-121.5, -124.0, -126.5, -129.0, -131.5, -134.5, -137.0, -1
 # minimum received power for CAD (3dB less than sensitivity)
 CADMODEM = np.array([-124.5, -127.0, -129.5, -132.0, -134.5, -137.5, -140.0, -143.0])
 FREQ = REGION["freq_start"]+BWMODEM[MODEM]*CHANNEL_NUM
-HEADERLENGTH = 16  # number of Meshtastic header bytes 
+HEADERLENGTH = 32  # number of Meshtastic header bytes 
 ACKLENGTH = 2  # ACK payload in bytes
 NOISE_LEVEL = -119.25  # some noise level in dB, based on SNR_MIN and minimum receiver sensitivity
 GAMMA = 2.08  # PHY parameter
@@ -64,3 +65,22 @@ RANDOM = False
 # Initializers
 NR_NODES = None
 # End of initializers 
+
+class ROUTER_TYPE(Enum):
+    MANAGED_FLOOD = 'MANAGED_FLOOD'
+    BLOOM = 'BLOOM'
+
+SELECTED_ROUTER_TYPE = ROUTER_TYPE.BLOOM
+
+# Overwrite hop limit in the case of Bloom routing
+if SELECTED_ROUTER_TYPE == ROUTER_TYPE.BLOOM:
+    hopLimit = 15
+
+BLOOM_FILTER_SIZE_BITS = 128
+BLOOM_FILTER_SIZE_BYTES = BLOOM_FILTER_SIZE_BITS // 8
+
+COVERAGE_RATIO_SCALE_FACTOR = 4
+
+# Set this to non-zero value to make it possible that a 
+# node without any additional coverage may still rebroadcast
+BASELINE_REBROADCAST_PROBABILITY = 0.0
