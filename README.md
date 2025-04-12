@@ -32,7 +32,7 @@ Furthermore, since the simulator has an 'oracle view' of the network, it allows 
 ![](/img/route_plot.png)
 
 ## License
-Part of the source code is based on [this repo](https://github.com/lucagioacchini/lora-network-simulator), which eventually stems from [1].
+Part of the source code is based on the work in [1], which eventually stems from [2]. The LoRaSim library from [2] can be found [here](https://www.lancaster.ac.uk/scc/sites/lora/lorasim.html).
 
 This work is licensed under a [Creative Commons Attribution 4.0 International License](https://creativecommons.org/licenses/by/4.0/). 
 
