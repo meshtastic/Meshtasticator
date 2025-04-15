@@ -1,20 +1,21 @@
-import os
 import random
+import os
 
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import yaml
 from matplotlib.widgets import Button, Slider, RadioButtons, TextBox
-from . import phy
+from lib import phy
 
 try:
 	matplotlib.use("TkAgg")
-except ImportError: 
+except ImportError:
 	print('Tkinter is needed. Install python3-tk with your package manager.')
 	exit(1)
 
 
+# While it resides in common.py, this is exclusively used in loraMesh.py
 def getParams(conf, args):
 	if len(args) > 3:
 		print("Usage: ./loraMesh [nr_nodes] [--from-file [file_name]]")
@@ -22,12 +23,12 @@ def getParams(conf, args):
 		exit(1)
 	else:
 		if len(args) > 1:
-			if type(args[1]) == str and ("--from-file" in args[1]):
+			if isinstance(args[1], str) and ("--from-file" in args[1]):
 				if len(args) > 2:
 					string = args[2]
 				else:
 					string = 'nodeConfig.yaml'
-				with open(os.path.join("out", string), 'r') as file: 
+				with open(os.path.join("out", string), 'r') as file:
 					config = yaml.load(file, Loader=yaml.FullLoader)
 			else:
 				conf.NR_NODES = int(args[1])
@@ -46,7 +47,7 @@ def getParams(conf, args):
 						exit(1)
 				if conf.NR_NODES == -1:
 					config = genScenario(conf)
-		else: 
+		else:
 			config = genScenario(conf)
 		if config[0] is not None:
 			conf.NR_NODES = len(config.keys())
@@ -61,8 +62,9 @@ def getParams(conf, args):
 	print("Interference level:", conf.INTERFERENCE_LEVEL)
 	return config
 
+
 def genScenario(conf):
-	save = True  # set to True if you want to save the coordinates of the nodes 
+	save = True  # set to True if you want to save the coordinates of the nodes
 	nodeX = []
 	nodeY = []
 	nodeZ = []
@@ -76,7 +78,7 @@ def genScenario(conf):
 
 	fig = plt.figure()
 	ax = fig.add_subplot(111)
-	fig.subplots_adjust(bottom=0.20, right=0.85) # Make room for button and config
+	fig.subplots_adjust(bottom=0.20, right=0.85)  # Make room for button and config
 	title = "Double click to place a node. Then change its config (optional)."
 	plt.title(title)
 	plt.xlabel('x (m)')
@@ -100,7 +102,7 @@ def genScenario(conf):
 	height_textbox = TextBox(height_ax, 'Height (m)', conf.HM, textalignment='center')
 	height_ax.set_visible(False)
 	textBoxLabel = height_textbox.ax.get_children()[0]
-	textBoxLabel.set_position([0.5, 1.75]) 
+	textBoxLabel.set_position([0.5, 1.75])
 	textBoxLabel.set_verticalalignment('top')
 	textBoxLabel.set_horizontalalignment('center')
 	# Antenna gain textbox
@@ -108,7 +110,7 @@ def genScenario(conf):
 	gain_textbox = TextBox(gain_ax, 'Antenna \ngain (dBi)', conf.GL, textalignment='center')
 	gain_ax.set_visible(False)
 	gainLabel = gain_textbox.ax.get_children()[0]
-	gainLabel.set_position([0.5, 2.5]) 
+	gainLabel.set_position([0.5, 2.5])
 	gainLabel.set_verticalalignment('top')
 	gainLabel.set_horizontalalignment('center')
 
@@ -119,7 +121,7 @@ def genScenario(conf):
 		ax.set_xlim(-(conf.XSIZE/2+1)+conf.OX, conf.OX+conf.XSIZE/2+1)
 		ax.set_ylim(-(conf.YSIZE/2+1)+conf.OY, conf.OY+conf.YSIZE/2+1)
 		ax.set_title(title)
-		for i,(nx,ny) in enumerate(zip(nodeX, nodeY)):
+		for i, (nx, ny) in enumerate(zip(nodeX, nodeY)):
 			ax.annotate(str(i), (nx-5, ny+5))
 			circle = plt.Circle((nx, ny), radius=phy.MAXRANGE, color=plt.cm.Set1(i), alpha=0.1)
 			ax.add_patch(circle)
@@ -132,13 +134,15 @@ def genScenario(conf):
 			slider_ax.set_visible(True)
 			height_ax.set_visible(True)
 			gain_ax.set_visible(True)
-		nodeTxts.append(plt.text(0.92, 0.80, 'Configure \nnode '+str(len(nodeX)-1)+':', \
-			fontweight='bold', horizontalalignment='center', transform=fig.transFigure))
+		nodeTxts.append(
+			plt.text(
+				0.92, 0.80, 'Configure \nnode '+str(len(nodeX)-1)+':', fontweight='bold', horizontalalignment='center', transform=fig.transFigure
+			)
+		)
 
 		ax.scatter(nodeX, nodeY)
 		fig.canvas.draw_idle()
 		fig.canvas.get_tk_widget().focus_set()
-
 
 	def submit(mouse_event):
 		if (len(nodeX)) < 2:
@@ -155,7 +159,6 @@ def genScenario(conf):
 		fig.canvas.mpl_disconnect(cid)
 		plt.close()
 	button.on_clicked(submit)
-
 
 	def onclick(event):
 		if event.dblclick:
@@ -182,19 +185,23 @@ def genScenario(conf):
 	cid = fig.canvas.mpl_connect('button_press_event', onclick)
 	plt.show()
 	# Save node configuration in a dictionary
-	nodeDict = {n: {'x': nodeX[n], 'y': nodeY[n], 'z': nodeZ[n], \
-		'isRouter': nodeRouter[n], 'isRepeater': nodeRepeater[n], 'isClientMute': nodeClientMute[n], \
-		'hopLimit':nodeHopLimit[n], \
-		'antennaGain': gains[n], 'neighborInfo': neighborInfo[n]} for n in range(len(nodeX))}
+	nodeDict = {n: {
+		'x': nodeX[n], 'y': nodeY[n], 'z': nodeZ[n],
+		'isRouter': nodeRouter[n],
+		'isRepeater': nodeRepeater[n],
+		'isClientMute': nodeClientMute[n],
+		'hopLimit': nodeHopLimit[n],
+		'antennaGain': gains[n],
+		'neighborInfo': neighborInfo[n],
+	} for n in range(len(nodeX))}
 	if save:
 		if not os.path.isdir("out"):
 			os.mkdir("out")
 		with open(os.path.join("out", "nodeConfig.yaml"), 'w') as file:
-			yaml.dump(nodeDict, file) 
+			yaml.dump(nodeDict, file)
 
 	return nodeDict
 
-import random
 
 def findRandomPosition(conf, nodes):
 	foundMin = True
@@ -230,56 +237,60 @@ def findRandomPosition(conf, nodes):
 		if tries > 1000:
 			print('Could not find a location to place the node. Try increasing XSIZE/YSIZE or decreasing MINDIST.')
 			break
-	return max(-conf.XSIZE/2, x),max(-conf.YSIZE/2, y)
+	return max(-conf.XSIZE/2, x), max(-conf.YSIZE/2, y)
+
 
 def runGraphUpdates(env, graph, nodes, interval):
-    while True:
-        # Wait 'interval' sim-mseconds
-        yield env.timeout(interval)
-        # Now update the positions in the graph
-        graph.updatePositions(nodes)
+	while True:
+		# Wait 'interval' sim-mseconds
+		yield env.timeout(interval)
+		# Now update the positions in the graph
+		graph.updatePositions(nodes)
 
-def calcDist(x0, x1, y0, y1, z0=0, z1=0): 
+
+def calcDist(x0, x1, y0, y1, z0=0, z1=0):
 	return np.sqrt(((abs(x0-x1))**2)+((abs(y0-y1))**2)+((abs(z0-z1)**2)))
 
 
 scheduleIdx = 0
+
+
 def plotSchedule(conf, packets, messages):
 	def drawSchedule(i):
 		t = timeSequences[i]
 		plt.suptitle('Time schedule {}/{}\nDouble click to continue.'.format(i+1, len(timeSequences)))
 		for p in packets:  # collisions
-			if p.seq in [m.seq for m in t]: 
+			if p.seq in [m.seq for m in t]:
 				for rxId, bool in enumerate(p.collidedAtN):
 					if bool:
 						plt.barh(rxId, p.timeOnAir, left=p.startTime, color='red', edgecolor='r')
 		for p in packets:  # transmissions
-			if p.seq in [m.seq for m in t]:  
-				if p.isAck: 
+			if p.seq in [m.seq for m in t]:
+				if p.isAck:
 					color = 'orange'
-				else: 
+				else:
 					color = 'blue'
 				plt.barh(p.txNodeId, p.timeOnAir, left=p.startTime, color=color, edgecolor='k')
 				plt.text(p.startTime+p.timeOnAir/2, p.txNodeId, str(p.seq), horizontalalignment='center', verticalalignment='center', fontsize=12)
 		for p in packets:  # receptions
-			if p.seq in [m.seq for m in t]:  
+			if p.seq in [m.seq for m in t]:
 				for rxId, bool in enumerate(p.receivedAtN):
 					if bool:
 						plt.barh(rxId, p.timeOnAir, left=p.startTime, color='green', edgecolor='green')
 		maxTime = 0
 		for m in t:  # message generations
-			plt.arrow(m.genTime, m.origTxNodeId-0.4, 0, 0.5, head_width=0.02*(m.endTime-m.genTime), head_length=0.3, fc='k', ec='k')
-			plt.text(m.genTime, m.origTxNodeId+0.51, str(m.seq), horizontalalignment='center', verticalalignment='center', fontsize=12)
+			plt.arrow(m.genTime, m.origTxNodeId - 0.4, 0, 0.5, head_width=0.02 * (m.endTime - m.genTime), head_length=0.3, fc='k', ec='k')
+			plt.text(m.genTime, m.origTxNodeId + 0.51, str(m.seq), horizontalalignment='center', verticalalignment='center', fontsize=12)
 		maxTime = max([m.endTime for m in t])
 		minTime = min([m.genTime for m in t])
 
 		plt.xlabel('Time (ms)')
 		plt.ylabel('Node ID')
-		plt.yticks([0]+list(range(conf.NR_NODES)), label=[str(n) for n in [0]+list(range(conf.NR_NODES))])
-		plt.xlim(minTime-0.03*(maxTime-minTime), maxTime)
+		plt.yticks([0] + list(range(conf.NR_NODES)), label=[str(n) for n in [0] + list(range(conf.NR_NODES))])
+		plt.xlim(minTime - 0.03 * (maxTime - minTime), maxTime)
 		plt.show()
 
-	# combine all messages with overlapping packets in one time sequence 
+	# combine all messages with overlapping packets in one time sequence
 	overlapping = [[m] for m in messages]
 	for m in messages:
 		m.endTime = max([p.endTime for p in packets if p.seq == m.seq])
@@ -287,22 +298,23 @@ def plotSchedule(conf, packets, messages):
 		for m2 in messages:
 			if m1 != m2:
 				if m2.genTime <= m1.endTime and m2.endTime > m1.genTime:
-					overlapping[m1.seq-1].append(m2)
+					overlapping[m1.seq - 1].append(m2)
 	timeSequences = []
 	multiples = [[] for _ in overlapping]
 	for ind, o1 in enumerate(overlapping):
-		for o2 in overlapping: 
+		for o2 in overlapping:
 			if set(o1).issubset(set(o2)):
 				multiples[ind].append(set(o2))
 		maxSet = max(multiples[ind], key=len)
 		if maxSet not in timeSequences:
 			timeSequences.append(maxSet)
-	# do not plot time sequences with messages that were only generated but not sent 
+	# do not plot time sequences with messages that were only generated but not sent
 	timeSequences = [t for t in timeSequences if max([m.endTime for m in t]) != 0]
 
 	# plot each time sequence
 	fig = plt.figure()
 	move_figure(fig, 900, 200)
+
 	def onclick(event):
 		if event.dblclick:
 			global scheduleIdx
@@ -316,20 +328,21 @@ def plotSchedule(conf, packets, messages):
 	fig.canvas.mpl_connect('button_press_event', onclick)
 	drawSchedule(0)
 
+
 def move_figure(fig, x, y):
-  fig.canvas.manager.window.wm_geometry("+%d+%d" % (x, y))
+	fig.canvas.manager.window.wm_geometry("+%d+%d" % (x, y))
 
 
-class Graph():
+class Graph:
 	def __init__(self, conf):
 		self.conf = conf
-		self.xmax = conf.XSIZE/2 +1
-		self.ymax = conf.YSIZE/2 +1
+		self.xmax = conf.XSIZE / 2 + 1
+		self.ymax = conf.YSIZE / 2 + 1
 		self.packets = []
 		self.fig, self.ax = plt.subplots()
 		plt.suptitle('Placement of {} nodes'.format(conf.NR_NODES))
-		self.ax.set_xlim(-self.xmax+conf.OX, self.xmax+conf.OX)
-		self.ax.set_ylim(-self.ymax+conf.OY, self.ymax+conf.OY)
+		self.ax.set_xlim(-self.xmax + conf.OX, self.xmax + conf.OX)
+		self.ax.set_ylim(-self.ymax + conf.OY, self.ymax + conf.OY)
 		self.ax.set_xlabel('x (m)')
 		self.ax.set_ylabel('y (m)')
 		move_figure(self.fig, 200, 200)
@@ -361,11 +374,11 @@ class Graph():
 		self.fig.canvas.draw_idle()
 		# A short pause to let the UI update
 		plt.pause(0.01)
-    
+
 	def addNode(self, node):
 		# place the node
 		if not self.conf.RANDOM:
-			txt = self.ax.annotate(str(node.nodeid), (node.x-5, node.y+5))
+			txt = self.ax.annotate(str(node.nodeid), (node.x - 5, node.y + 5))
 			self.node_labels[node.nodeid] = txt
 
 		# Plot the node marker
@@ -387,14 +400,15 @@ class Graph():
 
 		self.fig.canvas.draw_idle()
 		plt.pause(0.1)
-    
+
 	def save(self):
 		if not os.path.isdir(os.path.join("out", "graphics")):
 			if not os.path.isdir("out"):
 				os.mkdir("out")
 			os.mkdir(os.path.join("out", "graphics"))
 
-		plt.savefig(os.path.join("out", "graphics", "placement_"+str(self.conf.NR_NODES)))
+		plt.savefig(os.path.join("out", "graphics", "placement_" + str(self.conf.NR_NODES)))
+
 
 def setupAsymmetricLinks(conf, nodes):
 	asymLinkRng = random.Random(conf.SEED)
@@ -406,9 +420,9 @@ def setupAsymmetricLinks(conf, nodes):
 		for b in range(conf.NR_NODES):
 			if i != b:
 				if conf.MODEL_ASYMMETRIC_LINKS:
-					conf.LINK_OFFSET[(i,b)] = asymLinkRng.gauss(conf.MODEL_ASYMMETRIC_LINKS_MEAN, conf.MODEL_ASYMMETRIC_LINKS_STDDEV)
+					conf.LINK_OFFSET[(i, b)] = asymLinkRng.gauss(conf.MODEL_ASYMMETRIC_LINKS_MEAN, conf.MODEL_ASYMMETRIC_LINKS_STDDEV)
 				else:
-					conf.LINK_OFFSET[(i,b)] = 0
+					conf.LINK_OFFSET[(i, b)] = 0
 
 	for a in range(conf.NR_NODES):
 		for b in range(conf.NR_NODES):
@@ -418,10 +432,10 @@ def setupAsymmetricLinks(conf, nodes):
 				nodeB = nodes[b]
 				distAB = calcDist(nodeA.x, nodeB.x, nodeA.y, nodeB.y, nodeA.z, nodeB.z)
 				pathLossAB = phy.estimatePathLoss(conf, distAB, conf.FREQ, nodeA.z, nodeB.z)
-				
+
 				offsetAB = conf.LINK_OFFSET[(a, b)]
 				offsetBA = conf.LINK_OFFSET[(b, a)]
-				
+
 				rssiAB = conf.PTX + nodeA.antennaGain + nodeB.antennaGain - pathLossAB - offsetAB
 				rssiBA = conf.PTX + nodeB.antennaGain + nodeA.antennaGain - pathLossAB - offsetBA
 

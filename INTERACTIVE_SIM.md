@@ -69,7 +69,7 @@ The simulator uses a pathloss model to calculate how well a signal will propagat
 * ```0``` set the log-distance model  
 * ```1``` set the Okumura-Hata for small and medium-size cities model  
 * ```2``` set the Okumura-Hata for metropolitan areas  
-* ```3``` set the Okumura-Hata for suburban enviroments  
+* ```3``` set the Okumura-Hata for suburban environments
 * ```4``` set the Okumura-Hata for rural areas  
 * ```5``` set the 3GPP for suburban macro-cell  
 * ```6``` set the 3GPP for metropolitan macro-cell  

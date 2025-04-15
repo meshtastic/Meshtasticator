@@ -1,9 +1,10 @@
 from lib.common import calcDist
-from .phy import *
+from lib.phy import airtime, estimatePathLoss
 
 NODENUM_BROADCAST = 0xFFFFFFFF
 
-class MeshPacket(): 
+
+class MeshPacket:
 	def __init__(self, conf, nodes, origTxNodeId, destId, txNodeId, plen, seq, genTime, wantAck, isAck, requestId, now, verboseprint):
 		self.conf = conf
 		self.verboseprint = verboseprint
@@ -34,7 +35,7 @@ class MeshPacket():
 		for rx_node in nodes:
 			if rx_node.nodeid == self.txNodeId:
 				continue
-			dist_3d = calcDist(self.tx_node.x, rx_node.x, self.tx_node.y, rx_node.y, self.tx_node.z, rx_node.z) 
+			dist_3d = calcDist(self.tx_node.x, rx_node.x, self.tx_node.y, rx_node.y, self.tx_node.z, rx_node.z)
 			offset = self.conf.LINK_OFFSET[(self.txNodeId, rx_node.nodeid)]
 			self.LplAtN[rx_node.nodeid] = estimatePathLoss(self.conf, dist_3d, self.freq, self.tx_node.z, rx_node.z) + offset
 			self.rssiAtN[rx_node.nodeid] = self.txpow + self.tx_node.antennaGain + rx_node.antennaGain - self.LplAtN[rx_node.nodeid]
@@ -42,7 +43,7 @@ class MeshPacket():
 				self.sensedByN[rx_node.nodeid] = True
 			if self.rssiAtN[rx_node.nodeid] >= self.conf.CADMODEM[self.conf.MODEM]:
 				self.detectedByN[rx_node.nodeid] = True
-				
+
 		self.packetLen = plen
 		self.timeOnAir = airtime(self.conf, self.sf, self.cr, self.packetLen, self.bw)
 		self.startTime = 0
@@ -53,7 +54,8 @@ class MeshPacket():
 		self.ackReceived = False
 		self.hopLimit = self.tx_node.hopLimit
 
-class MeshMessage():
+
+class MeshMessage:
 	def __init__(self, origTxNodeId, destId, genTime, seq):
 		self.origTxNodeId = origTxNodeId
 		self.destId = destId
