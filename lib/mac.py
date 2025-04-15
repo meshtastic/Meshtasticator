@@ -21,10 +21,10 @@ def getTxDelayMsecWeighted(node, rssi):  # from RadioInterface::getTxDelayMsecWe
     SNR_MIN = -20
     SNR_MAX = 15
     if snr < SNR_MIN:
-        verboseprint('Minimum SNR at RSSI of', rssi, 'dBm')
+        verboseprint(f'Minimum SNR at RSSI of {rssi} dBm')
         snr = SNR_MIN
     if snr > SNR_MAX:
-        verboseprint('Maximum SNR at RSSI of', rssi, 'dBm')
+        verboseprint(f'Maximum SNR at RSSI of {rssi} dBm')
         snr = SNR_MAX
 
     CWsize = int((snr - SNR_MIN) * (CWmax - CWmin) / (SNR_MAX - SNR_MIN) + CWmin)
@@ -32,7 +32,7 @@ def getTxDelayMsecWeighted(node, rssi):  # from RadioInterface::getTxDelayMsecWe
         CW = random.randint(0, 2 * CWsize - 1)
     else:
         CW = random.randint(0, 2 ** CWsize - 1)
-    verboseprint('Node', node.nodeid, 'has CW size', CWsize, 'and picked CW', CW)
+    verboseprint(f'Node {node.nodeid} has CW size {CWsize} and picked CW {CW}')
     return CW * slotTime
 
 
@@ -40,7 +40,7 @@ def getTxDelayMsec(node):  # from RadioInterface::getTxDelayMsec
     channelUtil = node.airUtilization / node.env.now * 100
     CWsize = int(channelUtil * (CWmax - CWmin) / 100 + CWmin)
     CW = random.randint(0, 2 ** CWsize - 1)
-    verboseprint('Current channel utilization is', channelUtil, 'So picked CW', CW)
+    verboseprint(f'Current channel utilization is {channelUtil} So picked CW {CW}')
     return CW * slotTime
 
 

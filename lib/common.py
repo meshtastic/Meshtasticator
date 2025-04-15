@@ -406,7 +406,6 @@ class Graph:
 			if not os.path.isdir("out"):
 				os.mkdir("out")
 			os.mkdir(os.path.join("out", "graphics"))
-
 		plt.savefig(os.path.join("out", "graphics", "placement_" + str(self.conf.NR_NODES)))
 
 
@@ -449,4 +448,5 @@ def setupAsymmetricLinks(conf, nodes):
 					asymmetricLinks += 1
 				else:
 					noLinks += 1
+
 	return totalPairs, symmetricLinks, asymmetricLinks, noLinks

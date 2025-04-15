@@ -8,6 +8,9 @@ from lib.config import Config
 conf = Config()
 
 VERBOSE = False
+def verboseprint(*args, **kwargs):
+    if VERBOSE:
+        print(*args, **kwargs)
 #                           CAD duration   +     airPropagationTime+TxRxTurnaround+MACprocessing
 slotTime = 8.5 * (2.0 ** conf.SFMODEM[conf.MODEM]) / conf.BWMODEM[conf.MODEM] * 1000 + 0.2 + 0.4 + 7
 
@@ -23,8 +26,7 @@ def checkcollision(conf, env, packet, rx_nodeId, packetsAtN):
         for other in packetsAtN[rx_nodeId]:
             if frequencyCollision(packet, other) and sfCollision(packet, other):
                 if timingCollision(conf, env, packet, other):
-                    verboseprint('Packet nr.', packet.seq, 'from', packet.txNodeId, 'and packet nr.', other.seq, 'from',
-                                 other.txNodeId, 'will collide!')
+                    verboseprint(f'Packet nr. {packet.seq} from {packet.txNodeId} and packet nr. {other.seq} from {other.txNodeId} will collide!')
                     c = powerCollision(packet, other, rx_nodeId)
                     # mark all the collided packets
                     for p in c:
@@ -163,10 +165,3 @@ def zeroLinkBudget(dist):
 
 
 MAXRANGE = fsolve(zeroLinkBudget, 1500)
-
-if VERBOSE:
-    def verboseprint(*args, **kwargs):
-        print(*args, **kwargs)
-else:
-    def verboseprint(*args, **kwargs):
-        pass

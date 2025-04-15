@@ -393,7 +393,7 @@ class InteractiveSim():
                     if self.emulateCollisions:
                         time.sleep(2)  # Wait a bit to avoid immediate collisions when starting multiple nodes
                     self.container.exec_run(startNode + "-d /home/node"+str(n.nodeid)+" -h "+str(n.hwId)+" -p "+str(n.TCPPort), detach=True, user="root")
-                print("Docker container with name "+str(self.container.name)+" is started.")
+                print(f"Docker container with name {self.container.name} is started.")
             else:
                 self.container = dockerClient.containers.run(
                     DEVICE_SIM_DOCKER_IMAGE,
@@ -406,8 +406,8 @@ class InteractiveSim():
                     if self.emulateCollisions:
                         time.sleep(2)  # Wait a bit to avoid immediate collisions when starting multiple nodes
                     self.container.exec_run("sh -c '" + startNode + "-d /home/node"+str(n.nodeid)+" -h "+str(n.hwId)+" -p "+str(n.TCPPort)+" > /home/out_"+str(n.nodeid)+".log'", detach=True, user="root")
-                print("Docker container with name "+str(self.container.name)+" is started.")
-                print("You can check the device logs using 'docker exec -it " + str(self.container.name) + " cat /home/out_x.log', where x is the node number.")
+                print(f"Docker container with name {self.container.name} is started.")
+                print(f"You can check the device logs using 'docker exec -it {self.container.name} cat /home/out_x.log', where x is the node number.")
         else:
             from shutil import which
             if which('gnome-terminal') is not None:
@@ -433,7 +433,7 @@ class InteractiveSim():
                     time.sleep(2)  # Wait a bit to avoid immediate collisions when starting multiple nodes
 
         if self.forwardToClient:
-            print("Please connect with the client to TCP port", TCP_PORT_CLIENT, "...")
+            print(f"Please connect with the client to TCP port {TCP_PORT_CLIENT} ...")
             self.forwardSocket = socket.socket()
             self.forwardSocket.bind(('', TCP_PORT_CLIENT))
             self.forwardSocket.listen()
@@ -666,7 +666,7 @@ class InteractiveSim():
         self.messages.append(rP)
 
         if self.script:
-            print("Node", interface.myInfo.my_node_num-HW_ID_OFFSET, "sent", packet["decoded"]["simulator"]["portnum"], "with id", mId, "over the air!")
+            print(f"Node {interface.myInfo.my_node_num-HW_ID_OFFSET} sent {packet['decoded']['simulator']['portnum']} with id {mId} over the air!")
 
         transmitter = next((n for n in self.nodes if n.TCPPort == interface.portNumber), None)
         if transmitter is not None:
@@ -791,13 +791,13 @@ class CommandProcessor(cmd.Cmd):
             return False
         fromNode = int(arguments[0])
         if self.sim.getNodeIfaceById(fromNode) is None:
-            print('Node ID', fromNode, 'is not in the list of nodes.')
+            print(f'Node ID {fromNode} is not in the list of nodes.')
             return False
         txt = ""
         for s in arguments[1:-1]:
             txt += s+" "
         txt += arguments[-1]
-        print('Instructing node', fromNode, 'to broadcast '+'"'+txt+'"', '(message ID =', str(self.sim.messageId+1)+')')
+        print(f'Instructing node {fromNode} to broadcast "{txt}" (message ID = {self.sim.messageId+1})')
         self.sim.sendBroadcast(txt, fromNode)
 
     def do_DM(self, line):
@@ -809,17 +809,17 @@ class CommandProcessor(cmd.Cmd):
             return False
         fromNode = int(arguments[0])
         if self.sim.getNodeIfaceById(fromNode) is None:
-            print('Node ID', fromNode, 'is not in the list of nodes.')
+            print(f'Node ID {fromNode} is not in the list of nodes.')
             return False
         toNode = int(arguments[1])
         if self.sim.getNodeIfaceById(toNode) is None:
-            print('Node ID', toNode, 'is not in the list of nodes.')
+            print(f'Node ID {toNode} is not in the list of nodes.')
             return False
         txt = ""
         for s in arguments[2:-1]:
             txt += s+" "
         txt += arguments[-1]
-        print('Instructing node', fromNode, 'to DM node', str(toNode)+' "'+txt+'"', '(message ID =', str(self.sim.messageId+1)+')')
+        print(f'Instructing node {fromNode} to DM node {toNode} "{txt}" (message ID = {self.sim.messageId+1})')
         self.sim.sendDM(txt, fromNode, toNode)
 
     def do_ping(self, line):
@@ -837,7 +837,7 @@ class CommandProcessor(cmd.Cmd):
         if self.sim.getNodeIfaceById(toNode) is None:
             print('Node ID', toNode, 'is not in the list of nodes.')
             return False
-        print('Instructing node', fromNode, 'to send ping to node', toNode, '(message ID =', str(self.sim.messageId+1)+')')
+        print(f'Instructing node {fromNode} to send ping to node {toNode} (message ID = {self.sim.messageId+1})')
         self.sim.sendPing(fromNode, toNode)
 
     def do_traceroute(self, line):
@@ -855,8 +855,8 @@ class CommandProcessor(cmd.Cmd):
         if self.sim.getNodeIfaceById(toNode) is None:
             print('Node ID', toNode, 'is not in the list of nodes.')
             return False
-        print('Instructing node', fromNode, 'to send traceroute request to node', toNode, '(message ID =', str(self.sim.messageId+1)+')')
-        print('This takes a while, the result will be in the log of node '+str(fromNode)+'.')
+        print(f'Instructing node {fromNode} to send traceroute request to node {toNode} (message ID = {self.sim.messageId+1})')
+        print(f'This takes a while, the result will be in the log of node {fromNode}.')
         self.sim.traceRoute(fromNode, toNode)
 
     def do_reqPos(self, line):
@@ -868,13 +868,13 @@ class CommandProcessor(cmd.Cmd):
             return False
         fromNode = int(arguments[0])
         if self.sim.getNodeIfaceById(fromNode) is None:
-            print('Node ID', fromNode, 'is not in the list of nodes.')
+            print(f'Node ID {fromNode} is not in the list of nodes.')
             return False
         toNode = int(arguments[1])
         if self.sim.getNodeIfaceById(toNode) is None:
-            print('Node ID', toNode, 'is not in the list of nodes.')
+            print(f'Node ID {toNode} is not in the list of nodes.')
             return False
-        print('Instructing node', fromNode, 'to send position request to node', toNode, '(message ID =', str(self.sim.messageId+1)+')')
+        print(f'Instructing node {fromNode} to send position request to node {toNode} (message ID = {self.sim.messageId+1})')
         self.sim.requestPosition(fromNode, toNode)
 
     def do_nodes(self, line):
@@ -886,7 +886,7 @@ class CommandProcessor(cmd.Cmd):
             return False
         for n in arguments:
             if self.sim.getNodeIfaceById(n) is None:
-                print('Node ID', n, 'is not in the list of nodes.')
+                print(f'Node ID {n} is not in the list of nodes.')
                 continue
             self.sim.showNodes(int(n))
 
@@ -899,7 +899,7 @@ class CommandProcessor(cmd.Cmd):
             return False
         nodeId = (int(arguments[0]))
         if self.sim.getNodeIfaceById(nodeId) is None:
-            print('Node ID', nodeId, 'is not in the list of nodes.')
+            print(f'Node ID {nodeId} is not in the list of nodes.')
         else:
             self.sim.getNodeIfaceById(nodeId).localNode.exitSimulator()
             self.sim.getNodeIfaceById(nodeId).close()
