@@ -1,11 +1,16 @@
 import random
-from lib.phy import airtime, slotTime
+from lib.phy import airtime, SLOT_TIME
 
 
 VERBOSE = False
 CWmin = 2
 CWmax = 8
 PROCESSING_TIME_MSEC = 4500
+
+
+def verboseprint(*args, **kwargs):
+    if VERBOSE:
+        print(*args, **kwargs)
 
 
 def setTransmitDelay(node, packet):  # from RadioLibInterface::setTransmitDelay
@@ -33,7 +38,7 @@ def getTxDelayMsecWeighted(node, rssi):  # from RadioInterface::getTxDelayMsecWe
     else:
         CW = random.randint(0, 2 ** CWsize - 1)
     verboseprint(f'Node {node.nodeid} has CW size {CWsize} and picked CW {CW}')
-    return CW * slotTime
+    return CW * SLOT_TIME
 
 
 def getTxDelayMsec(node):  # from RadioInterface::getTxDelayMsec
@@ -41,19 +46,11 @@ def getTxDelayMsec(node):  # from RadioInterface::getTxDelayMsec
     CWsize = int(channelUtil * (CWmax - CWmin) / 100 + CWmin)
     CW = random.randint(0, 2 ** CWsize - 1)
     verboseprint(f'Current channel utilization is {channelUtil} So picked CW {CW}')
-    return CW * slotTime
+    return CW * SLOT_TIME
 
 
 def getRetransmissionMsec(node, packet):  # from RadioInterface::getRetransmissionMsec
     packetAirtime = int(airtime(node.conf, node.conf.SFMODEM[node.conf.MODEM], node.conf.CRMODEM[node.conf.MODEM], packet.packetLen, node.conf.BWMODEM[node.conf.MODEM]))
     channelUtil = node.airUtilization / node.env.now * 100
     CWsize = int(channelUtil * (CWmax - CWmin) / 100 + CWmin)
-    return 2 * packetAirtime + (2 ** CWsize + 2 ** (int((CWmax + CWmin) / 2))) * slotTime + PROCESSING_TIME_MSEC
-
-
-if VERBOSE:
-    def verboseprint(*args, **kwargs):
-        print(*args, **kwargs)
-else:
-    def verboseprint(*args, **kwargs):
-        pass
+    return 2 * packetAirtime + (2 ** CWsize + 2 ** (int((CWmax + CWmin) / 2))) * SLOT_TIME + PROCESSING_TIME_MSEC

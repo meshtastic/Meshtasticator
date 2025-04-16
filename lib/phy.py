@@ -11,8 +11,10 @@ VERBOSE = False
 def verboseprint(*args, **kwargs):
     if VERBOSE:
         print(*args, **kwargs)
+
+
 #                           CAD duration   +     airPropagationTime+TxRxTurnaround+MACprocessing
-slotTime = 8.5 * (2.0 ** conf.SFMODEM[conf.MODEM]) / conf.BWMODEM[conf.MODEM] * 1000 + 0.2 + 0.4 + 7
+SLOT_TIME = 8.5 * (2.0 ** conf.SFMODEM[conf.MODEM]) / conf.BWMODEM[conf.MODEM] * 1000 + 0.2 + 0.4 + 7
 
 
 def checkcollision(conf, env, packet, rx_nodeId, packetsAtN):
@@ -87,7 +89,7 @@ def isChannelActive(node, env):
     for p in node.packets:
         if p.detectedByN[node.nodeid]:
             # You will miss detecting a packet if it has just started before you could do CAD
-            if p.startTime + slotTime <= env.now <= p.endTime:
+            if p.startTime + SLOT_TIME <= env.now <= p.endTime:
                 return True
     return False
 

@@ -26,9 +26,15 @@ VERBOSE = False
 SHOW_GRAPH = False
 SAVE = True
 
-#######################################
-####### SET BATCH PARAMS BELOW ########
-#######################################
+
+def verboseprint(*args, **kwargs):
+    if VERBOSE:
+        print(*args, **kwargs)
+
+
+#############################
+####### BATCH PARAMS ########
+#############################
 
 # Add your router types here
 # This leaves room for new experimentation of different routing algorithms
@@ -39,18 +45,6 @@ repetitions = 3
 
 # How many nodes should be simulated in each test
 numberOfNodes = [3, 5, 10, 15, 30]
-
-
-#######################################
-####### SET BATCH PARAMS ABOVE ########
-#######################################
-
-if VERBOSE:
-    def verboseprint(*args, **kwargs):
-        print(*args, **kwargs)
-else:
-    def verboseprint(*args, **kwargs):
-        pass
 
 
 ###########################################################
@@ -436,7 +430,6 @@ for rt in routerTypes:
         # Compute percentage difference relative to baseline
         if base_val != 0:
             pct_diff = 100.0 * (rt_val - base_val) / base_val
-
 
         plt.text(
             n, rt_val + 0.5,  # Slight offset so text isn't directly on top of marker
