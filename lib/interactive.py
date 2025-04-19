@@ -357,6 +357,7 @@ class InteractiveSim:
         self.wantExit = False
 
         config, pathToProgram = self.parse_interactive_args(foundNodes)
+        programWithFullPath = os.path.join(pathToProgram, 'program')
 
         if not self.docker and not sys.platform.startswith('linux'):
             print("Docker is required for non-Linux OS.")
@@ -385,27 +386,27 @@ class InteractiveSim:
             if sys.platform == "darwin":
                 self.container = dockerClient.containers.run(
                     DEVICE_SIM_DOCKER_IMAGE,
-                    startNode + "-d /home/node"+str(n0.nodeid)+" -h "+str(n0.hwId)+" -p "+str(n0.TCPPort),
-                    ports=dict(zip((str(n.TCPPort)+'/tcp' for n in self.nodes), (n.TCPPort for n in self.nodes))),
+                    f"{startNode} -d /home/node{n0.nodeid} -h {n0.hwId} -p {n0.TCPPort}",
+                    ports=dict(zip((f'{n.TCPPort}/tcp' for n in self.nodes), (n.TCPPort for n in self.nodes))),
                     name="Meshtastic", detach=True, auto_remove=True, user="root"
                 )
                 for n in self.nodes[1:]:
                     if self.emulateCollisions:
                         time.sleep(2)  # Wait a bit to avoid immediate collisions when starting multiple nodes
-                    self.container.exec_run(startNode + "-d /home/node"+str(n.nodeid)+" -h "+str(n.hwId)+" -p "+str(n.TCPPort), detach=True, user="root")
+                    self.container.exec_run(f"{startNode} -d /home/node{n0.nodeid} -h {n.hwId} -p {n.TCPPort}", detach=True, user="root")
                 print(f"Docker container with name {self.container.name} is started.")
             else:
                 self.container = dockerClient.containers.run(
                     DEVICE_SIM_DOCKER_IMAGE,
-                    "sh -c '" + startNode + "-d /home/node" + str(n0.nodeid) + " -h " + str(n0.hwId) + " -p " + str(n0.TCPPort) + " > /home/out_" + str(n0.nodeid) + ".log'",
-                    ports=dict(zip((str(n.TCPPort)+'/tcp' for n in self.nodes), (n.TCPPort for n in self.nodes))),
+                    f"sh -c '{startNode} -d /home/node{n0.nodeid} -h {n0.hwId} -p {n0.TCPPort} > /home/out_{n0.nodeid}.log'",
+                    ports=dict(zip((f'{n.TCPPort}/tcp' for n in self.nodes), (n.TCPPort for n in self.nodes))),
                     name="Meshtastic", detach=True, auto_remove=True, user="root",
                     volumes={"Meshtasticator": {'bind': '/home/', 'mode': 'rw'}}
                 )
                 for n in self.nodes[1:]:
                     if self.emulateCollisions:
                         time.sleep(2)  # Wait a bit to avoid immediate collisions when starting multiple nodes
-                    self.container.exec_run("sh -c '" + startNode + "-d /home/node"+str(n.nodeid)+" -h "+str(n.hwId)+" -p "+str(n.TCPPort)+" > /home/out_"+str(n.nodeid)+".log'", detach=True, user="root")
+                    self.container.exec_run(f"sh -c '{startNode} -d /home/node{n.nodeid} -h {n.hwId} -p {n.TCPPort} > /home/out_{n.nodeid}.log'", detach=True, user="root")
                 print(f"Docker container with name {self.container.name} is started.")
                 print(f"You can check the device logs using 'docker exec -it {self.container.name} cat /home/out_x.log', where x is the node number.")
         else:
@@ -419,15 +420,14 @@ class InteractiveSim:
                 exit(1)
             for n in self.nodes:  # [1:]
                 if not xterm:
-                    newTerminal = "gnome-terminal --title='Node "+str(n.nodeid)+"' -- "
+                    newTerminal = f"gnome-terminal --title='Node {n.nodeid}' -- "
                 else:
-                    newTerminal = "xterm -title 'Node "+str(n.nodeid)+"' -e "
-                startNode = "program -d "+os.path.expanduser('~')+"/.portduino/node"+str(n.nodeid)+" -h "+str(n.hwId)+" -p "+str(n.TCPPort)
+                    newTerminal = f"xterm -title 'Node {n.nodeid}' -e "
+                startNode = f"-d {os.path.expanduser('~')}/.portduino/node{n.nodeid} -h {n.hwId} -p {n.TCPPort}"
                 if self.removeConfig:
-                    startNode = startNode + " -e &"
-                else:
-                    startNode = startNode + " &"
-                cmdString = newTerminal+pathToProgram+startNode
+                    startNode += " -e"
+                startNode += " &"
+                cmdString = f"{newTerminal} {programWithFullPath} {startNode}"
                 os.system(cmdString)
                 if self.emulateCollisions and n.nodeid != len(self.nodes)-1:
                     time.sleep(2)  # Wait a bit to avoid immediate collisions when starting multiple nodes
@@ -478,7 +478,7 @@ class InteractiveSim:
         parser.add_argument('-d', '--docker', action='store_true')
         parser.add_argument('--from-file', action='store_true')
         parser.add_argument('-f', '--forward', action='store_true')
-        parser.add_argument('-p', '--program', type=str, default=os.getcwd() + "/")
+        parser.add_argument('-p', '--program', type=str, default=os.getcwd())
         parser.add_argument('-c', '--collisions', action='store_true')
         args = parser.parse_args()
         # print(args)
