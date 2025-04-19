@@ -45,7 +45,7 @@ def get_tx_delay_msec(node):  # from RadioInterface::getTxDelayMsec
     channelUtil = node.airUtilization / node.env.now * 100
     CWsize = int(channelUtil * (CWmax - CWmin) / 100 + CWmin)
     CW = random.randint(0, 2 ** CWsize - 1)
-    verboseprint(f'Current channel utilization is {channelUtil} So picked CW {CW}')
+    verboseprint(f'Current channel utilization is {channelUtil}, so picked CW {CW}')
     return CW * SLOT_TIME
 
 

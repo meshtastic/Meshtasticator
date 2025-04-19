@@ -793,10 +793,7 @@ class CommandProcessor(cmd.Cmd):
         if self.sim.get_node_iface_by_id(fromNode) is None:
             print(f'Node ID {fromNode} is not in the list of nodes.')
             return False
-        txt = ""
-        for s in arguments[1:-1]:
-            txt += s+" "
-        txt += arguments[-1]
+        txt = " ".join(arguments[2:-1])
         print(f'Instructing node {fromNode} to broadcast "{txt}" (message ID = {self.sim.messageId+1})')
         self.sim.send_broadcast(txt, fromNode)
 
@@ -815,10 +812,7 @@ class CommandProcessor(cmd.Cmd):
         if self.sim.get_node_iface_by_id(toNode) is None:
             print(f'Node ID {toNode} is not in the list of nodes.')
             return False
-        txt = ""
-        for s in arguments[2:-1]:
-            txt += s+" "
-        txt += arguments[-1]
+        txt = " ".join(arguments[2:-1])
         print(f'Instructing node {fromNode} to DM node {toNode} "{txt}" (message ID = {self.sim.messageId+1})')
         self.sim.send_dm(txt, fromNode, toNode)
 
@@ -829,11 +823,10 @@ class CommandProcessor(cmd.Cmd):
         if len(arguments) != 2:
             print('Please use the syntax: "ping <fromNode> <toNode>"')
             return False
-        fromNode = int(arguments[0])
+        fromNode, toNode = map(int, arguments)
         if self.sim.get_node_iface_by_id(fromNode) is None:
             print('Node ID', fromNode, 'is not in the list of nodes.')
             return False
-        toNode = int(arguments[1])
         if self.sim.get_node_iface_by_id(toNode) is None:
             print('Node ID', toNode, 'is not in the list of nodes.')
             return False

@@ -48,16 +48,13 @@ def frequency_collision(p1, p2):
         return True
     elif abs(p1.freq - p2.freq) <= 60 and (p1.bw == 250 or p2.freq == 250):
         return True
-    else:
-        if abs(p1.freq - p2.freq) <= 30:
-            return True
+    elif abs(p1.freq - p2.freq) <= 30:
+        return True
     return False
 
 
 def sf_collision(p1, p2):
-    if p1.sf == p2.sf:
-        return True
-    return False
+    return p1.sf == p2.sf
 
 
 def power_collision(p1, p2, rx_nodeId):
