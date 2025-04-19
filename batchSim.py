@@ -15,11 +15,9 @@ import random
 import matplotlib.pyplot as plt
 
 from lib.config import Config
-from lib.common import *
-from lib.packet import *
-from lib.mac import *
-from lib.discrete_event import *
-from lib.node import *
+from lib.common import Graph, find_random_position, run_graph_updates, setup_asymmetric_links
+from lib.discrete_event import BroadcastPipe, sim_report
+from lib.node import MeshNode
 
 # TODO - There should really be two separate concepts here, a STATE and a CONFIG
 # today, the config also maintains state
@@ -28,13 +26,18 @@ VERBOSE = False
 SHOW_GRAPH = False
 SAVE = True
 
-#######################################
-####### SET BATCH PARAMS BELOW ########
-#######################################
+
+def verboseprint(*args, **kwargs):
+    if VERBOSE:
+        print(*args, **kwargs)
+
+
+#############################
+####### BATCH PARAMS ########
+#############################
 
 # Add your router types here
-# This leaves room for new experimentation of 
-# different routing algorithms
+# This leaves room for new experimentation of different routing algorithms
 routerTypes = [conf.ROUTER_TYPE.MANAGED_FLOOD]
 
 # How many times should each combination run
@@ -44,21 +47,10 @@ repetitions = 3
 numberOfNodes = [3, 5, 10, 15, 30]
 
 
-#######################################
-####### SET BATCH PARAMS ABOVE ########
-#######################################
-
-if VERBOSE:
-    def verboseprint(*args, **kwargs): 
-        print(*args, **kwargs)
-else:
-    def verboseprint(*args, **kwargs): 
-        pass
-
 ###########################################################
 # Progress-logging process
 ###########################################################
-def simulationProgress(env, currentRep, repetitions, endTime):
+def simulation_progress(env, currentRep, repetitions, endTime):
     """
     Keep track of the ratio of real time per sim-second over
     a fixed sliding window, so if the simulation slows down near the end,
@@ -67,54 +59,55 @@ def simulationProgress(env, currentRep, repetitions, endTime):
     startWallTime = time.time()
     lastWallTime = startWallTime
     lastEnvTime = env.now
-    
+
     # We'll store the last N ratio measurements
     N = 10
     ratios = collections.deque(maxlen=N)
-    
+
     while True:
         fraction = env.now / endTime
         fraction = min(fraction, 1.0)
-        
+
         # Current real time
         currentWallTime = time.time()
         realTimeDelta = currentWallTime - lastWallTime
         simTimeDelta = env.now - lastEnvTime
-        
+
         # Compute new ratio if sim actually advanced
         if simTimeDelta > 0:
             instant_ratio = realTimeDelta / simTimeDelta
             ratios.append(instant_ratio)
-        
+
         # If we have at least one ratio, compute a 'recent average'
         if len(ratios) > 0:
             avgRatio = sum(ratios) / len(ratios)
         else:
             avgRatio = 0.0
-        
+
         # time_left_est = avg_ratio * (endTime - env.now)
         simTimeRemaining = endTime - env.now
         timeLeftEst = simTimeRemaining * avgRatio
-        
+
         # Format mm:ss
         minutes = int(timeLeftEst // 60)
         seconds = int(timeLeftEst % 60)
-        
+
         print(
             f"\rSimulation {currentRep+1}/{repetitions} progress: "
             f"{fraction*100:.1f}% | ~{minutes}m{seconds}s left...",
             end="", flush=True
         )
-        
+
         # If done or overshoot
         if fraction >= 1.0:
             break
-        
+
         # Update references
         lastWallTime = currentWallTime
         lastEnvTime = env.now
-        
+
         yield env.timeout(10 * conf.ONE_SECOND_INTERVAL)
+
 
 # We will collect the metrics in dictionaries keyed by router type.
 # For example: collisions_dict[ routerType ] = [list of mean collisions, one per nrNodes]
@@ -152,7 +145,6 @@ for rt in routerTypes:
     noLinkRate_dict[rt] = []
 
 
-
 ##############################################################################
 # Pre generate node positions so we have apples to apples between router types
 ##############################################################################
@@ -162,26 +154,28 @@ class TempNode:
         self.x = x
         self.y = y
 
+
 positions_cache = {}  # (nrNodes, rep) -> list of (x, y)
+
 
 for nrNodes in numberOfNodes:
     for rep in range(repetitions):
         random.seed(rep)
         found = False
         temp_nodes = []
-        
+
         # We attempt to place 'nrNodes' one by one using findRandomPosition,
         # but pass in a list of TempNode objects so it can do n.x, n.y
         while not found:
             temp_nodes = []
             for _ in range(nrNodes):
-                xnew, ynew = findRandomPosition(conf, temp_nodes)
+                xnew, ynew = find_random_position(conf, temp_nodes)
                 if xnew is None:
                     # means we failed to place a node
                     break
                 # Wrap coordinates in a TempNode
                 temp_nodes.append(TempNode(xnew, ynew))
-            
+
             if len(temp_nodes) == nrNodes:
                 found = True
             else:
@@ -234,7 +228,7 @@ for rt_i, routerType in enumerate(routerTypes):
             routerTypeConf = Config()
             routerTypeConf.SELECTED_ROUTER_TYPE = routerType
             routerTypeConf.NR_NODES = nrNodes
-            routerTypeConf.updateRouterDependencies()
+            routerTypeConf.update_router_dependencies()
 
             effectiveSeed = rt_i * 10000 + rep
             routerTypeConf.SEED = effectiveSeed
@@ -243,7 +237,7 @@ for rt_i, routerType in enumerate(routerTypes):
             bc_pipe = BroadcastPipe(env)
 
             # Start the progress-logging process
-            env.process(simulationProgress(env, rep, repetitions, routerTypeConf.SIMTIME))
+            env.process(simulation_progress(env, rep, repetitions, routerTypeConf.SIMTIME))
 
             # Retrieve the pre-generated positions for this (nrNodes, rep)
             coords = positions_cache[(nrNodes, rep)]
@@ -279,12 +273,12 @@ for rt_i, routerType in enumerate(routerTypes):
                 )
                 nodes.append(node)
                 if SHOW_GRAPH:
-                    graph.addNode(node)
+                    graph.add_node(node)
 
             if routerTypeConf.MOVEMENT_ENABLED and SHOW_GRAPH:
-                env.process(runGraphUpdates(env, graph, nodes))
+                env.process(run_graph_updates(env, graph, nodes))
 
-            totalPairs, symmetricLinks, asymmetricLinks, noLinks = setupAsymmetricLinks(routerTypeConf, nodes)
+            totalPairs, symmetricLinks, asymmetricLinks, noLinks = setup_asymmetric_links(routerTypeConf, nodes)
 
             # Start simulation
             env.run(until=routerTypeConf.SIMTIME)
@@ -361,7 +355,7 @@ for rt_i, routerType in enumerate(routerTypes):
                 "SELECTED_ROUTER_TYPE": routerTypeLabel
             }
             subdir = "hopLimit3"
-            simReport(routerTypeConf, data, subdir, nrNodes)
+            sim_report(routerTypeConf, data, subdir, nrNodes)
 
         # Print summary
         print('Collision rate average:', round(np.nanmean(collisionRate), 2))
@@ -390,25 +384,26 @@ for rt_i, routerType in enumerate(routerTypes):
     symmetricLinkRate_dict[routerType] = symmetricLinkRateAll
     noLinkRate_dict[routerType] = noLinkRateAll
 
+
 ###########################################################
 # Plotting
 ###########################################################
-
 def router_type_label(rt):
     if rt == conf.ROUTER_TYPE.MANAGED_FLOOD:
         return "Managed Flood"
     else:
         return str(rt)
 
+
 ###########################################################
 # Choose a baseline router type for comparison
 ###########################################################
 baselineRt = conf.ROUTER_TYPE.MANAGED_FLOOD
 
+
 ###########################################################
 # 1) Collision Rate (with annotations)
 ###########################################################
-
 plt.figure()
 
 # Plot all router types
@@ -431,22 +426,15 @@ for rt in routerTypes:
     for i, n in enumerate(numberOfNodes):
         base_val = collisions_dict[baselineRt][i]
         rt_val   = collisions_dict[rt][i]
-
+        pct_diff = 0.0
         # Compute percentage difference relative to baseline
         if base_val != 0:
             pct_diff = 100.0 * (rt_val - base_val) / base_val
-        else:
-            pct_diff = 0.0
-
-        # Slight offsets so text isn't directly on top of marker
-        x_offset = 0.0
-        y_offset = 0.5
 
         plt.text(
-            n + x_offset, 
-            rt_val + y_offset, 
-            f'{pct_diff:.1f}%', 
-            ha='center', 
+            n, rt_val + 0.5,  # Slight offset so text isn't directly on top of marker
+            f'{pct_diff:.1f}%',
+            ha='center',
             fontsize=8
         )
 
@@ -478,15 +466,14 @@ for rt in routerTypes:
     for i, n in enumerate(numberOfNodes):
         base_val = meanDelays_dict[baselineRt][i]
         rt_val   = meanDelays_dict[rt][i]
+        pct_diff = 0.0
         if base_val != 0:
             pct_diff = 100.0 * (rt_val - base_val) / base_val
-        else:
-            pct_diff = 0.0
 
         plt.text(
             n, rt_val + 5,  # a small offset in the y-axis
-            f'{pct_diff:.1f}%', 
-            ha='center', 
+            f'{pct_diff:.1f}%',
+            ha='center',
             fontsize=8
         )
 
@@ -516,15 +503,14 @@ for rt in routerTypes:
     for i, n in enumerate(numberOfNodes):
         base_val = meanTxAirUtils_dict[baselineRt][i]
         rt_val   = meanTxAirUtils_dict[rt][i]
+        pct_diff = 0.0
         if base_val != 0:
             pct_diff = 100.0 * (rt_val - base_val) / base_val
-        else:
-            pct_diff = 0.0
 
         plt.text(
             n, rt_val + 1,  # small offset
-            f'{pct_diff:.1f}%', 
-            ha='center', 
+            f'{pct_diff:.1f}%',
+            ha='center',
             fontsize=8
         )
 
@@ -554,15 +540,14 @@ for rt in routerTypes:
     for i, n in enumerate(numberOfNodes):
         base_val = reachability_dict[baselineRt][i]
         rt_val   = reachability_dict[rt][i]
+        pct_diff = 0.0
         if base_val != 0:
             pct_diff = 100.0 * (rt_val - base_val) / base_val
-        else:
-            pct_diff = 0.0
 
         plt.text(
             n, rt_val + 0.5,
-            f'{pct_diff:.1f}%', 
-            ha='center', 
+            f'{pct_diff:.1f}%',
+            ha='center',
             fontsize=8
         )
 
@@ -592,15 +577,14 @@ for rt in routerTypes:
     for i, n in enumerate(numberOfNodes):
         base_val = usefulness_dict[baselineRt][i]
         rt_val   = usefulness_dict[rt][i]
+        pct_diff = 0.0
         if base_val != 0:
             pct_diff = 100.0 * (rt_val - base_val) / base_val
-        else:
-            pct_diff = 0.0
 
         plt.text(
             n, rt_val + 0.5,
-            f'{pct_diff:.1f}%', 
-            ha='center', 
+            f'{pct_diff:.1f}%',
+            ha='center',
             fontsize=8
         )
 
