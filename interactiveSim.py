@@ -12,13 +12,13 @@ sim = InteractiveSim()  # Start the simulator
 if sim.script:  # Use '-s' as argument if you want to specify what you want to send here
     try:
         time.sleep(45)  # Wait until nodeInfo messages are sent
-        sim.showNodes()  # Show nodeDB as seen by each node
+        sim.show_nodes()  # Show nodeDB as seen by each node
 
         fromNode = 0  # Node from which a message will be sent
         toNode = 1  # Node to whom a message will be sent (if not a broadcast)
 
         """ Broadcast Message from node 0. """
-        sim.sendBroadcast("Hi all", fromNode)
+        sim.send_broadcast("Hi all", fromNode)
 
         """ Direct Message from node 0 to node 1. """
         # sim.sendDM("Hi node 0", fromNode, toNode)
@@ -40,10 +40,10 @@ if sim.script:  # Use '-s' as argument if you want to specify what you want to s
         # sim.requestPosition(fromNode, toNode)
 
         time.sleep(15)  # Wait until message are sent
-        sim.graph.plotMetrics(sim.nodes)  # Plot airtime metrics
-        sim.graph.initRoutes(sim)  # Visualize the route of messages sent
+        sim.graph.plot_metrics(sim.nodes)  # Plot airtime metrics
+        sim.graph.init_routes(sim)  # Visualize the route of messages sent
     except KeyboardInterrupt:
-        sim.graph.plotMetrics(sim.nodes)
-        sim.graph.initRoutes(sim)
+        sim.graph.plot_metrics(sim.nodes)
+        sim.graph.init_routes(sim)
 else:  # Normal usage with commands
     CommandProcessor().cmdloop(sim)

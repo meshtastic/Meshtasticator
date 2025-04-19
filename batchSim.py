@@ -15,8 +15,8 @@ import random
 import matplotlib.pyplot as plt
 
 from lib.config import Config
-from lib.common import Graph, findRandomPosition, runGraphUpdates, setupAsymmetricLinks
-from lib.discrete_event import BroadcastPipe, simReport
+from lib.common import Graph, find_random_position, run_graph_updates, setup_asymmetric_links
+from lib.discrete_event import BroadcastPipe, sim_report
 from lib.node import MeshNode
 
 # TODO - There should really be two separate concepts here, a STATE and a CONFIG
@@ -50,7 +50,7 @@ numberOfNodes = [3, 5, 10, 15, 30]
 ###########################################################
 # Progress-logging process
 ###########################################################
-def simulationProgress(env, currentRep, repetitions, endTime):
+def simulation_progress(env, currentRep, repetitions, endTime):
     """
     Keep track of the ratio of real time per sim-second over
     a fixed sliding window, so if the simulation slows down near the end,
@@ -169,7 +169,7 @@ for nrNodes in numberOfNodes:
         while not found:
             temp_nodes = []
             for _ in range(nrNodes):
-                xnew, ynew = findRandomPosition(conf, temp_nodes)
+                xnew, ynew = find_random_position(conf, temp_nodes)
                 if xnew is None:
                     # means we failed to place a node
                     break
@@ -228,7 +228,7 @@ for rt_i, routerType in enumerate(routerTypes):
             routerTypeConf = Config()
             routerTypeConf.SELECTED_ROUTER_TYPE = routerType
             routerTypeConf.NR_NODES = nrNodes
-            routerTypeConf.updateRouterDependencies()
+            routerTypeConf.update_router_dependencies()
 
             effectiveSeed = rt_i * 10000 + rep
             routerTypeConf.SEED = effectiveSeed
@@ -237,7 +237,7 @@ for rt_i, routerType in enumerate(routerTypes):
             bc_pipe = BroadcastPipe(env)
 
             # Start the progress-logging process
-            env.process(simulationProgress(env, rep, repetitions, routerTypeConf.SIMTIME))
+            env.process(simulation_progress(env, rep, repetitions, routerTypeConf.SIMTIME))
 
             # Retrieve the pre-generated positions for this (nrNodes, rep)
             coords = positions_cache[(nrNodes, rep)]
@@ -273,12 +273,12 @@ for rt_i, routerType in enumerate(routerTypes):
                 )
                 nodes.append(node)
                 if SHOW_GRAPH:
-                    graph.addNode(node)
+                    graph.add_node(node)
 
             if routerTypeConf.MOVEMENT_ENABLED and SHOW_GRAPH:
-                env.process(runGraphUpdates(env, graph, nodes))
+                env.process(run_graph_updates(env, graph, nodes))
 
-            totalPairs, symmetricLinks, asymmetricLinks, noLinks = setupAsymmetricLinks(routerTypeConf, nodes)
+            totalPairs, symmetricLinks, asymmetricLinks, noLinks = setup_asymmetric_links(routerTypeConf, nodes)
 
             # Start simulation
             env.run(until=routerTypeConf.SIMTIME)
@@ -355,7 +355,7 @@ for rt_i, routerType in enumerate(routerTypes):
                 "SELECTED_ROUTER_TYPE": routerTypeLabel
             }
             subdir = "hopLimit3"
-            simReport(routerTypeConf, data, subdir, nrNodes)
+            sim_report(routerTypeConf, data, subdir, nrNodes)
 
         # Print summary
         print('Collision rate average:', round(np.nanmean(collisionRate), 2))

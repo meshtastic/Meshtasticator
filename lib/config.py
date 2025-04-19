@@ -120,7 +120,7 @@ class Config:
         self.CHANNEL_UTILIZATION_PERIODS = 6
 
     # Function that needs to be run to ensure the router dependent variables change appropriately
-    def updateRouterDependencies(self):
+    def update_router_dependencies(self):
         # Example: Overwrite hop limit in the case of X new awesome routing algorithm
         # if self.SELECTED_ROUTER_TYPE == self.ROUTER_TYPE.AWESOME_ROUTER:
         #     Change config values if necessary for your router here

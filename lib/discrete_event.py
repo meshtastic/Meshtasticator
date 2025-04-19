@@ -4,14 +4,9 @@ import pandas as pd
 import simpy
 
 
-def simReport(conf, data, subdir, param):
-	fname = "simReport_{}_{}.csv".format(conf.MODEM, param)
-	if not os.path.isdir(os.path.join("out", "report", subdir)):
-		if not os.path.isdir("out"):
-			os.mkdir("out")
-		if not os.path.isdir(os.path.join("out", "report")):
-			os.mkdir(os.path.join("out", "report"))
-		os.mkdir(os.path.join("out", "report", subdir))
+def sim_report(conf, data, subdir, param):
+	os.makedirs(os.path.join("out", "report", subdir), exist_ok=True)
+	fname = f"simReport_{conf.MODEM}_{param}.csv"
 	df_new = pd.DataFrame(data)
 	df_new.to_csv(os.path.join("out", "report", subdir, fname), index=False)
 

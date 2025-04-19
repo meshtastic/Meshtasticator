@@ -13,15 +13,15 @@ def verboseprint(*args, **kwargs):
         print(*args, **kwargs)
 
 
-def setTransmitDelay(node, packet):  # from RadioLibInterface::setTransmitDelay
+def set_transmit_delay(node, packet):  # from RadioLibInterface::setTransmitDelay
     for p in reversed(node.packetsAtN[node.nodeid]):
         if p.seq == packet.seq and p.rssiAtN[node.nodeid] != 0 and p.receivedAtN[node.nodeid] is True:
             # verboseprint('At time', round(self.env.now, 3), 'pick delay with RSSI of node', self.nodeid, 'is', p.rssiAtN[self.nodeid])
-            return getTxDelayMsecWeighted(node, p.rssiAtN[node.nodeid])  # weighted waiting based on RSSI
-    return getTxDelayMsec(node)
+            return get_tx_delay_msec_weighted(node, p.rssiAtN[node.nodeid])  # weighted waiting based on RSSI
+    return get_tx_delay_msec(node)
 
 
-def getTxDelayMsecWeighted(node, rssi):  # from RadioInterface::getTxDelayMsecWeighted
+def get_tx_delay_msec_weighted(node, rssi):  # from RadioInterface::getTxDelayMsecWeighted
     snr = rssi - node.conf.NOISE_LEVEL
     SNR_MIN = -20
     SNR_MAX = 15
@@ -41,7 +41,7 @@ def getTxDelayMsecWeighted(node, rssi):  # from RadioInterface::getTxDelayMsecWe
     return CW * SLOT_TIME
 
 
-def getTxDelayMsec(node):  # from RadioInterface::getTxDelayMsec
+def get_tx_delay_msec(node):  # from RadioInterface::getTxDelayMsec
     channelUtil = node.airUtilization / node.env.now * 100
     CWsize = int(channelUtil * (CWmax - CWmin) / 100 + CWmin)
     CW = random.randint(0, 2 ** CWsize - 1)
@@ -49,7 +49,7 @@ def getTxDelayMsec(node):  # from RadioInterface::getTxDelayMsec
     return CW * SLOT_TIME
 
 
-def getRetransmissionMsec(node, packet):  # from RadioInterface::getRetransmissionMsec
+def get_retransmission_msec(node, packet):  # from RadioInterface::getRetransmissionMsec
     packetAirtime = int(airtime(node.conf, node.conf.SFMODEM[node.conf.MODEM], node.conf.CRMODEM[node.conf.MODEM], packet.packetLen, node.conf.BWMODEM[node.conf.MODEM]))
     channelUtil = node.airUtilization / node.env.now * 100
     CWsize = int(channelUtil * (CWmax - CWmin) / 100 + CWmin)

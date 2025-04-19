@@ -17,7 +17,7 @@ from matplotlib.widgets import TextBox
 
 from lib.config import Config
 import lib.phy as phy
-from lib.common import calcDist, genScenario, findRandomPosition, Graph
+from lib.common import calc_dist, gen_scenario, find_random_position, Graph
 
 conf = Config()
 HW_ID_OFFSET = 16
@@ -42,7 +42,7 @@ class InteractiveNode:
             self.antennaGain = nodeConfig['antennaGain']
             self.neighborInfo = nodeConfig['neighborInfo']
         else:
-            self.x, self.y = findRandomPosition(conf, nodes)
+            self.x, self.y = find_random_position(conf, nodes)
             self.z = conf.HM
             self.isRouter = conf.router
             self.isRepeater = False
@@ -63,10 +63,10 @@ class InteractiveNode:
         self.numTxRelay = 0
         self.numTxRelayCanceled = 0
 
-    def addInterface(self, iface):
+    def add_interface(self, iface):
         self.iface = iface
 
-    def setConfig(self):
+    def set_config(self):
         requiresReboot = False
         # Set a long and short name
         p = admin_pb2.AdminMessage()
@@ -120,7 +120,7 @@ class InteractiveNode:
 
         return requiresReboot
 
-    def addAdminChannel(self):
+    def add_admin_channel(self):
         ch = self.iface.localNode.getChannelByChannelIndex(1)
         chs = channel_pb2.ChannelSettings()
         chs.psk = b'\xb0X\xad\xb3\xa5\xd0?$\x8c\x92{\xcd^(\xeb\xb7\x01\x84"\xc9\xf4\x06:\x8d\xfdD#\x08\xe5\xc2\xd7\xdc'
@@ -152,9 +152,9 @@ class InteractiveGraph(Graph):
         super().__init__(conf)
         self.routes = False
 
-    def initRoutes(self, sim):
+    def init_routes(self, sim):
         if not sim.docker:
-            sim.closeNodes()
+            sim.close_nodes()
         if not self.routes:
             self.routes = True
             self.sim = sim
@@ -169,16 +169,16 @@ class InteractiveGraph(Graph):
             self.text_box.disconnect("button_press_event")
             self.text_box.on_submit(self.submit)
             self.fig.canvas.mpl_connect("motion_notify_event", self.hover)
-            self.fig.canvas.mpl_connect("button_press_event", self.onClick)
-            self.fig.canvas.mpl_connect("close_event", self.onClose)
+            self.fig.canvas.mpl_connect("button_press_event", self.on_click)
+            self.fig.canvas.mpl_connect("close_event", self.on_close)
             print("On the scenario plot, enter a message ID to show its route. Close the figure to exit.")
             self.fig.canvas.draw_idle()
             self.fig.canvas.get_tk_widget().focus_set()
             plt.show()
         elif sim.docker:
-            sim.closeNodes()
+            sim.close_nodes()
 
-    def clearRoute(self):
+    def clear_route(self):
         for arr in self.arrows.copy():
             arr.remove()
             self.arrows.remove(arr)
@@ -186,14 +186,14 @@ class InteractiveGraph(Graph):
             ann.remove()
             self.annots.remove(ann)
 
-    def plotRoute(self, messageId):
+    def plot_route(self, messageId):
         if self.firstTime:
             print('Hover over an arc to show some info and click to remove it afterwards.')
             print('Close the window to exit the simulator.')
         self.firstTime = False
         packets = [p for p in self.packets if p.localId == messageId]
         if len(packets) > 0:
-            self.clearRoute()
+            self.clear_route()
             style = "Simple, tail_width=0.5, head_width=4, head_length=8"
             pairs = dict.fromkeys(list(set(p.transmitter for p in packets)), [])
             for p in packets:
@@ -290,20 +290,20 @@ class InteractiveGraph(Graph):
                     self.fig.canvas.draw()
                     break
 
-    def onClick(self, event):
+    def on_click(self, event):
         for annot in self.annots:
             if annot.get_visible():
                 annot.set_visible(False)
                 self.fig.canvas.draw_idle()
 
-    def onClose(self, event):
+    def on_close(self, event):
         plt.close('all')
 
     def submit(self, val):
         messageId = int(val)
-        self.plotRoute(messageId)
+        self.plot_route(messageId)
 
-    def plotMetrics(self, nodes):
+    def plot_metrics(self, nodes):
         if any(len(n.timestamps) > 1 for n in nodes):
             plt.figure()
             for n in nodes:
@@ -341,7 +341,7 @@ class InteractiveGraph(Graph):
             ax.set_title('Packet statistics')
 
 
-class InteractiveSim():
+class InteractiveSim:
     def __init__(self):
         self.messages = []
         self.messageId = -1
@@ -356,7 +356,7 @@ class InteractiveSim():
         self.clientThread = None
         self.wantExit = False
 
-        config, pathToProgram = self.parseInteractiveArgs(foundNodes)
+        config, pathToProgram = self.parse_interactive_args(foundNodes)
 
         if not self.docker and not sys.platform.startswith('linux'):
             print("Docker is required for non-Linux OS.")
@@ -364,9 +364,9 @@ class InteractiveSim():
 
         self.graph = InteractiveGraph()
         for n in range(conf.NR_NODES):
-            node = InteractiveNode(self.nodes, n, self.nodeIdToHwId(n), n + TCP_PORT_OFFSET, config[n])
+            node = InteractiveNode(self.nodes, n, self.node_id_to_hw_id(n), n + TCP_PORT_OFFSET, config[n])
             self.nodes.append(node)
-            self.graph.addNode(node)
+            self.graph.add_node(node)
 
         print("Booting nodes...")
 
@@ -440,10 +440,10 @@ class InteractiveSim():
             (clientSocket, _) = self.forwardSocket.accept()
             self.clientSocket = clientSocket
             iface0 = tcp_interface.TCPInterface(hostname="localhost", portNumber=self.nodes[0].TCPPort, connectNow=False)
-            self.nodes[0].addInterface(iface0)
+            self.nodes[0].add_interface(iface0)
             iface0.myConnect()    # setup socket
-            self.nodeThread = threading.Thread(target=self.nodeReader, args=(), daemon=True)
-            self.clientThread = threading.Thread(target=self.clientReader, args=(), daemon=True)
+            self.nodeThread = threading.Thread(target=self.node_reader, args=(), daemon=True)
+            self.clientThread = threading.Thread(target=self.client_reader, args=(), daemon=True)
             self.nodeThread.start()
             self.clientThread.start()
         else:
@@ -452,26 +452,26 @@ class InteractiveSim():
         try:
             for n in self.nodes[int(self.forwardToClient):]:
                 iface = tcp_interface.TCPInterface(hostname="localhost", portNumber=n.TCPPort)
-                n.addInterface(iface)
+                n.add_interface(iface)
             if self.forwardToClient:
                 self.clientConnected = True
                 iface0.localNode.nodeNum = self.nodes[0].hwId
                 iface0.connect()  # real connection now
             for n in self.nodes:
-                requiresReboot = n.setConfig()
+                requiresReboot = n.set_config()
                 if requiresReboot and self.emulateCollisions and n.nodeid != len(self.nodes)-1:
                     time.sleep(2)  # Wait a bit to avoid immediate collisions when starting multiple nodes
-            self.reconnectNodes()
-            pub.subscribe(self.onReceive, "meshtastic.receive.simulator")
-            pub.subscribe(self.onReceiveMetrics, "meshtastic.receive.telemetry")
+            self.reconnect_nodes()
+            pub.subscribe(self.on_receive, "meshtastic.receive.simulator")
+            pub.subscribe(self.on_receive_metrics, "meshtastic.receive.telemetry")
             if self.forwardToClient:
-                pub.subscribe(self.onReceiveAll, "meshtastic.receive")
+                pub.subscribe(self.on_receive_all, "meshtastic.receive")
         except Exception as ex:
             print(f"Error: Could not connect to native program: {ex}")
-            self.closeNodes()
+            self.close_nodes()
             sys.exit(1)
 
-    def parseInteractiveArgs(self, foundNodes):
+    def parse_interactive_args(self, foundNodes):
         parser = argparse.ArgumentParser(prog='interactiveSim')
         parser.add_argument('nrNodes', type=int, nargs='?', choices=range(0, 11), default=0)
         parser.add_argument('-s', '--script', action='store_true')
@@ -499,12 +499,12 @@ class InteractiveSim():
             config = [None for _ in range(conf.NR_NODES)]
         if not foundNodes:
             print("nrNodes was not specified, generating scenario...")
-            config = genScenario(conf)
+            config = gen_scenario(conf)
             conf.NR_NODES = len(config.keys())
         pathToProgram = args.program
         return config, pathToProgram
 
-    def reconnectNodes(self):
+    def reconnect_nodes(self):
         time.sleep(3)
         for n in self.nodes[int(self.forwardToClient):]:
             try:
@@ -517,14 +517,14 @@ class InteractiveSim():
             while not n.iface:
                 try:
                     iface = tcp_interface.TCPInterface(hostname="localhost", portNumber=n.TCPPort)
-                    n.addInterface(iface)
+                    n.add_interface(iface)
                 except OSError:
                     print("Trying to reconnect to node...")
                     time.sleep(1)
             if self.emulateCollisions and n.nodeid != len(self.nodes)-1:
                 time.sleep(2)  # Wait a bit to avoid immediate collisions when starting multiple nodes
 
-    def forwardPacket(self, receivers, packet, rssis, snrs):
+    def forward_packet(self, receivers, packet, rssis, snrs):
         data = packet["decoded"]["payload"]
         if getattr(data, "SerializeToString", None):
             data = data.SerializeToString()
@@ -560,7 +560,7 @@ class InteractiveSim():
             toRadio.packet.CopyFrom(meshPacket)
             rx.iface._sendToRadio(toRadio)
 
-    def copyPacket(self, packet):
+    def copy_packet(self, packet):
         # print(packet)
         time.sleep(0.01)
         try:
@@ -597,58 +597,58 @@ class InteractiveSim():
         except Exception:
             return None
 
-    def showNodes(self, id=None):
+    def show_nodes(self, id=None):
         if id is not None:
             print('NodeDB as seen by node', id)
-            self.nodes[id].iface.showNodes()
+            self.nodes[id].iface.show_nodes()
         else:
             for n in self.nodes:
                 print('NodeDB as seen by node', n.nodeid)
-                n.iface.showNodes()
+                n.iface.show_nodes()
 
-    def sendBroadcast(self, text, fromNode):
-        self.getNodeIfaceById(fromNode).sendText(text)
+    def send_broadcast(self, text, fromNode):
+        self.get_node_iface_by_id(fromNode).sendText(text)
 
-    def sendDM(self, text, fromNode, toNode):
-        self.getNodeIfaceById(fromNode).sendText(text, destinationId=self.nodeIdToHwId(toNode), wantAck=True)
+    def send_dm(self, text, fromNode, toNode):
+        self.get_node_iface_by_id(fromNode).sendText(text, destinationId=self.node_id_to_hw_id(toNode), wantAck=True)
 
-    def sendPing(self, fromNode, toNode):
+    def send_ping(self, fromNode, toNode):
         payload = str.encode("test string")
-        self.getNodeIfaceById(fromNode).sendData(
-            payload, destinationId=self.nodeIdToHwId(toNode),
+        self.get_node_iface_by_id(fromNode).sendData(
+            payload, destinationId=self.node_id_to_hw_id(toNode),
             portNum=portnums_pb2.PortNum.REPLY_APP,
             wantAck=True, wantResponse=True
         )
 
-    def traceRoute(self, fromNode, toNode):
+    def trace_route(self, fromNode, toNode):
         r = mesh_pb2.RouteDiscovery()
-        self.getNodeIfaceById(fromNode).sendData(r, destinationId=self.nodeIdToHwId(toNode), portNum=portnums_pb2.PortNum.TRACEROUTE_APP, wantResponse=True)
+        self.get_node_iface_by_id(fromNode).sendData(r, destinationId=self.node_id_to_hw_id(toNode), portNum=portnums_pb2.PortNum.TRACEROUTE_APP, wantResponse=True)
 
-    def requestPosition(self, fromNode, toNode):
-        self.getNodeIfaceById(fromNode).sendPosition(destinationId=self.nodeIdToHwId(toNode), wantResponse=True)
+    def request_position(self, fromNode, toNode):
+        self.get_node_iface_by_id(fromNode).sendPosition(destinationId=self.node_id_to_hw_id(toNode), wantResponse=True)
 
-    def requestLocalStats(self, toNode):
+    def request_local_stats(self, toNode):
         r = telemetry_pb2.Telemetry()
         r.local_stats.CopyFrom(telemetry_pb2.LocalStats())
-        self.getNodeIfaceById(toNode).sendData(r, destinationId=self.nodeIdToHwId(toNode), portNum=portnums_pb2.PortNum.TELEMETRY_APP, wantResponse=True)
+        self.get_node_iface_by_id(toNode).sendData(r, destinationId=self.node_id_to_hw_id(toNode), portNum=portnums_pb2.PortNum.TELEMETRY_APP, wantResponse=True)
 
-    def getNodeIfaceById(self, id):
+    def get_node_iface_by_id(self, id):
         for n in self.nodes:
-            if n.hwId == self.nodeIdToHwId(id):
+            if n.hwId == self.node_id_to_hw_id(id):
                 return n.iface
         return None
 
-    def nodeIdToDest(self, id):
-        val = hex(self.nodeIdToHwId(id)).strip('0x')
+    def node_id_to_dest(self, id):
+        val = hex(self.node_id_to_hw_id(id)).strip('0x')
         return '!'+'0'*(8-len(val))+val
 
-    def nodeIdToHwId(self, id):
+    def node_id_to_hw_id(self, id):
         return int(id) + HW_ID_OFFSET
 
-    def sendFromTo(self, fromNode, toNode):
-        return self.getNodeIfaceById(fromNode).getNode(self.nodeIdToDest(toNode))
+    def send_from_to(self, fromNode, toNode):
+        return self.get_node_iface_by_id(fromNode).getNode(self.node_id_to_dest(toNode))
 
-    def onReceive(self, interface, packet):
+    def on_receive(self, interface, packet):
         if "requestId" in packet["decoded"]:
             # Packet with requestId is coupled to original message
             existingMsgId = next((m.localId for m in self.messages if m.packet["id"] == packet["decoded"]["requestId"]), None)
@@ -671,13 +671,13 @@ class InteractiveSim():
         transmitter = next((n for n in self.nodes if n.TCPPort == interface.portNumber), None)
         if transmitter is not None:
             receivers = [n for n in self.nodes if n.nodeid != transmitter.nodeid]
-            rxs, rssis, snrs = self.calcReceivers(transmitter, receivers)
+            rxs, rssis, snrs = self.calc_receivers(transmitter, receivers)
             rP.setTxRxs(transmitter, rxs)
             rP.setRSSISNR(rssis, snrs)
-            self.forwardPacket(rxs, packet, rssis, snrs)
+            self.forward_packet(rxs, packet, rssis, snrs)
             self.graph.packets.append(rP)
 
-    def onReceiveMetrics(self, interface, packet):
+    def on_receive_metrics(self, interface, packet):
         fromNode = next((n for n in self.nodes if n.hwId == packet["from"]), None)
         if fromNode is not None:
             data = packet["decoded"]["payload"]
@@ -716,9 +716,9 @@ class InteractiveSim():
                 if 'numTxRelayCanceled' in localStats:
                     fromNode.numTxRelayCanceled = localStats['numTxRelayCanceled']
 
-    def onReceiveAll(self, interface, packet):
+    def on_receive_all(self, interface, packet):
         if interface.portNumber == 4403:
-            fromRadio = self.copyPacket(packet)
+            fromRadio = self.copy_packet(packet)
             if fromRadio is not None:
                 # print("Forward", packet["decoded"])
                 b = fromRadio.SerializeToString()
@@ -727,7 +727,7 @@ class InteractiveSim():
                 header = bytes([0x94, 0xC3, (bufLen >> 8) & 0xFF, bufLen & 0xFF])
                 self.clientSocket.send(header + b)
 
-    def nodeReader(self):
+    def node_reader(self):
         while not self.wantExit and self.nodes[0].iface is not None:
             if self.clientConnected:
                 break
@@ -737,7 +737,7 @@ class InteractiveSim():
                     # print(bytes)
                     self.clientSocket.send(bytes)
 
-    def clientReader(self):
+    def client_reader(self):
         while not self.wantExit:
             if self.nodes[0].iface is not None:
                 bytes = self.clientSocket.recv(MAX_TO_FROM_RADIO_SIZE)
@@ -746,13 +746,13 @@ class InteractiveSim():
             else:
                 time.sleep(0.1)
 
-    def calcReceivers(self, tx, receivers):
+    def calc_receivers(self, tx, receivers):
         rxs = []
         rssis = []
         snrs = []
         for rx in receivers:
-            dist_3d = calcDist(tx.x, rx.x, tx.y, rx.y, tx.z, rx.z)
-            pathLoss = phy.estimatePathLoss(conf, dist_3d, conf.FREQ, tx.z, rx.z)
+            dist_3d = calc_dist(tx.x, rx.x, tx.y, rx.y, tx.z, rx.z)
+            pathLoss = phy.estimate_path_loss(conf, dist_3d, conf.FREQ, tx.z, rx.z)
             RSSI = conf.PTX + tx.antennaGain + rx.antennaGain - pathLoss
             SNR = RSSI-conf.NOISE_LEVEL
             if RSSI >= conf.SENSMODEM[conf.MODEM]:
@@ -761,7 +761,7 @@ class InteractiveSim():
                 snrs.append(SNR)
         return rxs, rssis, snrs
 
-    def closeNodes(self):
+    def close_nodes(self):
         print("\nClosing all nodes...")
         pub.unsubAll()
         for n in self.nodes:
@@ -790,7 +790,7 @@ class CommandProcessor(cmd.Cmd):
             print('Please use the syntax: "broadcast <fromNode> <txt>"')
             return False
         fromNode = int(arguments[0])
-        if self.sim.getNodeIfaceById(fromNode) is None:
+        if self.sim.get_node_iface_by_id(fromNode) is None:
             print(f'Node ID {fromNode} is not in the list of nodes.')
             return False
         txt = ""
@@ -798,9 +798,9 @@ class CommandProcessor(cmd.Cmd):
             txt += s+" "
         txt += arguments[-1]
         print(f'Instructing node {fromNode} to broadcast "{txt}" (message ID = {self.sim.messageId+1})')
-        self.sim.sendBroadcast(txt, fromNode)
+        self.sim.send_broadcast(txt, fromNode)
 
-    def do_DM(self, line):
+    def do_dm(self, line):
         """DM <fromNode> <toNode> <txt>
         Send a Direct Message from node \x1B[3mfromNode\x1B[0m to node \x1B[3mtoNode\x1B[0m with text \x1B[3mtxt\x1B[0m."""
         arguments = line.split()
@@ -808,11 +808,11 @@ class CommandProcessor(cmd.Cmd):
             print('Please use the syntax: "DM <fromNode> <toNode> <txt>"')
             return False
         fromNode = int(arguments[0])
-        if self.sim.getNodeIfaceById(fromNode) is None:
+        if self.sim.get_node_iface_by_id(fromNode) is None:
             print(f'Node ID {fromNode} is not in the list of nodes.')
             return False
         toNode = int(arguments[1])
-        if self.sim.getNodeIfaceById(toNode) is None:
+        if self.sim.get_node_iface_by_id(toNode) is None:
             print(f'Node ID {toNode} is not in the list of nodes.')
             return False
         txt = ""
@@ -820,7 +820,7 @@ class CommandProcessor(cmd.Cmd):
             txt += s+" "
         txt += arguments[-1]
         print(f'Instructing node {fromNode} to DM node {toNode} "{txt}" (message ID = {self.sim.messageId+1})')
-        self.sim.sendDM(txt, fromNode, toNode)
+        self.sim.send_dm(txt, fromNode, toNode)
 
     def do_ping(self, line):
         """ping <fromNode> <toNode>
@@ -830,15 +830,15 @@ class CommandProcessor(cmd.Cmd):
             print('Please use the syntax: "ping <fromNode> <toNode>"')
             return False
         fromNode = int(arguments[0])
-        if self.sim.getNodeIfaceById(fromNode) is None:
+        if self.sim.get_node_iface_by_id(fromNode) is None:
             print('Node ID', fromNode, 'is not in the list of nodes.')
             return False
         toNode = int(arguments[1])
-        if self.sim.getNodeIfaceById(toNode) is None:
+        if self.sim.get_node_iface_by_id(toNode) is None:
             print('Node ID', toNode, 'is not in the list of nodes.')
             return False
         print(f'Instructing node {fromNode} to send ping to node {toNode} (message ID = {self.sim.messageId+1})')
-        self.sim.sendPing(fromNode, toNode)
+        self.sim.send_ping(fromNode, toNode)
 
     def do_traceroute(self, line):
         """traceroute <fromNode> <toNode>
@@ -848,18 +848,18 @@ class CommandProcessor(cmd.Cmd):
             print('Please use the syntax: "traceroute <fromNode> <toNode>"')
             return False
         fromNode = int(arguments[0])
-        if self.sim.getNodeIfaceById(fromNode) is None:
+        if self.sim.get_node_iface_by_id(fromNode) is None:
             print('Node ID', fromNode, 'is not in the list of nodes.')
             return False
         toNode = int(arguments[1])
-        if self.sim.getNodeIfaceById(toNode) is None:
+        if self.sim.get_node_iface_by_id(toNode) is None:
             print('Node ID', toNode, 'is not in the list of nodes.')
             return False
         print(f'Instructing node {fromNode} to send traceroute request to node {toNode} (message ID = {self.sim.messageId+1})')
         print(f'This takes a while, the result will be in the log of node {fromNode}.')
-        self.sim.traceRoute(fromNode, toNode)
+        self.sim.trace_route(fromNode, toNode)
 
-    def do_reqPos(self, line):
+    def do_req_pos(self, line):
         """reqPos <fromNode> <toNode>
         Send a position request from node \x1B[3mfromNode\x1B[0m to node \x1B[3mtoNode\x1B[0m."""
         arguments = line.split()
@@ -867,15 +867,15 @@ class CommandProcessor(cmd.Cmd):
             print('Please use the syntax: "reqPos <fromNode> <toNode>"')
             return False
         fromNode = int(arguments[0])
-        if self.sim.getNodeIfaceById(fromNode) is None:
+        if self.sim.get_node_iface_by_id(fromNode) is None:
             print(f'Node ID {fromNode} is not in the list of nodes.')
             return False
         toNode = int(arguments[1])
-        if self.sim.getNodeIfaceById(toNode) is None:
+        if self.sim.get_node_iface_by_id(toNode) is None:
             print(f'Node ID {toNode} is not in the list of nodes.')
             return False
         print(f'Instructing node {fromNode} to send position request to node {toNode} (message ID = {self.sim.messageId+1})')
-        self.sim.requestPosition(fromNode, toNode)
+        self.sim.request_position(fromNode, toNode)
 
     def do_nodes(self, line):
         """nodes <id0> [id1, etc.]
@@ -885,10 +885,10 @@ class CommandProcessor(cmd.Cmd):
             print('Please use the syntax: "nodes <id0> [id1, etc.]"')
             return False
         for n in arguments:
-            if self.sim.getNodeIfaceById(n) is None:
+            if self.sim.get_node_iface_by_id(n) is None:
                 print(f'Node ID {n} is not in the list of nodes.')
                 continue
-            self.sim.showNodes(int(n))
+            self.sim.show_nodes(int(n))
 
     def do_remove(self, line):
         """remove <id>
@@ -898,11 +898,11 @@ class CommandProcessor(cmd.Cmd):
             print('Please use the syntax: "remove <id>"')
             return False
         nodeId = (int(arguments[0]))
-        if self.sim.getNodeIfaceById(nodeId) is None:
+        if self.sim.get_node_iface_by_id(nodeId) is None:
             print(f'Node ID {nodeId} is not in the list of nodes.')
         else:
-            self.sim.getNodeIfaceById(nodeId).localNode.exitSimulator()
-            self.sim.getNodeIfaceById(nodeId).close()
+            self.sim.get_node_iface_by_id(nodeId).localNode.exitSimulator()
+            self.sim.get_node_iface_by_id(nodeId).close()
             del self.sim.nodes[nodeId]
 
     def do_plot(self, line):
@@ -910,14 +910,14 @@ class CommandProcessor(cmd.Cmd):
         Plot the routes of messages sent and airtime statistics."""
         if self.sim.emulateCollisions:
             for n in self.sim.nodes:
-                self.sim.requestLocalStats(n.nodeid)
+                self.sim.request_local_stats(n.nodeid)
             time.sleep(1)
-        self.sim.graph.plotMetrics(self.sim.nodes)
-        self.sim.graph.initRoutes(self.sim)
+        self.sim.graph.plot_metrics(self.sim.nodes)
+        self.sim.graph.init_routes(self.sim)
         return True
 
     def do_exit(self, line):
         """exit
         Exit the simulator without plotting routes."""
-        self.sim.closeNodes()
+        self.sim.close_nodes()
         return True

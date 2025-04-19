@@ -7,7 +7,7 @@ import yaml
 import simpy
 import numpy as np
 
-from lib.common import Graph, plotSchedule, genScenario, runGraphUpdates, setupAsymmetricLinks
+from lib.common import Graph, plot_schedule, gen_scenario, run_graph_updates, setup_asymmetric_links
 from lib.config import Config
 from lib.discrete_event import BroadcastPipe
 from lib.node import MeshNode
@@ -45,7 +45,7 @@ def parse_params(conf, args):
 						# Attempt to convert the string args[2] into a valid enum member
 						routerType = conf.ROUTER_TYPE(args[2])
 						conf.SELECTED_ROUTER_TYPE = routerType
-						conf.updateRouterDependencies()
+						conf.update_router_dependencies()
 					except ValueError:
 						# If it fails, print possible values
 						valid_types = [member.name for member in conf.ROUTER_TYPE]
@@ -53,9 +53,9 @@ def parse_params(conf, args):
 						print(f"Router type must be one of: {', '.join(valid_types)}")
 						exit(1)
 				if conf.NR_NODES == -1:
-					config = genScenario(conf)
+					config = gen_scenario(conf)
 		else:
-			config = genScenario(conf)
+			config = gen_scenario(conf)
 		if config[0] is not None:
 			conf.NR_NODES = len(config.keys())
 		if conf.NR_NODES < 2:
@@ -71,7 +71,7 @@ def parse_params(conf, args):
 
 
 nodeConfig = parse_params(conf, sys.argv)
-conf.updateRouterDependencies()
+conf.update_router_dependencies()
 env = simpy.Environment()
 bc_pipe = BroadcastPipe(env)
 
@@ -91,14 +91,14 @@ graph = Graph(conf)
 for i in range(conf.NR_NODES):
 	node = MeshNode(conf, nodes, env, bc_pipe, i, conf.PERIOD, messages, packetsAtN, packets, delays, nodeConfig[i], messageSeq, verboseprint)
 	nodes.append(node)
-	graph.addNode(node)
+	graph.add_node(node)
 
-totalPairs, symmetricLinks, asymmetricLinks, noLinks = setupAsymmetricLinks(conf, nodes)
+totalPairs, symmetricLinks, asymmetricLinks, noLinks = setup_asymmetric_links(conf, nodes)
 
 if conf.MOVEMENT_ENABLED:
-	env.process(runGraphUpdates(env, graph, nodes, conf.ONE_MIN_INTERVAL))
+	env.process(run_graph_updates(env, graph, nodes, conf.ONE_MIN_INTERVAL))
 
-conf.updateRouterDependencies()
+conf.update_router_dependencies()
 
 # start simulation
 print("\n====== START OF SIMULATION ======")
@@ -154,4 +154,4 @@ if conf.MOVEMENT_ENABLED:
 graph.save()
 
 if conf.PLOT:
-	plotSchedule(conf, packets, messages)
+	plot_schedule(conf, packets, messages)

@@ -15,7 +15,7 @@ except ImportError:
 	exit(1)
 
 
-def genScenario(conf):
+def gen_scenario(conf):
 	save = True  # set to True if you want to save the coordinates of the nodes
 	nodeX = []
 	nodeY = []
@@ -155,7 +155,7 @@ def genScenario(conf):
 	return nodeDict
 
 
-def findRandomPosition(conf, nodes):
+def find_random_position(conf, nodes):
 	foundMin = True
 	foundMax = False
 	tries = 0
@@ -168,11 +168,11 @@ def findRandomPosition(conf, nodes):
 		posy = b*conf.YSIZE+conf.OY-conf.YSIZE/2
 		if len(nodes) > 0:
 			for n in nodes:
-				dist = calcDist(n.x, posx, n.y, posy)
+				dist = calc_dist(n.x, posx, n.y, posy)
 				if dist < conf.MINDIST:
 					foundMin = False
 					break
-				pathLoss = phy.estimatePathLoss(conf, dist, conf.FREQ)
+				pathLoss = phy.estimate_path_loss(conf, dist, conf.FREQ)
 				rssi = conf.PTX + 2*conf.GL - pathLoss
 				# At least one node should be able to reach it
 				if rssi >= conf.SENSMODEM[conf.MODEM]:
@@ -192,23 +192,23 @@ def findRandomPosition(conf, nodes):
 	return max(-conf.XSIZE/2, x), max(-conf.YSIZE/2, y)
 
 
-def runGraphUpdates(env, graph, nodes, interval):
+def run_graph_updates(env, graph, nodes, interval):
 	while True:
 		# Wait 'interval' sim-mseconds
 		yield env.timeout(interval)
 		# Now update the positions in the graph
-		graph.updatePositions(nodes)
+		graph.update_positions(nodes)
 
 
-def calcDist(x0, x1, y0, y1, z0=0, z1=0):
+def calc_dist(x0, x1, y0, y1, z0=0, z1=0):
 	return np.sqrt(((abs(x0-x1))**2)+((abs(y0-y1))**2)+((abs(z0-z1)**2)))
 
 
 scheduleIdx = 0
 
 
-def plotSchedule(conf, packets, messages):
-	def drawSchedule(i):
+def plot_schedule(conf, packets, messages):
+	def draw_schedule(i):
 		t = timeSequences[i]
 		plt.suptitle('Time schedule {}/{}\nDouble click to continue.'.format(i+1, len(timeSequences)))
 		for p in packets:  # collisions
@@ -273,12 +273,12 @@ def plotSchedule(conf, packets, messages):
 			plt.cla()
 			scheduleIdx += 1
 			if scheduleIdx < len(timeSequences):
-				drawSchedule(scheduleIdx)
+				draw_schedule(scheduleIdx)
 			else:
 				plt.close('all')
 
 	fig.canvas.mpl_connect('button_press_event', onclick)
-	drawSchedule(0)
+	draw_schedule(0)
 
 
 def move_figure(fig, x, y):
@@ -305,7 +305,7 @@ class Graph:
 		# If you want labels (text annotations) also updated:
 		self.node_labels = {}
 
-	def updatePositions(self, nodes):
+	def update_positions(self, nodes):
 		for node in nodes:
 			node_id = node.nodeid
 
@@ -327,7 +327,7 @@ class Graph:
 		# A short pause to let the UI update
 		plt.pause(0.01)
 
-	def addNode(self, node):
+	def add_node(self, node):
 		# place the node
 		if not self.conf.RANDOM:
 			txt = self.ax.annotate(str(node.nodeid), (node.x - 5, node.y + 5))
@@ -354,14 +354,11 @@ class Graph:
 		plt.pause(0.1)
 
 	def save(self):
-		if not os.path.isdir(os.path.join("out", "graphics")):
-			if not os.path.isdir("out"):
-				os.mkdir("out")
-			os.mkdir(os.path.join("out", "graphics"))
+		os.makedirs(os.path.join("out", "graphics"), exist_ok=True)
 		plt.savefig(os.path.join("out", "graphics", "placement_" + str(self.conf.NR_NODES)))
 
 
-def setupAsymmetricLinks(conf, nodes):
+def setup_asymmetric_links(conf, nodes):
 	asymLinkRng = random.Random(conf.SEED)
 	totalPairs = 0
 	symmetricLinks = 0
@@ -381,8 +378,8 @@ def setupAsymmetricLinks(conf, nodes):
 				# Calculate constant RSSI in both directions
 				nodeA = nodes[a]
 				nodeB = nodes[b]
-				distAB = calcDist(nodeA.x, nodeB.x, nodeA.y, nodeB.y, nodeA.z, nodeB.z)
-				pathLossAB = phy.estimatePathLoss(conf, distAB, conf.FREQ, nodeA.z, nodeB.z)
+				distAB = calc_dist(nodeA.x, nodeB.x, nodeA.y, nodeB.y, nodeA.z, nodeB.z)
+				pathLossAB = phy.estimate_path_loss(conf, distAB, conf.FREQ, nodeA.z, nodeB.z)
 
 				offsetAB = conf.LINK_OFFSET[(a, b)]
 				offsetBA = conf.LINK_OFFSET[(b, a)]
