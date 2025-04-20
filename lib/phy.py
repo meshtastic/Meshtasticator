@@ -71,9 +71,8 @@ def power_collision(p1, p2, rx_nodeId):
 
 
 def timing_collision(conf, env, p1, p2):
-    """ assuming p1 is the freshly arrived packet and this is the last check
-        we've already determined that p1 is a weak packet, so the only
-        way we can win is by being late enough (only the first n - 5 preamble symbols overlap)
+    """ assuming p1 is the freshly arrived packet, check if the packet collides 
+        or not (when only the first n - 5 preamble symbols overlap)
     """
     Tpreamb = 2 ** p1.sf / (1.0 * p1.bw) * (conf.NPREAM - 5)
     p1_cs = env.now + Tpreamb
