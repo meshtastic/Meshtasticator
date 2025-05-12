@@ -222,11 +222,6 @@ class InteractiveGraph(Graph):
                     else:
                         to = str(p.packet["to"]-HW_ID_OFFSET)
 
-                    if "hopLimit" in p.packet:
-                        hopLimit = p.packet["hopLimit"]
-                    else:
-                        hopLimit = None
-
                     if p.packet["from"] == tx.hwId:
                         if "requestId" in p.packet["decoded"]:
                             if p.packet["priority"] == "ACK":
@@ -249,25 +244,16 @@ class InteractiveGraph(Graph):
                             else:
                                 msgType = "Forwarding message"
 
-                    fields = []
-                    msgTypeField = r"$\bf{"+msgType+"}$"
-                    fields.append(msgTypeField)
-                    origSenderField = "Original sender: "+str(p.packet["from"]-HW_ID_OFFSET)
-                    fields.append(origSenderField)
-                    destField = "Destination: "+to
-                    fields.append(destField)
-                    portNumField = "Portnum: "+str(p.packet["decoded"]["simulator"]["portnum"])
-                    fields.append(portNumField)
-                    if hopLimit:
-                        hopLimitField = "HopLimit: "+str(hopLimit)
-                        fields.append(hopLimitField)
-                    rssiField = "RSSI: "+str(round(p.rssis[ri], 2)) + " dBm"
-                    fields.append(rssiField)
-                    table = ""
-                    for i, f in enumerate(fields):
-                        table += f
-                        if i != len(fields)-1:
-                            table += "\n"
+                    hopLimit = p.packet.get("hopLimit")
+
+                    fields = [ r"$\bf{" + msgType + "}$"
+                             , f"Original sender: {p.packet["from"] - HW_ID_OFFSET}"
+                             , f"Destination: {to}"
+                             , f"Portnum: {p.packet["decoded"]["simulator"]["portnum"]}"
+                             , f"HopLimit: {hopLimit}" if hopLimit else ""
+                             , f"RSSI: {round(p.rssis[ri], 2)} dBm"
+                             ]
+                    table = "\n".join(filter(None, fields))
                     annot = self.ax.annotate(table, xy=((tx.x+rx.x)/2, rx.y+150), bbox=dict(boxstyle="round", fc="w"))
                     annot.get_bbox_patch().set_facecolor(patch.get_facecolor())
                     annot.get_bbox_patch().set_alpha(0.4)
