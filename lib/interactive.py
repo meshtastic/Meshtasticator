@@ -5,6 +5,7 @@ import threading
 import time
 import yaml
 import os
+from shutil import which
 
 import google.protobuf.json_format as proto
 from matplotlib import patches
@@ -360,7 +361,6 @@ class InteractiveSim:
             print("nrNodes was not specified, generating scenario...")
             config = gen_scenario(conf)
             conf.NR_NODES = len(config.keys())
-        programWithFullPath = os.path.join(args.program, 'program')
 
         if not self.docker and not sys.platform.startswith('linux'):
             print("Docker is required for non-Linux OS.")
@@ -418,26 +418,32 @@ class InteractiveSim:
                 print(f"Docker container with name {self.container.name} is started.")
                 print(f"You can check the device logs using 'docker exec -it {self.container.name} cat /home/out_x.log', where x is the node number.")
         else:
-            from shutil import which
-            if which('gnome-terminal') is not None:
-                xterm = False
-            elif which('xterm') is not None:
-                xterm = True
-            else:
-                print('The interactive simulator on native Linux (without Docker) requires either gnome-terminal or xterm.')
-                exit(1)
+            # run nodes natively (not in docker)
             for n in self.nodes:  # [1:]
-                if not xterm:
-                    newTerminal = f"gnome-terminal --title='Node {n.nodeid}' -- "
+                call = []
+                if which('gnome-terminal') is not None:
+                    call += ["gnome-terminal",
+                             f"--title='Node {n.nodeid}'",
+                             "--"]
+                elif which('xterm') is not None:
+                    call += ["xterm",
+                             f"-title 'Node {n.nodeid}'",
+                             "-e"]
                 else:
-                    newTerminal = f"xterm -title 'Node {n.nodeid}' -e "
-                startNode = f"-d {os.path.expanduser('~')}/.portduino/node{n.nodeid} -h {n.hwId} -p {n.TCPPort}"
+                    print('The interactive simulator on native Linux (without Docker) requires either gnome-terminal or xterm.')
+                    exit(1)
+
+                # executable
+                call += [os.path.join(args.program, 'program')]
+                # node parameters
+                call += [f"-d {os.path.expanduser('~')}/.portduino/node{n.nodeid}",
+                         f"-h {n.hwId}",
+                         f"-p {n.TCPPort}"]
                 if self.removeConfig:
-                    startNode += " -e"
-                startNode += " &"
-                cmdString = f"{newTerminal} {programWithFullPath} {startNode}"
-                os.system(cmdString)
-                if self.emulateCollisions and n.nodeid != len(self.nodes)-1:
+                    call.append("-e")
+                call.append("&")
+                os.system(" ".join(call))
+                if self.emulateCollisions and n.nodeid != len(self.nodes) - 1:
                     time.sleep(2)  # Wait a bit to avoid immediate collisions when starting multiple nodes
 
     def init_forward(self):
