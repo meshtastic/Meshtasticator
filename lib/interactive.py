@@ -504,6 +504,23 @@ class InteractiveSim:
             if self.emulateCollisions and n.nodeid != len(self.nodes)-1:
                 time.sleep(2)  # Wait a bit to avoid immediate collisions when starting multiple nodes
 
+    @staticmethod
+    def packet_from_packet(packet, data):
+        meshPacket = mesh_pb2.MeshPacket()
+        meshPacket.decoded.payload = data
+        meshPacket.decoded.portnum = portnums_pb2.SIMULATOR_APP
+        meshPacket.to = packet["to"]
+        setattr(meshPacket, "from", packet["from"])
+        meshPacket.id = packet["id"]
+        meshPacket.want_ack = packet.get("wantAck", meshPacket.want_ack)
+        meshPacket.hop_limit = packet.get("hopLimit", meshPacket.hop_limit)
+        meshPacket.hop_start = packet.get("hopStart", meshPacket.hop_start)
+        meshPacket.via_mqtt = packet.get("viaMQTT", meshPacket.via_mqtt)
+        meshPacket.decoded.request_id = packet["decoded"].get("requestId", meshPacket.decoded.request_id)
+        meshPacket.decoded.want_response = packet["decoded"].get("wantResponse", meshPacket.decoded.want_response)
+        meshPacket.channel = int(packet.get("channel", meshPacket.channel))
+        return meshPacket
+
     def forward_packet(self, receivers, packet, rssis, snrs):
         data = packet["decoded"]["payload"]
         if getattr(data, "SerializeToString", None):
@@ -512,33 +529,16 @@ class InteractiveSim:
         if len(data) > mesh_pb2.Constants.DATA_PAYLOAD_LEN:
             raise Exception("Data payload too big")
 
-        meshPacket = mesh_pb2.MeshPacket()
-
-        meshPacket.decoded.payload = data
-        meshPacket.decoded.portnum = portnums_pb2.SIMULATOR_APP
-        meshPacket.to = packet["to"]
-        setattr(meshPacket, "from", packet["from"])
-        meshPacket.id = packet["id"]
-        if "wantAck" in packet:
-            meshPacket.want_ack = packet["wantAck"]
-        if "hopLimit" in packet:
-            meshPacket.hop_limit = packet["hopLimit"]
-        if "hopStart" in packet:
-            meshPacket.hop_start = packet["hopStart"]
-        if "viaMQTT" in packet:
-            meshPacket.via_mqtt = packet["viaMQTT"]
-        if "requestId" in packet["decoded"]:
-            meshPacket.decoded.request_id = packet["decoded"]["requestId"]
-        if "wantResponse" in packet["decoded"]:
-            meshPacket.decoded.want_response = packet["decoded"]["wantResponse"]
-        if "channel" in packet:
-            meshPacket.channel = int(packet["channel"])
+        meshPacket = self.packet_from_packet(packet, data)
         for i, rx in enumerate(receivers):
             meshPacket.rx_rssi = int(rssis[i])
             meshPacket.rx_snr = snrs[i]
             toRadio = mesh_pb2.ToRadio()
             toRadio.packet.CopyFrom(meshPacket)
-            rx.iface._sendToRadio(toRadio)
+            try:
+                rx.iface._sendToRadio(toRadio)
+            except Exception as ex:
+                print(f"Error sending packet to radio!! ({ex})")
 
     def copy_packet(self, packet):
         # print(packet)
@@ -551,26 +551,7 @@ class InteractiveSim:
             if getattr(data, "SerializeToString", None):
                 data = data.SerializeToString()
 
-            meshPacket = mesh_pb2.MeshPacket()
-            meshPacket.decoded.payload = data
-            meshPacket.decoded.portnum = packet["decoded"]["portnum"]
-            meshPacket.to = packet["to"]
-            setattr(meshPacket, "from", packet["from"])
-            meshPacket.id = packet["id"]
-            if "wantAck" in packet:
-                meshPacket.want_ack = packet["wantAck"]
-            if "hopLimit" in packet:
-                meshPacket.hop_limit = packet["hopLimit"]
-            if "hopStart" in packet:
-                meshPacket.hop_start = packet["hopStart"]
-            if "viaMQTT" in packet:
-                meshPacket.via_mqtt = packet["viaMQTT"]
-            if "requestId" in packet["decoded"]:
-                meshPacket.decoded.request_id = packet["decoded"]["requestId"]
-            if "wantResponse" in packet["decoded"]:
-                meshPacket.decoded.want_response = packet["decoded"]["wantResponse"]
-            if "channel" in packet:
-                meshPacket.channel = int(packet["channel"])
+            meshPacket = self.packet_from_packet(packet, data)
             fromRadio = mesh_pb2.FromRadio()
             fromRadio.packet.CopyFrom(meshPacket)
             return fromRadio
