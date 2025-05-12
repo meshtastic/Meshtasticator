@@ -1,4 +1,3 @@
-import argparse
 import cmd
 import socket
 import sys
@@ -342,7 +341,7 @@ class InteractiveGraph(Graph):
 
 
 class InteractiveSim:
-    def __init__(self):
+    def __init__(self, args):
         self.messages = []
         self.messageId = -1
         self.nodes = []
@@ -356,8 +355,26 @@ class InteractiveSim:
         self.clientThread = None
         self.wantExit = False
 
-        config, pathToProgram = self.parse_interactive_args(foundNodes)
-        programWithFullPath = os.path.join(pathToProgram, 'program')
+        # argument handling
+        self.script = args.script
+        self.docker = args.docker
+        self.forwardToClient = args.forward
+        self.emulateCollisions = args.collisions
+        self.removeConfig = not args.from_file
+        if args.from_file:
+            foundNodes = True
+            with open(os.path.join("out", "nodeConfig.yaml"), 'r') as file:
+                config = yaml.load(file, Loader=yaml.FullLoader)
+            conf.NR_NODES = len(config.keys())
+        elif args.nrNodes > 0:  # nrNodes was specified
+            conf.NR_NODES = args.nrNodes
+            foundNodes = True
+            config = [None for _ in range(conf.NR_NODES)]
+        if not foundNodes:
+            print("nrNodes was not specified, generating scenario...")
+            config = gen_scenario(conf)
+            conf.NR_NODES = len(config.keys())
+        programWithFullPath = os.path.join(args.program, 'program')
 
         if not self.docker and not sys.platform.startswith('linux'):
             print("Docker is required for non-Linux OS.")
@@ -470,39 +487,6 @@ class InteractiveSim:
             print(f"Error: Could not connect to native program: {ex}")
             self.close_nodes()
             sys.exit(1)
-
-    def parse_interactive_args(self, foundNodes):
-        parser = argparse.ArgumentParser(prog='interactiveSim')
-        parser.add_argument('nrNodes', type=int, nargs='?', choices=range(0, 11), default=0)
-        parser.add_argument('-s', '--script', action='store_true')
-        parser.add_argument('-d', '--docker', action='store_true')
-        parser.add_argument('--from-file', action='store_true')
-        parser.add_argument('-f', '--forward', action='store_true')
-        parser.add_argument('-p', '--program', type=str, default=os.getcwd())
-        parser.add_argument('-c', '--collisions', action='store_true')
-        args = parser.parse_args()
-        # print(args)
-
-        self.script = args.script
-        self.docker = args.docker
-        self.forwardToClient = args.forward
-        self.emulateCollisions = args.collisions
-        self.removeConfig = not args.from_file
-        if args.from_file:
-            foundNodes = True
-            with open(os.path.join("out", "nodeConfig.yaml"), 'r') as file:
-                config = yaml.load(file, Loader=yaml.FullLoader)
-            conf.NR_NODES = len(config.keys())
-        elif args.nrNodes > 0:    # nrNodes was specified
-            conf.NR_NODES = args.nrNodes
-            foundNodes = True
-            config = [None for _ in range(conf.NR_NODES)]
-        if not foundNodes:
-            print("nrNodes was not specified, generating scenario...")
-            config = gen_scenario(conf)
-            conf.NR_NODES = len(config.keys())
-        pathToProgram = args.program
-        return config, pathToProgram
 
     def reconnect_nodes(self):
         time.sleep(3)
