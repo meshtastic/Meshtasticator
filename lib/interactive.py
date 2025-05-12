@@ -32,9 +32,7 @@ class InteractiveNode:
     def __init__(self, nodes, nodeId, hwId, TCPPort, nodeConfig):
         self.nodeid = nodeId
         if nodeConfig is not None:
-            self.x = nodeConfig['x']
-            self.y = nodeConfig['y']
-            self.z = nodeConfig['z']
+            self.x, self.y, self.z = nodeConfig['x'], nodeConfig['y'], nodeConfig['z']
             self.isRouter = nodeConfig['isRouter']
             self.isRepeater = nodeConfig['isRepeater']
             self.isClientMute = nodeConfig['isClientMute']
@@ -333,8 +331,6 @@ class InteractiveSim:
         self.messageId = -1
         self.nodes = []
         foundNodes = False
-        # foundPath = False  # never used
-        self.eraseFlash = False
         self.clientConnected = False
         self.forwardSocket = None
         self.clientSocket = None
@@ -456,7 +452,7 @@ class InteractiveSim:
             self.clientSocket = clientSocket
             iface0 = tcp_interface.TCPInterface(hostname="localhost", portNumber=self.nodes[0].TCPPort, connectNow=False)
             self.nodes[0].add_interface(iface0)
-            iface0.myConnect()    # setup socket
+            iface0.myConnect()  # setup socket
             self.nodeThread = threading.Thread(target=self.node_reader, args=(), daemon=True)
             self.clientThread = threading.Thread(target=self.client_reader, args=(), daemon=True)
             self.nodeThread.start()
@@ -476,7 +472,7 @@ class InteractiveSim:
                 iface0.connect()  # real connection now
             for n in self.nodes:
                 requiresReboot = n.set_config()
-                if requiresReboot and self.emulateCollisions and n.nodeid != len(self.nodes)-1:
+                if requiresReboot and self.emulateCollisions and n.nodeid != len(self.nodes) - 1:
                     time.sleep(2)  # Wait a bit to avoid immediate collisions when starting multiple nodes
             self.reconnect_nodes()
             pub.subscribe(self.on_receive, "meshtastic.receive.simulator")
@@ -669,8 +665,6 @@ class InteractiveSim:
                 data = data.SerializeToString()
             telemetryPacket = telemetry_pb2.Telemetry()
             telemetryPacket.ParseFromString(data)
-            channelUtilization = 0
-            airUtilTx = 0
             telemetryDict = proto.MessageToDict(telemetryPacket)
             if 'deviceMetrics' in telemetryDict:
                 deviceMetrics = telemetryDict['deviceMetrics']
@@ -679,26 +673,16 @@ class InteractiveSim:
                     # Check whether it is not a duplicate
                     if len(fromNode.timestamps) == 0 or timestamp > fromNode.timestamps[-1]:
                         fromNode.timestamps.append(timestamp)
-                        if 'channelUtilization' in deviceMetrics:
-                            channelUtilization = float(deviceMetrics['channelUtilization'])
-                        fromNode.channelUtilization.append(channelUtilization)
-                        if 'airUtilTx' in deviceMetrics:
-                            airUtilTx = float(deviceMetrics['airUtilTx'])
-                        fromNode.airUtilTx.append(airUtilTx)
+                        fromNode.channelUtilization.append(float(deviceMetrics.get('channelUtilization', 0)))
+                        fromNode.airUtilTx.append(float(deviceMetrics.get('airUtilTx', 0)))
             elif 'localStats' in telemetryDict:
                 localStats = telemetryDict['localStats']
-                if 'numPacketsTx' in localStats:
-                    fromNode.numPacketsTx = localStats['numPacketsTx']
-                if 'numPacketsRx' in localStats:
-                    fromNode.numPacketsRx = localStats['numPacketsRx']
-                if 'numPacketsRxBad' in localStats:
-                    fromNode.numPacketsRxBad = localStats['numPacketsRxBad']
-                if 'numRxDupe' in localStats:
-                    fromNode.numRxDupe = localStats['numRxDupe']
-                if 'numTxRelay' in localStats:
-                    fromNode.numTxRelay = localStats['numTxRelay']
-                if 'numTxRelayCanceled' in localStats:
-                    fromNode.numTxRelayCanceled = localStats['numTxRelayCanceled']
+                fromNode.numPacketsTx = localStats.get('numPacketsTx', fromNode.numPacketsTx)
+                fromNode.numPacketsRx = localStats.get('numPacketsRx', fromNode.numPacketsRx)
+                fromNode.numPacketsRxBad = localStats.get('numPacketsRxBad', fromNode.numPacketsRxBad)
+                fromNode.numRxDupe = localStats.get('numRxDupe', fromNode.numRxDupe)
+                fromNode.numTxRelay = localStats.get('numTxRelay', fromNode.numTxRelay)
+                fromNode.numTxRelayCanceled = localStats.get('numTxRelayCanceled', fromNode.numTxRelayCanceled)
 
     def on_receive_all(self, interface, packet):
         if interface.portNumber == 4403:
@@ -824,11 +808,10 @@ class CommandProcessor(cmd.Cmd):
         if len(arguments) != 2:
             print('Please use the syntax: "traceroute <fromNode> <toNode>"')
             return False
-        fromNode = int(arguments[0])
+        fromNode, toNode = map(int, arguments)
         if self.sim.get_node_iface_by_id(fromNode) is None:
             print('Node ID', fromNode, 'is not in the list of nodes.')
             return False
-        toNode = int(arguments[1])
         if self.sim.get_node_iface_by_id(toNode) is None:
             print('Node ID', toNode, 'is not in the list of nodes.')
             return False
@@ -843,11 +826,10 @@ class CommandProcessor(cmd.Cmd):
         if len(arguments) != 2:
             print('Please use the syntax: "reqPos <fromNode> <toNode>"')
             return False
-        fromNode = int(arguments[0])
+        fromNode, toNode = map(int, arguments)
         if self.sim.get_node_iface_by_id(fromNode) is None:
             print(f'Node ID {fromNode} is not in the list of nodes.')
             return False
-        toNode = int(arguments[1])
         if self.sim.get_node_iface_by_id(toNode) is None:
             print(f'Node ID {toNode} is not in the list of nodes.')
             return False
