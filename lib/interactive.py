@@ -374,6 +374,11 @@ class InteractiveSim:
 
         print("Booting nodes...")
 
+        self.init_nodes(args)
+        iface0 = self.init_forward()
+        self.init_communication(iface0)
+
+    def init_nodes(self, args):
         if self.docker:
             try:
                 import docker
@@ -435,11 +440,12 @@ class InteractiveSim:
                 if self.emulateCollisions and n.nodeid != len(self.nodes)-1:
                     time.sleep(2)  # Wait a bit to avoid immediate collisions when starting multiple nodes
 
+    def init_forward(self):
         if self.forwardToClient:
-            print(f"Please connect with the client to TCP port {TCP_PORT_CLIENT} ...")
             self.forwardSocket = socket.socket()
             self.forwardSocket.bind(('', TCP_PORT_CLIENT))
             self.forwardSocket.listen()
+            print(f"Please connect the client to TCP port {TCP_PORT_CLIENT} now ...")
             (clientSocket, _) = self.forwardSocket.accept()
             self.clientSocket = clientSocket
             iface0 = tcp_interface.TCPInterface(hostname="localhost", portNumber=self.nodes[0].TCPPort, connectNow=False)
@@ -449,9 +455,11 @@ class InteractiveSim:
             self.clientThread = threading.Thread(target=self.client_reader, args=(), daemon=True)
             self.nodeThread.start()
             self.clientThread.start()
+            return iface0
         else:
-            time.sleep(4)    # Allow instances to start up their TCP service
+            time.sleep(4)  # Allow instances to start up their TCP service
 
+    def init_communication(self, iface0):
         try:
             for n in self.nodes[int(self.forwardToClient):]:
                 iface = tcp_interface.TCPInterface(hostname="localhost", portNumber=n.TCPPort)
