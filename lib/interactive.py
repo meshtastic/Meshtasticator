@@ -224,29 +224,29 @@ class InteractiveGraph(Graph):
                     if p.packet["from"] == tx.hwId:
                         if "requestId" in p.packet["decoded"]:
                             if p.packet["priority"] == "ACK":
-                                msgType = "Real ACK"
+                                msgType = "Real\/ACK"
                             else:
                                 msgType = "Response"
                         else:
                             msgType = "Original message"
                     elif "requestId" in p.packet["decoded"]:
                         if p.packet["decoded"]["simulator"]["portnum"] == "ROUTING_APP":
-                            msgType = "Forwarding real ACK"
+                            msgType = "Forwarding\/real\/ACK"
                         else:
-                            msgType = "Forwarding response"
+                            msgType = "Forwarding\/response"
                     else:
                         if int(p.packet['from']) == rx.hwId:
-                            msgType = "Implicit ACK"
+                            msgType = "Implicit\/ACK"
                         else:
                             if to == "All":
                                 msgType = "Rebroadcast"
                             else:
-                                msgType = "Forwarding message"
+                                msgType = "Forwarding\/message"
 
                     hopLimit = p.packet.get("hopLimit")
 
                     fields = [ r"$\bf{" + msgType + "}$"
-                             , f"Original sender: {p.packet["from"] - HW_ID_OFFSET}"
+                             , f"Original sender: {p.packet['from'] - HW_ID_OFFSET}"
                              , f"Destination: {to}"
                              , f"Portnum: {p.packet["decoded"]["simulator"]["portnum"]}"
                              , f"HopLimit: {hopLimit}" if hopLimit else ""
@@ -505,10 +505,10 @@ class InteractiveSim:
                 time.sleep(2)  # Wait a bit to avoid immediate collisions when starting multiple nodes
 
     @staticmethod
-    def packet_from_packet(packet, data):
+    def packet_from_packet(packet, data, portnum):
         meshPacket = mesh_pb2.MeshPacket()
         meshPacket.decoded.payload = data
-        meshPacket.decoded.portnum = portnums_pb2.SIMULATOR_APP
+        meshPacket.decoded.portnum = portnum
         meshPacket.to = packet["to"]
         setattr(meshPacket, "from", packet["from"])
         meshPacket.id = packet["id"]
@@ -529,7 +529,7 @@ class InteractiveSim:
         if len(data) > mesh_pb2.Constants.DATA_PAYLOAD_LEN:
             raise Exception("Data payload too big")
 
-        meshPacket = self.packet_from_packet(packet, data)
+        meshPacket = self.packet_from_packet(packet, data, portnums_pb2.SIMULATOR_APP)
         for i, rx in enumerate(receivers):
             meshPacket.rx_rssi = int(rssis[i])
             meshPacket.rx_snr = snrs[i]
@@ -551,7 +551,7 @@ class InteractiveSim:
             if getattr(data, "SerializeToString", None):
                 data = data.SerializeToString()
 
-            meshPacket = self.packet_from_packet(packet, data)
+            meshPacket = self.packet_from_packet(packet, data, packet["decoded"]["portnum"])
             fromRadio = mesh_pb2.FromRadio()
             fromRadio.packet.CopyFrom(meshPacket)
             return fromRadio
