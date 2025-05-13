@@ -3,8 +3,7 @@ numpy==1.26.4
 scipy==1.14.0
 matplotlib==3.8.4
 pandas==1.5.3
-pubsub==0.1.2
-Pypubsub==4.0.3
+PyPubSub==4.0.3
 simpy==4.1.1
 PyYAML~=6.0.2
 protobuf~=4.21.12

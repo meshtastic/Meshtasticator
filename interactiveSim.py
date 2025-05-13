@@ -4,10 +4,21 @@
     Use '-d' for Docker.
     Use '-s' to specify what should be sent using this script.
 """
+import os
 import time
+import argparse
 from lib.interactive import InteractiveSim, CommandProcessor
 
-sim = InteractiveSim()  # Start the simulator
+parser = argparse.ArgumentParser(prog='interactiveSim')
+parser.add_argument('-s', '--script', action='store_true')
+parser.add_argument('-d', '--docker', action='store_true')
+parser.add_argument('--from-file', action='store_true')
+parser.add_argument('-f', '--forward', action='store_true')
+parser.add_argument('-p', '--program', type=str, default=os.getcwd())
+parser.add_argument('-c', '--collisions', action='store_true')
+parser.add_argument('nrNodes', type=int, nargs='?', choices=range(0, 11), default=0)
+
+sim = InteractiveSim(parser.parse_args())  # Start the simulator
 
 if sim.script:  # Use '-s' as argument if you want to specify what you want to send here
     try:
@@ -39,7 +50,7 @@ if sim.script:  # Use '-s' as argument if you want to specify what you want to s
         """ Send a position request from node 0 to node 1. """
         # sim.requestPosition(fromNode, toNode)
 
-        time.sleep(15)  # Wait until message are sent
+        time.sleep(15)  # Wait until messages are sent
         sim.graph.plot_metrics(sim.nodes)  # Plot airtime metrics
         sim.graph.init_routes(sim)  # Visualize the route of messages sent
     except KeyboardInterrupt:
