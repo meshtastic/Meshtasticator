@@ -23,7 +23,7 @@ from lib.node import MeshNode
 # today, the config also maintains state
 conf = Config()
 VERBOSE = False
-SHOW_GRAPH = False
+SHOW_GRAPH = True
 SAVE = True
 
 
@@ -276,7 +276,7 @@ for rt_i, routerType in enumerate(routerTypes):
                     graph.add_node(node)
 
             if routerTypeConf.MOVEMENT_ENABLED and SHOW_GRAPH:
-                env.process(run_graph_updates(env, graph, nodes))
+                env.process(run_graph_updates(env, graph, nodes,1000*10*6))
 
             totalPairs, symmetricLinks, asymmetricLinks, noLinks = setup_asymmetric_links(routerTypeConf, nodes)
 
