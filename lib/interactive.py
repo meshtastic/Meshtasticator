@@ -248,7 +248,7 @@ class InteractiveGraph(Graph):
                     fields = [ r"$\bf{" + msgType + "}$"
                              , f"Original sender: {p.packet['from'] - HW_ID_OFFSET}"
                              , f"Destination: {to}"
-                             , f"Portnum: {p.packet["decoded"]["simulator"]["portnum"]}"
+                             , f"Portnum: {p.packet['decoded']['simulator']['portnum']}"
                              , f"HopLimit: {hopLimit}" if hopLimit else ""
                              , f"RSSI: {round(p.rssis[ri], 2)} dBm"
                              ]
