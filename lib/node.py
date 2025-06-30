@@ -302,7 +302,7 @@ class MeshNode:
                 realAckReceived = False
                 for sentPacket in self.packets:
                     # check if ACK for message you currently have in queue
-                    if sentPacket.txNodeId == self.nodeid and sentPacket.seq == p.seq:
+                    if sentPacket.origTxNodeId == self.nodeid and sentPacket.seq == p.seq:
                         self.verboseprint('At time', round(self.env.now, 3), 'node', self.nodeid, 'received implicit ACK for message in queue.')
                         ackReceived = True
                         sentPacket.ackReceived = True
