@@ -1,4 +1,3 @@
-import argparse
 import cmd
 import socket
 import sys
@@ -6,6 +5,7 @@ import threading
 import time
 import yaml
 import os
+from shutil import which
 
 import google.protobuf.json_format as proto
 from matplotlib import patches
@@ -32,9 +32,7 @@ class InteractiveNode:
     def __init__(self, nodes, nodeId, hwId, TCPPort, nodeConfig):
         self.nodeid = nodeId
         if nodeConfig is not None:
-            self.x = nodeConfig['x']
-            self.y = nodeConfig['y']
-            self.z = nodeConfig['z']
+            self.x, self.y, self.z = nodeConfig['x'], nodeConfig['y'], nodeConfig['z']
             self.isRouter = nodeConfig['isRouter']
             self.isRepeater = nodeConfig['isRepeater']
             self.isClientMute = nodeConfig['isClientMute']
@@ -223,52 +221,38 @@ class InteractiveGraph(Graph):
                     else:
                         to = str(p.packet["to"]-HW_ID_OFFSET)
 
-                    if "hopLimit" in p.packet:
-                        hopLimit = p.packet["hopLimit"]
-                    else:
-                        hopLimit = None
-
                     if p.packet["from"] == tx.hwId:
                         if "requestId" in p.packet["decoded"]:
                             if p.packet["priority"] == "ACK":
-                                msgType = "Real ACK"
+                                msgType = "Real\/ACK"
                             else:
                                 msgType = "Response"
                         else:
                             msgType = "Original message"
                     elif "requestId" in p.packet["decoded"]:
                         if p.packet["decoded"]["simulator"]["portnum"] == "ROUTING_APP":
-                            msgType = "Forwarding real ACK"
+                            msgType = "Forwarding\/real\/ACK"
                         else:
-                            msgType = "Forwarding response"
+                            msgType = "Forwarding\/response"
                     else:
                         if int(p.packet['from']) == rx.hwId:
-                            msgType = "Implicit ACK"
+                            msgType = "Implicit\/ACK"
                         else:
                             if to == "All":
                                 msgType = "Rebroadcast"
                             else:
-                                msgType = "Forwarding message"
+                                msgType = "Forwarding\/message"
 
-                    fields = []
-                    msgTypeField = r"$\bf{"+msgType+"}$"
-                    fields.append(msgTypeField)
-                    origSenderField = "Original sender: "+str(p.packet["from"]-HW_ID_OFFSET)
-                    fields.append(origSenderField)
-                    destField = "Destination: "+to
-                    fields.append(destField)
-                    portNumField = "Portnum: "+str(p.packet["decoded"]["simulator"]["portnum"])
-                    fields.append(portNumField)
-                    if hopLimit:
-                        hopLimitField = "HopLimit: "+str(hopLimit)
-                        fields.append(hopLimitField)
-                    rssiField = "RSSI: "+str(round(p.rssis[ri], 2)) + " dBm"
-                    fields.append(rssiField)
-                    table = ""
-                    for i, f in enumerate(fields):
-                        table += f
-                        if i != len(fields)-1:
-                            table += "\n"
+                    hopLimit = p.packet.get("hopLimit")
+
+                    fields = [ r"$\bf{" + msgType + "}$"
+                             , f"Original sender: {p.packet['from'] - HW_ID_OFFSET}"
+                             , f"Destination: {to}"
+                             , f"Portnum: {p.packet['decoded']['simulator']['portnum']}"
+                             , f"HopLimit: {hopLimit}" if hopLimit else ""
+                             , f"RSSI: {round(p.rssis[ri], 2)} dBm"
+                             ]
+                    table = "\n".join(filter(None, fields))
                     annot = self.ax.annotate(table, xy=((tx.x+rx.x)/2, rx.y+150), bbox=dict(boxstyle="round", fc="w"))
                     annot.get_bbox_patch().set_facecolor(patch.get_facecolor())
                     annot.get_bbox_patch().set_alpha(0.4)
@@ -342,13 +326,11 @@ class InteractiveGraph(Graph):
 
 
 class InteractiveSim:
-    def __init__(self):
+    def __init__(self, args):
         self.messages = []
         self.messageId = -1
         self.nodes = []
         foundNodes = False
-        # foundPath = False  # never used
-        self.eraseFlash = False
         self.clientConnected = False
         self.forwardSocket = None
         self.clientSocket = None
@@ -356,8 +338,25 @@ class InteractiveSim:
         self.clientThread = None
         self.wantExit = False
 
-        config, pathToProgram = self.parse_interactive_args(foundNodes)
-        programWithFullPath = os.path.join(pathToProgram, 'program')
+        # argument handling
+        self.script = args.script
+        self.docker = args.docker
+        self.forwardToClient = args.forward
+        self.emulateCollisions = args.collisions
+        self.removeConfig = not args.from_file
+        if args.from_file:
+            foundNodes = True
+            with open(os.path.join("out", "nodeConfig.yaml"), 'r') as file:
+                config = yaml.load(file, Loader=yaml.FullLoader)
+            conf.NR_NODES = len(config.keys())
+        elif args.nrNodes > 0:  # nrNodes was specified
+            conf.NR_NODES = args.nrNodes
+            foundNodes = True
+            config = [None for _ in range(conf.NR_NODES)]
+        if not foundNodes:
+            print("nrNodes was not specified, generating scenario...")
+            config = gen_scenario(conf)
+            conf.NR_NODES = len(config.keys())
 
         if not self.docker and not sys.platform.startswith('linux'):
             print("Docker is required for non-Linux OS.")
@@ -371,6 +370,11 @@ class InteractiveSim:
 
         print("Booting nodes...")
 
+        self.init_nodes(args)
+        iface0 = self.init_forward()
+        self.init_communication(iface0)
+
+    def init_nodes(self, args):
         if self.docker:
             try:
                 import docker
@@ -410,45 +414,54 @@ class InteractiveSim:
                 print(f"Docker container with name {self.container.name} is started.")
                 print(f"You can check the device logs using 'docker exec -it {self.container.name} cat /home/out_x.log', where x is the node number.")
         else:
-            from shutil import which
-            if which('gnome-terminal') is not None:
-                xterm = False
-            elif which('xterm') is not None:
-                xterm = True
-            else:
-                print('The interactive simulator on native Linux (without Docker) requires either gnome-terminal or xterm.')
-                exit(1)
+            # run nodes natively (not in docker)
             for n in self.nodes:  # [1:]
-                if not xterm:
-                    newTerminal = f"gnome-terminal --title='Node {n.nodeid}' -- "
+                call = []
+                if which('gnome-terminal') is not None:
+                    call += ["gnome-terminal",
+                             f"--title='Node {n.nodeid}'",
+                             "--"]
+                elif which('xterm') is not None:
+                    call += ["xterm",
+                             f"-title 'Node {n.nodeid}'",
+                             "-e"]
                 else:
-                    newTerminal = f"xterm -title 'Node {n.nodeid}' -e "
-                startNode = f"-d {os.path.expanduser('~')}/.portduino/node{n.nodeid} -h {n.hwId} -p {n.TCPPort}"
+                    print('The interactive simulator on native Linux (without Docker) requires either gnome-terminal or xterm.')
+                    exit(1)
+
+                # executable
+                call += [os.path.join(args.program, 'program')]
+                # node parameters
+                call += [f"-d {os.path.expanduser('~')}/.portduino/node{n.nodeid}",
+                         f"-h {n.hwId}",
+                         f"-p {n.TCPPort}"]
                 if self.removeConfig:
-                    startNode += " -e"
-                startNode += " &"
-                cmdString = f"{newTerminal} {programWithFullPath} {startNode}"
-                os.system(cmdString)
-                if self.emulateCollisions and n.nodeid != len(self.nodes)-1:
+                    call.append("-e")
+                call.append("&")
+                os.system(" ".join(call))
+                if self.emulateCollisions and n.nodeid != len(self.nodes) - 1:
                     time.sleep(2)  # Wait a bit to avoid immediate collisions when starting multiple nodes
 
+    def init_forward(self):
         if self.forwardToClient:
-            print(f"Please connect with the client to TCP port {TCP_PORT_CLIENT} ...")
             self.forwardSocket = socket.socket()
             self.forwardSocket.bind(('', TCP_PORT_CLIENT))
             self.forwardSocket.listen()
+            print(f"Please connect the client to TCP port {TCP_PORT_CLIENT} now ...")
             (clientSocket, _) = self.forwardSocket.accept()
             self.clientSocket = clientSocket
             iface0 = tcp_interface.TCPInterface(hostname="localhost", portNumber=self.nodes[0].TCPPort, connectNow=False)
             self.nodes[0].add_interface(iface0)
-            iface0.myConnect()    # setup socket
+            iface0.myConnect()  # setup socket
             self.nodeThread = threading.Thread(target=self.node_reader, args=(), daemon=True)
             self.clientThread = threading.Thread(target=self.client_reader, args=(), daemon=True)
             self.nodeThread.start()
             self.clientThread.start()
+            return iface0
         else:
-            time.sleep(4)    # Allow instances to start up their TCP service
+            time.sleep(4)  # Allow instances to start up their TCP service
 
+    def init_communication(self, iface0):
         try:
             for n in self.nodes[int(self.forwardToClient):]:
                 iface = tcp_interface.TCPInterface(hostname="localhost", portNumber=n.TCPPort)
@@ -459,7 +472,7 @@ class InteractiveSim:
                 iface0.connect()  # real connection now
             for n in self.nodes:
                 requiresReboot = n.set_config()
-                if requiresReboot and self.emulateCollisions and n.nodeid != len(self.nodes)-1:
+                if requiresReboot and self.emulateCollisions and n.nodeid != len(self.nodes) - 1:
                     time.sleep(2)  # Wait a bit to avoid immediate collisions when starting multiple nodes
             self.reconnect_nodes()
             pub.subscribe(self.on_receive, "meshtastic.receive.simulator")
@@ -470,39 +483,6 @@ class InteractiveSim:
             print(f"Error: Could not connect to native program: {ex}")
             self.close_nodes()
             sys.exit(1)
-
-    def parse_interactive_args(self, foundNodes):
-        parser = argparse.ArgumentParser(prog='interactiveSim')
-        parser.add_argument('nrNodes', type=int, nargs='?', choices=range(0, 11), default=0)
-        parser.add_argument('-s', '--script', action='store_true')
-        parser.add_argument('-d', '--docker', action='store_true')
-        parser.add_argument('--from-file', action='store_true')
-        parser.add_argument('-f', '--forward', action='store_true')
-        parser.add_argument('-p', '--program', type=str, default=os.getcwd())
-        parser.add_argument('-c', '--collisions', action='store_true')
-        args = parser.parse_args()
-        # print(args)
-
-        self.script = args.script
-        self.docker = args.docker
-        self.forwardToClient = args.forward
-        self.emulateCollisions = args.collisions
-        self.removeConfig = not args.from_file
-        if args.from_file:
-            foundNodes = True
-            with open(os.path.join("out", "nodeConfig.yaml"), 'r') as file:
-                config = yaml.load(file, Loader=yaml.FullLoader)
-            conf.NR_NODES = len(config.keys())
-        elif args.nrNodes > 0:    # nrNodes was specified
-            conf.NR_NODES = args.nrNodes
-            foundNodes = True
-            config = [None for _ in range(conf.NR_NODES)]
-        if not foundNodes:
-            print("nrNodes was not specified, generating scenario...")
-            config = gen_scenario(conf)
-            conf.NR_NODES = len(config.keys())
-        pathToProgram = args.program
-        return config, pathToProgram
 
     def reconnect_nodes(self):
         time.sleep(3)
@@ -524,6 +504,23 @@ class InteractiveSim:
             if self.emulateCollisions and n.nodeid != len(self.nodes)-1:
                 time.sleep(2)  # Wait a bit to avoid immediate collisions when starting multiple nodes
 
+    @staticmethod
+    def packet_from_packet(packet, data, portnum):
+        meshPacket = mesh_pb2.MeshPacket()
+        meshPacket.decoded.payload = data
+        meshPacket.decoded.portnum = portnum
+        meshPacket.to = packet["to"]
+        setattr(meshPacket, "from", packet["from"])
+        meshPacket.id = packet["id"]
+        meshPacket.want_ack = packet.get("wantAck", meshPacket.want_ack)
+        meshPacket.hop_limit = packet.get("hopLimit", meshPacket.hop_limit)
+        meshPacket.hop_start = packet.get("hopStart", meshPacket.hop_start)
+        meshPacket.via_mqtt = packet.get("viaMQTT", meshPacket.via_mqtt)
+        meshPacket.decoded.request_id = packet["decoded"].get("requestId", meshPacket.decoded.request_id)
+        meshPacket.decoded.want_response = packet["decoded"].get("wantResponse", meshPacket.decoded.want_response)
+        meshPacket.channel = int(packet.get("channel", meshPacket.channel))
+        return meshPacket
+
     def forward_packet(self, receivers, packet, rssis, snrs):
         data = packet["decoded"]["payload"]
         if getattr(data, "SerializeToString", None):
@@ -532,33 +529,16 @@ class InteractiveSim:
         if len(data) > mesh_pb2.Constants.DATA_PAYLOAD_LEN:
             raise Exception("Data payload too big")
 
-        meshPacket = mesh_pb2.MeshPacket()
-
-        meshPacket.decoded.payload = data
-        meshPacket.decoded.portnum = portnums_pb2.SIMULATOR_APP
-        meshPacket.to = packet["to"]
-        setattr(meshPacket, "from", packet["from"])
-        meshPacket.id = packet["id"]
-        if "wantAck" in packet:
-            meshPacket.want_ack = packet["wantAck"]
-        if "hopLimit" in packet:
-            meshPacket.hop_limit = packet["hopLimit"]
-        if "hopStart" in packet:
-            meshPacket.hop_start = packet["hopStart"]
-        if "viaMQTT" in packet:
-            meshPacket.via_mqtt = packet["viaMQTT"]
-        if "requestId" in packet["decoded"]:
-            meshPacket.decoded.request_id = packet["decoded"]["requestId"]
-        if "wantResponse" in packet["decoded"]:
-            meshPacket.decoded.want_response = packet["decoded"]["wantResponse"]
-        if "channel" in packet:
-            meshPacket.channel = int(packet["channel"])
+        meshPacket = self.packet_from_packet(packet, data, portnums_pb2.SIMULATOR_APP)
         for i, rx in enumerate(receivers):
             meshPacket.rx_rssi = int(rssis[i])
             meshPacket.rx_snr = snrs[i]
             toRadio = mesh_pb2.ToRadio()
             toRadio.packet.CopyFrom(meshPacket)
-            rx.iface._sendToRadio(toRadio)
+            try:
+                rx.iface._sendToRadio(toRadio)
+            except Exception as ex:
+                print(f"Error sending packet to radio!! ({ex})")
 
     def copy_packet(self, packet):
         # print(packet)
@@ -571,26 +551,7 @@ class InteractiveSim:
             if getattr(data, "SerializeToString", None):
                 data = data.SerializeToString()
 
-            meshPacket = mesh_pb2.MeshPacket()
-            meshPacket.decoded.payload = data
-            meshPacket.decoded.portnum = packet["decoded"]["portnum"]
-            meshPacket.to = packet["to"]
-            setattr(meshPacket, "from", packet["from"])
-            meshPacket.id = packet["id"]
-            if "wantAck" in packet:
-                meshPacket.want_ack = packet["wantAck"]
-            if "hopLimit" in packet:
-                meshPacket.hop_limit = packet["hopLimit"]
-            if "hopStart" in packet:
-                meshPacket.hop_start = packet["hopStart"]
-            if "viaMQTT" in packet:
-                meshPacket.via_mqtt = packet["viaMQTT"]
-            if "requestId" in packet["decoded"]:
-                meshPacket.decoded.request_id = packet["decoded"]["requestId"]
-            if "wantResponse" in packet["decoded"]:
-                meshPacket.decoded.want_response = packet["decoded"]["wantResponse"]
-            if "channel" in packet:
-                meshPacket.channel = int(packet["channel"])
+            meshPacket = self.packet_from_packet(packet, data, packet["decoded"]["portnum"])
             fromRadio = mesh_pb2.FromRadio()
             fromRadio.packet.CopyFrom(meshPacket)
             return fromRadio
@@ -685,8 +646,6 @@ class InteractiveSim:
                 data = data.SerializeToString()
             telemetryPacket = telemetry_pb2.Telemetry()
             telemetryPacket.ParseFromString(data)
-            channelUtilization = 0
-            airUtilTx = 0
             telemetryDict = proto.MessageToDict(telemetryPacket)
             if 'deviceMetrics' in telemetryDict:
                 deviceMetrics = telemetryDict['deviceMetrics']
@@ -695,26 +654,16 @@ class InteractiveSim:
                     # Check whether it is not a duplicate
                     if len(fromNode.timestamps) == 0 or timestamp > fromNode.timestamps[-1]:
                         fromNode.timestamps.append(timestamp)
-                        if 'channelUtilization' in deviceMetrics:
-                            channelUtilization = float(deviceMetrics['channelUtilization'])
-                        fromNode.channelUtilization.append(channelUtilization)
-                        if 'airUtilTx' in deviceMetrics:
-                            airUtilTx = float(deviceMetrics['airUtilTx'])
-                        fromNode.airUtilTx.append(airUtilTx)
+                        fromNode.channelUtilization.append(float(deviceMetrics.get('channelUtilization', 0)))
+                        fromNode.airUtilTx.append(float(deviceMetrics.get('airUtilTx', 0)))
             elif 'localStats' in telemetryDict:
                 localStats = telemetryDict['localStats']
-                if 'numPacketsTx' in localStats:
-                    fromNode.numPacketsTx = localStats['numPacketsTx']
-                if 'numPacketsRx' in localStats:
-                    fromNode.numPacketsRx = localStats['numPacketsRx']
-                if 'numPacketsRxBad' in localStats:
-                    fromNode.numPacketsRxBad = localStats['numPacketsRxBad']
-                if 'numRxDupe' in localStats:
-                    fromNode.numRxDupe = localStats['numRxDupe']
-                if 'numTxRelay' in localStats:
-                    fromNode.numTxRelay = localStats['numTxRelay']
-                if 'numTxRelayCanceled' in localStats:
-                    fromNode.numTxRelayCanceled = localStats['numTxRelayCanceled']
+                fromNode.numPacketsTx = localStats.get('numPacketsTx', fromNode.numPacketsTx)
+                fromNode.numPacketsRx = localStats.get('numPacketsRx', fromNode.numPacketsRx)
+                fromNode.numPacketsRxBad = localStats.get('numPacketsRxBad', fromNode.numPacketsRxBad)
+                fromNode.numRxDupe = localStats.get('numRxDupe', fromNode.numRxDupe)
+                fromNode.numTxRelay = localStats.get('numTxRelay', fromNode.numTxRelay)
+                fromNode.numTxRelayCanceled = localStats.get('numTxRelayCanceled', fromNode.numTxRelayCanceled)
 
     def on_receive_all(self, interface, packet):
         if interface.portNumber == 4403:
@@ -793,7 +742,7 @@ class CommandProcessor(cmd.Cmd):
         if self.sim.get_node_iface_by_id(fromNode) is None:
             print(f'Node ID {fromNode} is not in the list of nodes.')
             return False
-        txt = " ".join(arguments[2:])
+        txt = " ".join(arguments[1:])
         print(f'Instructing node {fromNode} to broadcast "{txt}" (message ID = {self.sim.messageId+1})')
         self.sim.send_broadcast(txt, fromNode)
 
@@ -840,11 +789,10 @@ class CommandProcessor(cmd.Cmd):
         if len(arguments) != 2:
             print('Please use the syntax: "traceroute <fromNode> <toNode>"')
             return False
-        fromNode = int(arguments[0])
+        fromNode, toNode = map(int, arguments)
         if self.sim.get_node_iface_by_id(fromNode) is None:
             print('Node ID', fromNode, 'is not in the list of nodes.')
             return False
-        toNode = int(arguments[1])
         if self.sim.get_node_iface_by_id(toNode) is None:
             print('Node ID', toNode, 'is not in the list of nodes.')
             return False
@@ -859,11 +807,10 @@ class CommandProcessor(cmd.Cmd):
         if len(arguments) != 2:
             print('Please use the syntax: "reqPos <fromNode> <toNode>"')
             return False
-        fromNode = int(arguments[0])
+        fromNode, toNode = map(int, arguments)
         if self.sim.get_node_iface_by_id(fromNode) is None:
             print(f'Node ID {fromNode} is not in the list of nodes.')
             return False
-        toNode = int(arguments[1])
         if self.sim.get_node_iface_by_id(toNode) is None:
             print(f'Node ID {toNode} is not in the list of nodes.')
             return False
