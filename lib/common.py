@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import yaml
 from matplotlib.widgets import Button, Slider, RadioButtons, TextBox
+
 from lib import phy
 
 try:
@@ -218,10 +219,7 @@ def plot_schedule(conf, packets, messages):
 						plt.barh(rxId, p.timeOnAir, left=p.startTime, color='red', edgecolor='r')
 		for p in packets:  # transmissions
 			if p.seq in [m.seq for m in t]:
-				if p.isAck:
-					color = 'orange'
-				else:
-					color = 'blue'
+				color = 'orange' if p.isAck else 'blue'
 				plt.barh(p.txNodeId, p.timeOnAir, left=p.startTime, color=color, edgecolor='k')
 				plt.text(p.startTime+p.timeOnAir/2, p.txNodeId, str(p.seq), horizontalalignment='center', verticalalignment='center', fontsize=12)
 		for p in packets:  # receptions
