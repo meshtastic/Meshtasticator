@@ -50,9 +50,16 @@ class Config:
 
         ### PHY parameters (normally no change needed) ###
         self.PTX = self.REGION["power_limit"]
-        
+
         # Modem presets from firmware RadioInterface::applyModemConfig()
         self.MODEM_PRESETS = {
+            "SHORT_TURBO": {
+                "bw": 500e3,
+                "sf": 7,
+                "cr": 5,
+                "sensitivity": -121.5,
+                "cad_threshold": -124.5
+            },
             "SHORT_FAST": {
                 "bw": 250e3,
                 "sf": 7,
@@ -108,16 +115,9 @@ class Config:
                 "cr": 8,
                 "sensitivity": -140.0,
                 "cad_threshold": -143.0
-            },
-            "SHORT_TURBO": {
-                "bw": 500e3,
-                "sf": 7,
-                "cr": 5,
-                "sensitivity": -121.5,
-                "cad_threshold": -124.5
             }
         }
-        
+
         self.FREQ = self.REGION["freq_start"] + self.MODEM_PRESETS[self.MODEM_PRESET]["bw"] * self.CHANNEL_NUM
         self.HEADERLENGTH = 16  # number of Meshtastic header bytes
         self.ACKLENGTH = 2  # ACK payload in bytes
