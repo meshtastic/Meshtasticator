@@ -16,7 +16,7 @@ def verboseprint(*args, **kwargs):
 
 
 #                           CAD duration   +     airPropagationTime+TxRxTurnaround+MACprocessing
-SLOT_TIME = 8.5 * (2.0 ** conf.SFMODEM[conf.MODEM]) / conf.BWMODEM[conf.MODEM] * 1000 + 0.2 + 0.4 + 7
+SLOT_TIME = 8.5 * (2.0 ** conf.current_preset["sf"]) / conf.current_preset["bw"] * 1000 + 0.2 + 0.4 + 7
 
 
 def check_collision(conf, env, packet, rx_nodeId, packetsAtN):
@@ -161,7 +161,7 @@ def estimate_path_loss(conf, dist, freq, txZ=conf.HM, rxZ=conf.HM):
 
 
 def zero_link_budget(dist):
-    return conf.PTX + 2 * conf.GL - estimate_path_loss(conf, dist, conf.FREQ) - conf.SENSMODEM[conf.MODEM]
+    return conf.PTX + 2 * conf.GL - estimate_path_loss(conf, dist, conf.FREQ) - conf.current_preset["sensitivity"]
 
 
 MAXRANGE = fsolve(zero_link_budget, 1500)
