@@ -79,6 +79,57 @@ def assign_user_behavior(conf):
     # Fallback to camper if something goes wrong
     return "camper"
 
+def generate_activity_groups(total_clients):
+    """Generate activity-based clustering with exactly one 150-person group and large camps"""
+    import random
+    
+    activity_groups = []
+    
+    # Always include exactly one 150-person special event
+    activity_groups.append({"type": "special_event", "size": 150})
+    people_assigned = 150
+    
+    # Activity group distribution for remaining people
+    activity_distribution = [
+        ("solo", 0.20, (1, 1)),           # Solo wanderers: 20%
+        ("small_group", 0.65, (2, 8)),   # Small friend groups: 65%
+        ("medium_group", 0.12, (9, 30)), # Medium gatherings: 12%
+        ("large_camp", 0.03, (40, 80)),  # Large theme camps: 3%
+    ]
+    
+    # Generate activity groups for remaining people
+    while people_assigned < total_clients:
+        # Pick activity type based on distribution
+        rand_val = random.random()
+        cumulative = 0
+        
+        for activity_type, probability, (min_size, max_size) in activity_distribution:
+            cumulative += probability
+            if rand_val <= cumulative:
+                # Generate group size within range
+                if activity_type == "solo":
+                    size = 1
+                elif activity_type == "small_group":
+                    # Exponential distribution favoring smaller groups
+                    size = min(max_size, max(min_size, int(random.expovariate(1/4) + min_size)))
+                elif activity_type == "medium_group":
+                    # Normal distribution for medium gatherings
+                    size = min(max_size, max(min_size, int(random.normalvariate(18, 6))))
+                elif activity_type == "large_camp":
+                    # Large theme camps with people hanging around
+                    size = min(max_size, max(min_size, int(random.normalvariate(60, 12))))
+                
+                # Don't exceed remaining people
+                remaining = total_clients - people_assigned
+                size = min(size, remaining)
+                
+                if size > 0:
+                    activity_groups.append({"type": activity_type, "size": size})
+                    people_assigned += size
+                break
+    
+    return activity_groups
+
 def calculate_rebroadcast_priority(rssi, rx_config, distance, conf):
     """
     Calculate the priority score for a node to be a rebroadcaster.
@@ -464,17 +515,69 @@ def plot_node_locations(node_configs, conf):
     city_circle = plt.Circle((0, 0), conf.CITY_RADIUS, fill=False, linestyle='--', color='gray', alpha=0.5)
     plt.gca().add_patch(city_circle)
     
-    # Add Burning Man trash fence (pentagon perimeter) as vector lines
+    # Add Burning Man trash fence using actual GPS coordinates
     import numpy as np
-    # Create pentagon points around the trash fence radius
-    angles = np.linspace(0, 2*np.pi, 6)  # 6 points to close the pentagon
-    fence_x = conf.TRASH_FENCE_RADIUS * np.cos(angles)
-    fence_y = conf.TRASH_FENCE_RADIUS * np.sin(angles)
+    
+    # Actual GPS coordinates of trash fence corners
+    gps_coords = [
+        (40.78236, -119.23530),  # P1
+        (40.80570, -119.21965),  # P2  
+        (40.80163, -119.18533),  # P3
+        (40.77568, -119.17971),  # P4
+        (40.76373, -119.21050),  # P5
+    ]
+    
+    # Convert GPS to relative meters (approximate)
+    # Use center of coordinates as origin
+    center_lat = sum(coord[0] for coord in gps_coords) / len(gps_coords)
+    center_lon = sum(coord[1] for coord in gps_coords) / len(gps_coords)
+    
+    def gps_to_meters(lat, lon, center_lat, center_lon):
+        # Approximate conversion: 1 degree lat ≈ 111km, 1 degree lon ≈ 111km * cos(lat)
+        lat_m = (lat - center_lat) * 111000
+        lon_m = (lon - center_lon) * 111000 * np.cos(np.radians(center_lat))
+        return lon_m, lat_m  # lon=x, lat=y
+    
+    # Convert GPS coordinates to meters
+    fence_coords_m = [gps_to_meters(lat, lon, center_lat, center_lon) for lat, lon in gps_coords]
+    
+    # Scale to fit our simulation area (trash fence should be ~3km radius)
+    current_coords = np.array(fence_coords_m)
+    current_radius = np.max(np.sqrt(current_coords[:, 0]**2 + current_coords[:, 1]**2))
+    scale_factor = conf.TRASH_FENCE_RADIUS / current_radius
+    
+    fence_x = [coord[0] * scale_factor for coord in fence_coords_m]
+    fence_y = [coord[1] * scale_factor for coord in fence_coords_m]
+    
+    # Rotate fence so longest point (apex) is at 45 degrees from north
+    # Find the point that's furthest from center (the apex)
+    distances = [np.sqrt(fence_x[i]**2 + fence_y[i]**2) for i in range(len(fence_x))]
+    apex_idx = np.argmax(distances)
+    
+    # Current angle of apex (from east, CCW)
+    current_apex_angle = np.arctan2(fence_y[apex_idx], fence_x[apex_idx])
+    
+    # Target angle: 45 degrees from north = northeast direction
+    # North is 90° from east, so 45° from north = 90° - 45° = 45° from east
+    target_apex_angle = np.radians(45)  # 45 degrees from east (northeast)
+    
+    # Calculate rotation needed
+    rotation_angle = target_apex_angle - current_apex_angle
+    
+    # Apply rotation to all points
+    rotated_x = []
+    rotated_y = []
+    for x, y in zip(fence_x, fence_y):
+        rotated_x.append(x * np.cos(rotation_angle) - y * np.sin(rotation_angle))
+        rotated_y.append(x * np.sin(rotation_angle) + y * np.cos(rotation_angle))
+    
+    fence_x = rotated_x
+    fence_y = rotated_y
     
     # Draw each fence segment as individual vectors
     for i in range(5):  # 5 sides of pentagon
         x_start, y_start = fence_x[i], fence_y[i]
-        x_end, y_end = fence_x[i+1], fence_y[i+1]
+        x_end, y_end = fence_x[(i+1) % 5], fence_y[(i+1) % 5]  # Wrap around to close the fence
         
         # Draw line segment
         plt.plot([x_start, x_end], [y_start, y_end], color='orange', linewidth=3, 
@@ -604,13 +707,50 @@ def place_burning_man_nodes(conf, num_clients):
     """Place routers and clients according to Burning Man layout"""
     nodes_config = []
 
-    # Place 3 routers in a triangle pattern around center
-    # This provides good coverage of the city
-    router_positions = [
-        (-1500, 0),     # 3 o'clock position
-        (750, 1300),    # 11 o'clock position
-        (750, -1300)    # 7 o'clock position
+    # Place 3 routers at Burning Man street addresses
+    # Clock positions: 12:00 = north, clockwise
+    # Radial streets: A=innermost, distance increases with letters
+    # Approximate distances: A=400m, B=600m, C=800m, D=1000m, E=1200m, etc.
+    router_configs = [
+        {"clock": "7:30", "street": "B"},  # 7:30 & B
+        {"clock": "3:00", "street": "E"},  # 3:00 & E  
+        {"clock": "10:00", "street": "F"},  # 10:00 & F
     ]
+    
+    # Convert clock positions to angles (12:00 = 90°, 3:00 = 0°, 6:00 = -90°, 9:00 = 180°)
+    clock_to_angle = {
+        "3:00": 0,
+        "6:00": -90,
+        "7:30": -135,  # Between 6:00 and 9:00
+        "9:00": 180,
+        "10:00": 150,  # Between 9:00 and 12:00
+        "12:00": 90
+    }
+    
+    # Street letter to radius mapping (approximate)
+    street_to_radius = {
+        "A": 400,
+        "B": 600,
+        "C": 800,
+        "D": 1000,
+        "E": 1200,
+        "F": 1400,
+        "G": 1600,
+        "H": 1800,
+    }
+    
+    router_positions = []
+    for config in router_configs:
+        angle_deg = clock_to_angle[config["clock"]]
+        # Apply same offset as fence to keep routers in fence's coordinate system  
+        angle_deg -= 45  # Opposite direction to match fence coordinate system
+        radius = street_to_radius[config["street"]]
+        
+        # Convert to x,y coordinates
+        angle_rad = np.radians(angle_deg)
+        x = radius * np.cos(angle_rad)
+        y = radius * np.sin(angle_rad)
+        router_positions.append((x, y))
 
     for i, (x, y) in enumerate(router_positions):
         nodes_config.append({
@@ -631,126 +771,286 @@ def place_burning_man_nodes(conf, num_clients):
             'isMobile': False
         })
 
-    # Place client nodes
-    clients_in_city = int(num_clients * 0.75)
-    clients_outside = num_clients - clients_in_city
-
-    # Place 75% of clients within city radius with ground clutter
-    for i in range(clients_in_city):
-        placed = False
+    # Generate activity-based groups for realistic clustering
+    activity_groups = generate_activity_groups(num_clients)
+    
+    # Place client nodes based on activity groups with clustering
+    for group in activity_groups:
+        group_type = group["type"]
+        group_size = group["size"]
+        
+        # Find a suitable location for the group center
+        group_center_placed = False
         attempts = 0
-        while not placed and attempts < 100:
-            # Random position within city radius
-            angle = random.uniform(0, 2 * np.pi)
-            # Bias towards center with sqrt for uniform distribution
-            radius = conf.CITY_RADIUS * np.sqrt(random.random())
-            x = radius * np.cos(angle)
-            y = radius * np.sin(angle)
-
-            # Check minimum distance from other nodes
-            too_close = False
-            for other in nodes_config:
-                dist = calc_dist(x, other['x'], y, other['y'])
-                if dist < conf.MINDIST:
-                    too_close = True
+        while not group_center_placed and attempts < 100:
+            # Choose group center location based on group type
+            if group_type == "special_event":
+                # Special events: bias toward city center but can be anywhere
+                angle = random.uniform(0, 2 * np.pi)
+                # Weighted toward city: 70% in city, 30% outside
+                if random.random() < 0.7:
+                    radius = random.uniform(0, conf.CITY_RADIUS)
+                else:
+                    radius = random.uniform(conf.CITY_RADIUS, min(conf.CITY_RADIUS * 1.5, conf.XSIZE/2 - 200))
+            elif group_type == "large_camp":
+                # Large camps are "at home" - must be within city boundaries
+                angle = random.uniform(0, 2 * np.pi)
+                radius = random.uniform(conf.CITY_RADIUS * 0.2, conf.CITY_RADIUS * 0.9)  # Well within city
+            elif group_type == "solo":
+                # Solo wanderers: most in city, some exploring playa
+                angle = random.uniform(0, 2 * np.pi)
+                # 80% in city, 20% in outer areas
+                if random.random() < 0.8:
+                    radius = random.uniform(0, conf.CITY_RADIUS)
+                else:
+                    radius = random.uniform(conf.CITY_RADIUS, min(conf.CITY_RADIUS * 1.4, conf.XSIZE/2 - 100))
+            elif group_type == "small_group":
+                # Small groups: mostly in city, some venture out
+                angle = random.uniform(0, 2 * np.pi)
+                # 85% in city, 15% outside
+                if random.random() < 0.85:
+                    radius = random.uniform(0, conf.CITY_RADIUS)
+                else:
+                    radius = random.uniform(conf.CITY_RADIUS, min(conf.CITY_RADIUS * 1.3, conf.XSIZE/2 - 100))
+            else:  # medium_group
+                # Medium groups: prefer city but some go to playa
+                angle = random.uniform(0, 2 * np.pi)
+                # 75% in city, 25% outside
+                if random.random() < 0.75:
+                    radius = random.uniform(0, conf.CITY_RADIUS)
+                else:
+                    radius = random.uniform(conf.CITY_RADIUS, min(conf.CITY_RADIUS * 1.2, conf.XSIZE/2 - 100))
+            
+            center_x = radius * np.cos(angle)
+            center_y = radius * np.sin(angle)
+            
+            # Check minimum distance from other group centers
+            min_group_distance = 50 if group_type == "solo" else 100  # Smaller spacing for solo
+            too_close_to_existing = False
+            for existing in nodes_config:
+                if calc_dist(center_x, existing['x'], center_y, existing['y']) < min_group_distance:
+                    too_close_to_existing = True
                     break
-
-            if not too_close:
-                user_behavior = assign_user_behavior(conf)
-                behavior_config = conf.USER_BEHAVIORS[user_behavior]
-
-                # Determine if this user is "mobile" (affects position broadcasting)
-                is_mobile = random.random() < behavior_config["movement_probability"]
-
-                # Add random initial delay for position broadcasts (0 to full period)
-                initial_position_delay = 0
-                if is_mobile and behavior_config["position_period"] > 0:
-                    initial_position_delay = random.uniform(0, behavior_config["position_period"])
-
-                # Determine if node is in radio shadow (completely blocked by structures)
-                in_radio_shadow = random.random() < conf.RADIO_SHADOW_PROBABILITY
-
-                nodes_config.append({
-                    'x': x,
-                    'y': y,
-                    'z': conf.CLIENT_HEIGHT,
-                    'isRouter': False,
-                    'isRepeater': False,
-                    'isClientMute': False,
-                    'hopLimit': conf.hopLimit,
-                    'antennaGain': conf.CLIENT_ANTENNA_GAIN,
-                    'ptx': conf.CLIENT_PTX,
-                    'nodeId': len(nodes_config),
-                    'inGroundClutter': True,
-                    'inRadioShadow': in_radio_shadow,
-                    'userBehavior': user_behavior,
-                    'messagePeriod': behavior_config["message_period"],
-                    'positionPeriod': behavior_config["position_period"] if is_mobile else -1,
-                    'isMobile': is_mobile,
-                    'initialPositionDelay': initial_position_delay
-                })
-                placed = True
-            attempts += 1
-
-    # Place 25% of clients outside city in open playa
-    for i in range(clients_outside):
-        placed = False
-        attempts = 0
-        while not placed and attempts < 100:
-            # Place between city edge and simulation boundary
-            angle = random.uniform(0, 2 * np.pi)
-            radius = random.uniform(conf.CITY_RADIUS, conf.XSIZE/2 - 100)
-            x = radius * np.cos(angle)
-            y = radius * np.sin(angle)
-
-            # Check minimum distance
-            too_close = False
-            for other in nodes_config:
-                dist = calc_dist(x, other['x'], y, other['y'])
-                if dist < conf.MINDIST:
-                    too_close = True
-                    break
-
-            if not too_close:
-                user_behavior = assign_user_behavior(conf)
-                behavior_config = conf.USER_BEHAVIORS[user_behavior]
-
-                # Determine if this user is "mobile" (affects position broadcasting)
-                is_mobile = random.random() < behavior_config["movement_probability"]
-
-                # Add random initial delay for position broadcasts (0 to full period)
-                initial_position_delay = 0
-                if is_mobile and behavior_config["position_period"] > 0:
-                    initial_position_delay = random.uniform(0, behavior_config["position_period"])
-
-                # Even playa nodes can have some radio shadows (art installations, RVs, etc.)
-                in_radio_shadow = random.random() < (conf.RADIO_SHADOW_PROBABILITY * 0.3)  # 30% of city probability
-
-                nodes_config.append({
-                    'x': x,
-                    'y': y,
-                    'z': conf.CLIENT_HEIGHT,
-                    'isRouter': False,
-                    'isRepeater': False,
-                    'isClientMute': False,
-                    'hopLimit': conf.hopLimit,
-                    'antennaGain': conf.CLIENT_ANTENNA_GAIN,
-                    'ptx': conf.CLIENT_PTX,
-                    'nodeId': len(nodes_config),
-                    'inGroundClutter': False,
-                    'inRadioShadow': in_radio_shadow,
-                    'userBehavior': user_behavior,
-                    'messagePeriod': behavior_config["message_period"],
-                    'positionPeriod': behavior_config["position_period"] if is_mobile else -1,
-                    'isMobile': is_mobile,
-                    'initialPositionDelay': initial_position_delay
-                })
-                placed = True
-            attempts += 1
+            
+            if not too_close_to_existing:
+                group_center_placed = True
+            else:
+                attempts += 1
+        
+        if not group_center_placed:
+            # Fallback: place at random location if can't find good spot
+            center_x = random.uniform(-conf.XSIZE/2 + 200, conf.XSIZE/2 - 200)
+            center_y = random.uniform(-conf.YSIZE/2 + 200, conf.YSIZE/2 - 200)
+        
+        # Determine clustering parameters based on group type
+        if group_type == "solo":
+            cluster_radius = 0  # No clustering for solo
+        elif group_type == "small_group":
+            cluster_radius = 20  # Tight clustering
+        elif group_type == "medium_group":
+            cluster_radius = 35  # Medium clustering
+        elif group_type == "large_camp":
+            cluster_radius = 60  # Larger spread for big camps
+        elif group_type == "special_event":
+            cluster_radius = 80  # Wide spread for special events
+        else:
+            cluster_radius = 30  # Default
+        
+        # Place all nodes in this group
+        for node_in_group in range(group_size):
+            node_placed = False
+            node_attempts = 0
+            while not node_placed and node_attempts < 50:
+                if cluster_radius == 0:
+                    # Solo node at exact center
+                    x, y = center_x, center_y
+                else:
+                    # Gaussian clustering around center
+                    x = center_x + random.gauss(0, cluster_radius)
+                    y = center_y + random.gauss(0, cluster_radius)
+                
+                # Check minimum distance from other nodes
+                too_close = False
+                for other in nodes_config:
+                    if calc_dist(x, other['x'], y, other['y']) < conf.MINDIST:
+                        too_close = True
+                        break
+                
+                if not too_close:
+                    # Assign user behavior and other properties
+                    user_behavior = assign_user_behavior(conf)
+                    behavior_config = conf.USER_BEHAVIORS[user_behavior]
+                    
+                    is_mobile = random.random() < behavior_config["movement_probability"]
+                    
+                    initial_position_delay = 0
+                    if is_mobile and behavior_config["position_period"] > 0:
+                        initial_position_delay = random.uniform(0, behavior_config["position_period"])
+                    
+                    # Determine ground clutter and radio shadows based on location
+                    distance_from_center = np.sqrt(x**2 + y**2)
+                    in_ground_clutter = distance_from_center <= conf.CITY_RADIUS
+                    
+                    if in_ground_clutter:
+                        in_radio_shadow = random.random() < conf.RADIO_SHADOW_PROBABILITY
+                    else:
+                        in_radio_shadow = random.random() < (conf.RADIO_SHADOW_PROBABILITY * 0.3)
+                    
+                    nodes_config.append({
+                        'x': x,
+                        'y': y,
+                        'z': conf.CLIENT_HEIGHT,
+                        'isRouter': False,
+                        'isRepeater': False,
+                        'isClientMute': False,
+                        'hopLimit': conf.hopLimit,
+                        'antennaGain': conf.CLIENT_ANTENNA_GAIN,
+                        'ptx': conf.CLIENT_PTX,
+                        'nodeId': len(nodes_config),
+                        'inGroundClutter': in_ground_clutter,
+                        'inRadioShadow': in_radio_shadow,
+                        'userBehavior': user_behavior,
+                        'messagePeriod': behavior_config["message_period"],
+                        'positionPeriod': behavior_config["position_period"] if is_mobile else -1,
+                        'isMobile': is_mobile,
+                        'initialPositionDelay': initial_position_delay,
+                        'activityGroup': group_type
+                    })
+                    node_placed = True
+                
+                node_attempts += 1
+            
+            if not node_placed:
+                print(f"Warning: Could not place node {node_in_group+1} in {group_type} group")
+    
+    # Enforce fence boundary: move any nodes outside trash fence to just inside
+    nodes_config = enforce_fence_boundary(nodes_config, conf)
 
     return nodes_config
 
-def run_burning_man_simulation(num_clients=100):
+def enforce_fence_boundary(nodes_config, conf):
+    """Move any nodes outside the trash fence to just inside the boundary"""
+    # Get the fence coordinates (reuse the calculation from plotting)
+    import numpy as np
+    
+    # Recreate fence coordinates (same as in plot_node_locations)
+    gps_coords = [
+        (40.78236, -119.23530),  # P1
+        (40.80570, -119.21965),  # P2  
+        (40.80163, -119.18533),  # P3
+        (40.77568, -119.17971),  # P4
+        (40.76373, -119.21050),  # P5
+    ]
+    
+    # Convert to meters and scale (same logic as plotting)
+    center_lat = sum(coord[0] for coord in gps_coords) / len(gps_coords)
+    center_lon = sum(coord[1] for coord in gps_coords) / len(gps_coords)
+    
+    def gps_to_meters(lat, lon, center_lat, center_lon):
+        lat_m = (lat - center_lat) * 111000
+        lon_m = (lon - center_lon) * 111000 * np.cos(np.radians(center_lat))
+        return lon_m, lat_m
+    
+    fence_coords_m = [gps_to_meters(lat, lon, center_lat, center_lon) for lat, lon in gps_coords]
+    current_coords = np.array(fence_coords_m)
+    current_radius = np.max(np.sqrt(current_coords[:, 0]**2 + current_coords[:, 1]**2))
+    scale_factor = conf.TRASH_FENCE_RADIUS / current_radius
+    
+    fence_points = [(coord[0] * scale_factor, coord[1] * scale_factor) for coord in fence_coords_m]
+    
+    # Apply fence rotation (same as plotting)
+    distances = [np.sqrt(x**2 + y**2) for x, y in fence_points]
+    apex_idx = np.argmax(distances)
+    current_apex_angle = np.arctan2(fence_points[apex_idx][1], fence_points[apex_idx][0])
+    target_apex_angle = np.radians(45)
+    rotation_angle = target_apex_angle - current_apex_angle
+    
+    # Rotate fence points
+    rotated_fence = []
+    for x, y in fence_points:
+        rotated_x = x * np.cos(rotation_angle) - y * np.sin(rotation_angle)
+        rotated_y = x * np.sin(rotation_angle) + y * np.cos(rotation_angle)
+        rotated_fence.append((rotated_x, rotated_y))
+    
+    # Check each node and move if outside fence
+    nodes_moved = 0
+    for node in nodes_config:
+        if node['isRouter']:
+            continue  # Don't move routers
+        
+        node_x, node_y = node['x'], node['y']
+        
+        # Simple point-in-polygon test and boundary enforcement
+        if not point_in_polygon(node_x, node_y, rotated_fence):
+            # Find nearest point on fence boundary
+            nearest_x, nearest_y = find_nearest_fence_point(node_x, node_y, rotated_fence)
+            
+            # Move slightly inside fence (2% closer to center)
+            center_x, center_y = 0, 0  # Fence center
+            inward_factor = 0.98
+            
+            node['x'] = center_x + (nearest_x - center_x) * inward_factor
+            node['y'] = center_y + (nearest_y - center_y) * inward_factor
+            nodes_moved += 1
+    
+    if nodes_moved > 0:
+        print(f"Moved {nodes_moved} nodes inside trash fence boundary")
+    
+    return nodes_config
+
+def point_in_polygon(x, y, polygon):
+    """Check if point is inside polygon using ray casting"""
+    n = len(polygon)
+    inside = False
+    
+    p1x, p1y = polygon[0]
+    for i in range(1, n + 1):
+        p2x, p2y = polygon[i % n]
+        if y > min(p1y, p2y):
+            if y <= max(p1y, p2y):
+                if x <= max(p1x, p2x):
+                    if p1y != p2y:
+                        xinters = (y - p1y) * (p2x - p1x) / (p2y - p1y) + p1x
+                    if p1x == p2x or x <= xinters:
+                        inside = not inside
+        p1x, p1y = p2x, p2y
+    
+    return inside
+
+def find_nearest_fence_point(x, y, polygon):
+    """Find nearest point on polygon boundary"""
+    min_dist = float('inf')
+    nearest_x, nearest_y = x, y
+    
+    n = len(polygon)
+    for i in range(n):
+        p1 = polygon[i]
+        p2 = polygon[(i + 1) % n]
+        
+        # Find nearest point on line segment
+        nx, ny = nearest_point_on_segment(x, y, p1[0], p1[1], p2[0], p2[1])
+        dist = np.sqrt((x - nx)**2 + (y - ny)**2)
+        
+        if dist < min_dist:
+            min_dist = dist
+            nearest_x, nearest_y = nx, ny
+    
+    return nearest_x, nearest_y
+
+def nearest_point_on_segment(px, py, x1, y1, x2, y2):
+    """Find nearest point on line segment"""
+    dx = x2 - x1
+    dy = y2 - y1
+    
+    if dx == 0 and dy == 0:
+        return x1, y1
+    
+    t = ((px - x1) * dx + (py - y1) * dy) / (dx * dx + dy * dy)
+    t = max(0, min(1, t))  # Clamp to segment
+    
+    return x1 + t * dx, y1 + t * dy
+
+def run_burning_man_simulation(num_clients=100, enable_plotting=False):
     """Run the Burning Man mesh simulation"""
     conf = BurningManConfig()
     conf.NR_NODES = num_clients + conf.ROUTER_COUNT
@@ -772,8 +1072,8 @@ def run_burning_man_simulation(num_clients=100):
     with open(os.path.join("out", "burningManConfig.yaml"), 'w') as file:
         yaml.dump(node_configs, file)
 
-    # Enable plotting to show trash fence
-    if conf.NR_NODES <= 100:  # Only plot for small simulations
+    # Generate plot if requested
+    if enable_plotting:
         plot_node_locations(node_configs, conf)
 
     # Precompute connectable nodes matrix (major performance optimization)
@@ -935,14 +1235,22 @@ def run_burning_man_simulation(num_clients=100):
     print(f"  Actual: {actual_msgs_per_hour:.2f} messages/hour")
     print(f"  Traffic reduction vs 30s period: {round((conf.SIMTIME/1000/30) / actual_msgs_per_hour * len(client_nodes), 1)}x less traffic")
 
-    # Save node placement (but skip plotting for large simulations)
+    # Save node placement and report plotting status
     print(f"\nNode placement saved to out/burningManConfig.yaml")
-    print("Simulation complete - no plots generated for large node counts")
+    if enable_plotting:
+        print("Simulation complete - plot saved to out/graphics/burning_man_nodes.png")
+    else:
+        print("Simulation complete - use --plot to generate visualization")
 
 if __name__ == "__main__":
-    # Default to 100 client nodes, or specify via command line
-    num_clients = 100
-    if len(sys.argv) > 1:
-        num_clients = int(sys.argv[1])
-
-    run_burning_man_simulation(num_clients)
+    # Parse command line arguments
+    import argparse
+    parser = argparse.ArgumentParser(description='Burning Man Mesh Network Simulation')
+    parser.add_argument('num_clients', type=int, nargs='?', default=100,
+                       help='Number of client nodes (default: 100)')
+    parser.add_argument('--plot', action='store_true',
+                       help='Generate and display node placement plot')
+    
+    args = parser.parse_args()
+    
+    run_burning_man_simulation(args.num_clients, enable_plotting=args.plot)
