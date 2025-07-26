@@ -157,7 +157,10 @@ def precompute_connectable_nodes(conf, node_configs):
     print(f"   Avg connectable per node: {connectivity_stats['avg_connectable']:.1f}")
     print(f"   Range: {connectivity_stats['min_connectable']}-{connectivity_stats['max_connectable']} connectable")
     print(f"   Safety margin: {SAFETY_MARGIN_DB}dB")
-    print(f"   Performance improvement: ~{total_pairs/total_connectable:.1f}x reduction in calculations")
+    if total_connectable > 0:
+        print(f"   Performance improvement: ~{total_pairs/total_connectable:.1f}x reduction in calculations")
+    else:
+        print(f"   WARNING: No connectable node pairs found! Check path loss parameters.")
     
     # Analyze router connectivity
     print(f"\n📡 Router Connectivity Analysis:")
@@ -402,12 +405,11 @@ class BurningManConfig(Config):
         #   - Designed for elevated base stations with good coverage
         #   - Too optimistic for mesh networks
         # MODEL = 6: 3GPP Urban Macro
-        self.MODEL = 0  # Use harsh log-distance model for desert
+        self.MODEL = 5  # Back to 3GPP model that was working
         
-        # Increase path loss exponent for realistic desert propagation
-        # Default GAMMA = 2.08 is for ideal conditions
-        # Desert with ground effects: 3.0-4.0
-        # self.GAMMA = 3.5  # Too harsh - kills connectivity completely
+        # Note: Log-distance model with default parameters seems miscalibrated
+        # for our 915MHz LoRa scenario. The LPLD0=127.41 might be for different
+        # frequency or includes additional losses.
         
         # Realistic user behavior patterns
         self.USER_BEHAVIORS = {
