@@ -14,7 +14,7 @@ class Config:
         self.YSIZE = 15000  # vertical size of the area to simulate in m
         self.OX = 0.0  # origin x-coordinate
         self.OY = 0.0  # origin y-coordinate
-        self.MINDIST = 10  # minimum distance between each node in the area in m
+        self.MINDIST = 1  # minimum distance between each node in the area in m
 
         self.GL = 0  # antenna gain of each node in dBi
         self.HM = 1.0  # height of each node in m

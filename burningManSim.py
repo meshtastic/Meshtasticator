@@ -20,48 +20,90 @@ from lib.node import MeshNode
 from lib.packet import MeshPacket
 import lib.phy as phy
 
+# Group configuration dictionary - defines all parameters in one place
+GROUP_CONFIG = {
+    "solo": {
+        "probability": 0.20,
+        "size_range": (1, 1),
+        "cluster_radius": 0,
+        "min_group_distance": 50,
+        "city_probability": 0.80,
+        "city_radius_range": (0, 1.0),  # 0 to 100% of city radius
+        "playa_radius_range": (1.0, 1.4),  # 100% to 140% of city radius
+    },
+    "small_group": {
+        "probability": 0.65,
+        "size_range": (2, 8),
+        "cluster_radius": 20,
+        "min_group_distance": 100,
+        "city_probability": 0.85,
+        "city_radius_range": (0, 1.0),
+        "playa_radius_range": (1.0, 1.3),
+    },
+    "medium_group": {
+        "probability": 0.12,
+        "size_range": (9, 30),
+        "cluster_radius": 35,
+        "min_group_distance": 100,
+        "city_probability": 0.75,
+        "city_radius_range": (0, 1.0),
+        "playa_radius_range": (1.0, 1.2),
+    },
+    "large_camp": {
+        "probability": 0.03,
+        "size_range": (40, 80),
+        "cluster_radius": 60,
+        "min_group_distance": 100,
+        "city_probability": 1.0,  # Always in city
+        "city_radius_range": (0.2, 0.9),  # 20% to 90% of city radius
+        "playa_radius_range": (1.0, 1.0),  # Not used since always in city
+    },
+    "special_event": {
+        "probability": 0.0,  # Handled separately
+        "size_range": (150, 150),
+        "cluster_radius": 150,
+        "min_group_distance": 100,
+        "city_probability": 0.70,
+        "city_radius_range": (0, 1.0),
+        "playa_radius_range": (1.0, 1.5),
+    }
+}
+
 def calculate_burning_man_path_loss(conf, txNode, rxNode, dist, freq):
     """Calculate path loss with realistic ground clutter effects for Burning Man"""
     # Start with base path loss
     base_path_loss = phy.estimate_path_loss(conf, dist, freq, txNode.z, rxNode.z)
 
-    # Add ground clutter loss if applicable
+    # Apply ground clutter loss ONCE per link based on environment
     additional_loss = 0
 
     # Get node configs
     tx_in_clutter = hasattr(txNode, 'nodeConfig') and txNode.nodeConfig.get('inGroundClutter', False)
     rx_in_clutter = hasattr(rxNode, 'nodeConfig') and rxNode.nodeConfig.get('inGroundClutter', False)
+    tx_in_shadow = hasattr(txNode, 'nodeConfig') and txNode.nodeConfig.get('inRadioShadow', False)
+    rx_in_shadow = hasattr(rxNode, 'nodeConfig') and rxNode.nodeConfig.get('inRadioShadow', False)
 
-    # If transmitter is a router (elevated), check if receiver is in ground clutter
-    if txNode.isRouter and rx_in_clutter:
-        # Base ground clutter loss with random variation
-        clutter_loss = conf.GROUND_CLUTTER_LOSS + random.uniform(-conf.GROUND_CLUTTER_LOSS_VARIANCE, conf.GROUND_CLUTTER_LOSS_VARIANCE)
+    # Apply clutter loss based on the actual RF path environment
+    if tx_in_clutter and rx_in_clutter:
+        # Both in city - RF path goes through clutter area
+        clutter_loss = max(5, random.normalvariate(conf.HEAVY_CLUTTER_MEAN, conf.HEAVY_CLUTTER_STD))
         additional_loss += clutter_loss
-
-        # Check if receiver is in radio shadow (blocked by large structures)
-        if hasattr(rxNode, 'nodeConfig') and rxNode.nodeConfig.get('inRadioShadow', False):
-            additional_loss += conf.RADIO_SHADOW_ADDITIONAL_LOSS
-
-    # If receiver is a router (elevated), check if transmitter is in ground clutter
-    elif rxNode.isRouter and tx_in_clutter:
-        # Base ground clutter loss with random variation
-        clutter_loss = conf.GROUND_CLUTTER_LOSS + random.uniform(-conf.GROUND_CLUTTER_LOSS_VARIANCE, conf.GROUND_CLUTTER_LOSS_VARIANCE)
+    elif (tx_in_clutter and not rx_in_clutter) or (not tx_in_clutter and rx_in_clutter):
+        # Mixed: one in city, one in open playa
+        if txNode.isRouter or rxNode.isRouter:
+            # Elevated router can mostly clear city clutter to reach open playa
+            clutter_loss = max(1, random.normalvariate(conf.LIGHT_CLUTTER_MEAN / 3, conf.LIGHT_CLUTTER_STD / 2))
+        else:
+            # Client-to-client mixed case - some clutter effect
+            clutter_loss = max(3, random.normalvariate(conf.LIGHT_CLUTTER_MEAN, conf.LIGHT_CLUTTER_STD))
         additional_loss += clutter_loss
+    # else: both in open playa - no additional clutter loss, just base path loss
 
-        # Check if transmitter is in radio shadow
-        if hasattr(txNode, 'nodeConfig') and txNode.nodeConfig.get('inRadioShadow', False):
-            additional_loss += conf.RADIO_SHADOW_ADDITIONAL_LOSS
-
-    # If both are clients in ground clutter, apply even more loss
-    elif tx_in_clutter and rx_in_clutter:
-        # Much higher loss for ground-to-ground communication
-        clutter_loss = conf.GROUND_CLUTTER_LOSS * 1.8 + random.uniform(-conf.GROUND_CLUTTER_LOSS_VARIANCE, conf.GROUND_CLUTTER_LOSS_VARIANCE)
-        additional_loss += clutter_loss
-
-        # Either node in radio shadow makes communication nearly impossible
-        if (hasattr(txNode, 'nodeConfig') and txNode.nodeConfig.get('inRadioShadow', False)) or \
-           (hasattr(rxNode, 'nodeConfig') and rxNode.nodeConfig.get('inRadioShadow', False)):
-            additional_loss += conf.RADIO_SHADOW_ADDITIONAL_LOSS
+    # Radio shadow REPLACES clutter loss (not additive) if nodes are in shadow
+    if tx_in_shadow or rx_in_shadow:
+        # Radio shadow loss replaces any clutter loss (worst case scenario)
+        shadow_loss = max(15, random.normalvariate(conf.RADIO_SHADOW_MEAN, conf.RADIO_SHADOW_STD))
+        additional_loss = shadow_loss  # Replace clutter loss, don't add to it
 
     return base_path_loss + additional_loss
 
@@ -79,30 +121,58 @@ def assign_user_behavior(conf):
     # Fallback to camper if something goes wrong
     return "camper"
 
+def check_group_fence_coverage(center_x, center_y, cluster_radius, trash_fence_radius):
+    """
+    Check if at least 75% of a group would be inside the trash fence.
+    Uses circular approximation for simplicity.
+    """
+    if cluster_radius == 0:
+        # Solo node - just check if center is inside fence
+        return np.sqrt(center_x**2 + center_y**2) <= trash_fence_radius
+    
+    # Distance from origin to group center
+    center_distance = np.sqrt(center_x**2 + center_y**2)
+    
+    # If group center + cluster radius is entirely inside fence, 100% coverage
+    if center_distance + cluster_radius <= trash_fence_radius:
+        return True
+    
+    # If group center - cluster radius is entirely outside fence, 0% coverage
+    if center_distance - cluster_radius >= trash_fence_radius:
+        return False
+    
+    # Approximate coverage using circular intersection
+    # For 75% coverage requirement, the group center should be at most
+    # cluster_radius * 0.5 away from the fence boundary
+    fence_boundary_distance = abs(center_distance - trash_fence_radius)
+    return fence_boundary_distance <= cluster_radius * 0.5
+
 def generate_activity_groups(total_clients):
-    """Generate activity-based clustering with exactly one 150-person group and large camps"""
+    """Generate activity-based clustering with 20% maximum group size limit"""
     import random
-    
+
     activity_groups = []
-    
-    # Always include exactly one 150-person special event
-    activity_groups.append({"type": "special_event", "size": 150})
-    people_assigned = 150
-    
+    people_assigned = 0
+
+    # Only include 150-person special event if it's less than 20% of total
+    max_group_size = int(total_clients * 0.20)  # 20% limit
+    if 150 <= max_group_size:
+        activity_groups.append({"type": "special_event", "size": 150})
+        people_assigned = 150
+
     # Activity group distribution for remaining people
     activity_distribution = [
-        ("solo", 0.20, (1, 1)),           # Solo wanderers: 20%
-        ("small_group", 0.65, (2, 8)),   # Small friend groups: 65%
-        ("medium_group", 0.12, (9, 30)), # Medium gatherings: 12%
-        ("large_camp", 0.03, (40, 80)),  # Large theme camps: 3%
+        (group_type, config["probability"], config["size_range"])
+        for group_type, config in GROUP_CONFIG.items()
+        if config["probability"] > 0  # Skip special_event since handled separately
     ]
-    
+
     # Generate activity groups for remaining people
     while people_assigned < total_clients:
         # Pick activity type based on distribution
         rand_val = random.random()
         cumulative = 0
-        
+
         for activity_type, probability, (min_size, max_size) in activity_distribution:
             cumulative += probability
             if rand_val <= cumulative:
@@ -118,16 +188,17 @@ def generate_activity_groups(total_clients):
                 elif activity_type == "large_camp":
                     # Large theme camps with people hanging around
                     size = min(max_size, max(min_size, int(random.normalvariate(60, 12))))
-                
-                # Don't exceed remaining people
+
+                # Don't exceed remaining people or 20% rule
                 remaining = total_clients - people_assigned
                 size = min(size, remaining)
-                
+                size = min(size, max_group_size)  # Apply 20% limit
+
                 if size > 0:
                     activity_groups.append({"type": activity_type, "size": size})
                     people_assigned += size
                 break
-    
+
     return activity_groups
 
 def calculate_rebroadcast_priority(rssi, rx_config, distance, conf):
@@ -222,22 +293,24 @@ def precompute_connectable_nodes(conf, node_configs):
             tx_in_shadow = tx_config.get('inRadioShadow', False)
             rx_in_shadow = rx_config.get('inRadioShadow', False)
 
-            if tx_config['isRouter'] and rx_in_clutter:
-                # Use minimum clutter loss (best case)
-                min_additional_loss += conf.GROUND_CLUTTER_LOSS - conf.GROUND_CLUTTER_LOSS_VARIANCE
-                # Radio shadows make connection nearly impossible
-                if rx_in_shadow:
-                    min_additional_loss += conf.RADIO_SHADOW_ADDITIONAL_LOSS
-            elif rx_config['isRouter'] and tx_in_clutter:
-                min_additional_loss += conf.GROUND_CLUTTER_LOSS - conf.GROUND_CLUTTER_LOSS_VARIANCE
-                if tx_in_shadow:
-                    min_additional_loss += conf.RADIO_SHADOW_ADDITIONAL_LOSS
-            elif tx_in_clutter and rx_in_clutter:
-                # Ground-to-ground with minimum loss
-                min_additional_loss += (conf.GROUND_CLUTTER_LOSS * 1.8) - conf.GROUND_CLUTTER_LOSS_VARIANCE
-                # Either in shadow makes connection nearly impossible
-                if tx_in_shadow or rx_in_shadow:
-                    min_additional_loss += conf.RADIO_SHADOW_ADDITIONAL_LOSS
+            # Apply minimum clutter loss based on actual RF path (best case scenario)
+            if tx_in_clutter and rx_in_clutter:
+                # Both in city - use heavy clutter minimum
+                min_additional_loss += max(5, conf.HEAVY_CLUTTER_MEAN - 2 * conf.HEAVY_CLUTTER_STD)
+            elif (tx_in_clutter and not rx_in_clutter) or (not tx_in_clutter and rx_in_clutter):
+                # Mixed: one in city, one in open playa
+                if tx_config['isRouter'] or rx_config['isRouter']:
+                    # Elevated router can mostly clear city clutter to reach open playa
+                    min_additional_loss += max(1, (conf.LIGHT_CLUTTER_MEAN / 3) - conf.LIGHT_CLUTTER_STD)
+                else:
+                    # Client-to-client mixed case - light clutter minimum
+                    min_additional_loss += max(3, conf.LIGHT_CLUTTER_MEAN - 2 * conf.LIGHT_CLUTTER_STD)
+            # else: both in open playa - no additional clutter loss
+
+            # Radio shadow replaces clutter loss in worst case (use minimum shadow loss)
+            if tx_in_shadow or rx_in_shadow:
+                min_shadow_loss = max(15, conf.RADIO_SHADOW_MEAN - 2 * conf.RADIO_SHADOW_STD)
+                min_additional_loss = min_shadow_loss  # Replace clutter, don't add
 
             best_case_path_loss = base_path_loss + min_additional_loss
 
@@ -312,37 +385,118 @@ def precompute_connectable_nodes(conf, node_configs):
     else:
         print(f"   WARNING: No connectable node pairs found! Check path loss parameters.")
 
-    # Analyze router connectivity
-    print(f"\n📡 Router Connectivity Analysis:")
+    # Analyze router connectivity with real signal calculations
+    print(f"\n📡 Router Connectivity Analysis (Real Signal Calculations):")
+    sensitivity_threshold = conf.current_preset["sensitivity"]
+
     for router_idx, router_config in enumerate([n for n in node_configs if n['isRouter']]):
         router_id = router_config['nodeId']
-        connected_nodes = connectivity_matrix.get(router_id, [])
 
-        # Count by node type and shadow status
+        # Create mock transmitter and receiver node objects for path loss calculation
+        class MockNode:
+            def __init__(self, config):
+                self.nodeConfig = config
+                self.isRouter = config['isRouter']
+                self.z = config['z']
+
+        router_node = MockNode(router_config)
+
+        # Real-time signal calculation for all nodes
+        connectable_nodes = []
+        signal_analysis = []
+
+        for rx_id, rx_config in enumerate(node_configs):
+            if rx_id == router_id:
+                continue  # Skip self
+
+            rx_node = MockNode(rx_config)
+
+            # Calculate 3D distance
+            distance = calc_dist(
+                router_config['x'], rx_config['x'],
+                router_config['y'], rx_config['y'],
+                router_config['z'], rx_config['z']
+            )
+
+            # Calculate actual path loss using the same function as simulation
+            path_loss = calculate_burning_man_path_loss(conf, router_node, rx_node, distance, conf.FREQ)
+
+            # Calculate RSSI: TX power + TX antenna gain + RX antenna gain - path loss
+            rssi = (router_config['ptx'] + router_config['antennaGain'] +
+                   rx_config['antennaGain'] - path_loss)
+
+            # Check if signal is strong enough to be received
+            can_receive = rssi >= sensitivity_threshold
+
+            signal_analysis.append({
+                'node_id': rx_id,
+                'distance': distance,
+                'path_loss': path_loss,
+                'rssi': rssi,
+                'can_receive': can_receive,
+                'config': rx_config
+            })
+
+            if can_receive:
+                connectable_nodes.append(rx_id)
+
+        # Sort by distance for analysis
+        signal_analysis.sort(key=lambda x: x['distance'])
+
+        # Find farthest connectable node
+        connectable_signals = [s for s in signal_analysis if s['can_receive']]
+        farthest_connectable = max(connectable_signals, key=lambda x: x['distance']) if connectable_signals else None
+
+        # Count by node type and shadow status (only connectable nodes)
         city_clients = 0
         city_shadow_clients = 0
         playa_clients = 0
         playa_shadow_clients = 0
         other_routers = 0
 
-        for connected_id in connected_nodes:
-            connected_config = node_configs[connected_id]
-            if connected_config['isRouter']:
+        for signal in connectable_signals:
+            config = signal['config']
+            if config['isRouter']:
                 other_routers += 1
-            elif connected_config.get('inGroundClutter', False):
-                if connected_config.get('inRadioShadow', False):
+            elif config.get('inGroundClutter', False):
+                if config.get('inRadioShadow', False):
                     city_shadow_clients += 1
                 else:
                     city_clients += 1
             else:
-                if connected_config.get('inRadioShadow', False):
+                if config.get('inRadioShadow', False):
                     playa_shadow_clients += 1
                 else:
                     playa_clients += 1
 
-        print(f"   Router {router_id}: {len(connected_nodes)} total connections")
+        total_connectable = len(connectable_signals)
+        total_tested = len(signal_analysis)
+
+        print(f"   Router {router_id}: {total_connectable}/{total_tested} nodes can receive signal ({total_connectable/total_tested*100:.1f}%)")
         print(f"     - {city_clients} city clients, {city_shadow_clients} city shadow clients")
         print(f"     - {playa_clients} playa clients, {playa_shadow_clients} playa shadow clients, {other_routers} routers")
+
+        if farthest_connectable:
+            node_type = "router" if farthest_connectable['config']['isRouter'] else "client"
+            print(f"     - Farthest connection: {farthest_connectable['distance']:.0f}m to node {farthest_connectable['node_id']} ({node_type})")
+            print(f"       RSSI: {farthest_connectable['rssi']:.1f}dBm (threshold: {sensitivity_threshold}dBm)")
+        else:
+            print(f"     - No nodes can receive signal from this router!")
+
+        # Show a few example calculations for debugging
+        print(f"     - Signal examples (closest 3 connectable):")
+        connectable_by_distance = sorted(connectable_signals, key=lambda x: x['distance'])[:3]
+        for signal in connectable_by_distance:
+            node_type = "router" if signal['config']['isRouter'] else "client"
+            print(f"       {signal['distance']:.0f}m to node {signal['node_id']} ({node_type}): "
+                  f"RSSI {signal['rssi']:.1f}dBm, path loss {signal['path_loss']:.1f}dB")
+
+        # Show failed connections (nodes that can't receive)
+        failed_signals = [s for s in signal_analysis if not s['can_receive']]
+        if failed_signals:
+            closest_failed = min(failed_signals, key=lambda x: x['distance'])
+            print(f"     - Closest node that CAN'T receive: {closest_failed['distance']:.0f}m, "
+                  f"RSSI {closest_failed['rssi']:.1f}dBm (too weak by {sensitivity_threshold - closest_failed['rssi']:.1f}dB)")
 
     return connectivity_matrix, baseline_path_loss_matrix, rebroadcast_priority_matrix, connectivity_stats
 
@@ -484,124 +638,203 @@ class OptimizedMeshNode(MeshNode):
         self.env.process(self.transmit(p))
         return p
 
-def plot_node_locations(node_configs, conf):
-    """Plot node locations without radio ranges"""
-    plt.figure(figsize=(12, 12))
+def plot_node_locations(node_configs, conf, connectivity_matrix=None, baseline_path_loss_matrix=None):
+    """Plot node locations with signal strength lines to routers - showing both send and receive"""
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(24, 12))
 
     # Separate nodes by type
     routers = [n for n in node_configs if n['isRouter']]
     clients = [n for n in node_configs if not n['isRouter'] and not n.get('isClientMute', False)]
     client_mutes = [n for n in node_configs if n.get('isClientMute', False)]
 
-    # Plot routers (red)
-    if routers:
-        router_x = [n['x'] for n in routers]
-        router_y = [n['y'] for n in routers]
-        plt.scatter(router_x, router_y, c='red', s=100, marker='s', label=f'Routers ({len(routers)})', zorder=3)
-
-    # Plot regular clients (blue)
-    if clients:
-        client_x = [n['x'] for n in clients]
-        client_y = [n['y'] for n in clients]
-        plt.scatter(client_x, client_y, c='blue', s=20, alpha=0.6, label=f'Clients ({len(clients)})', zorder=2)
-
-    # Plot muted clients (black)
-    if client_mutes:
-        mute_x = [n['x'] for n in client_mutes]
-        mute_y = [n['y'] for n in client_mutes]
-        plt.scatter(mute_x, mute_y, c='black', s=20, alpha=0.8, label=f'Client Mute ({len(client_mutes)})', zorder=2)
-
-    # Add city radius circle for reference
-    city_circle = plt.Circle((0, 0), conf.CITY_RADIUS, fill=False, linestyle='--', color='gray', alpha=0.5)
-    plt.gca().add_patch(city_circle)
-    
-    # Add Burning Man trash fence using actual GPS coordinates
-    import numpy as np
-    
-    # Actual GPS coordinates of trash fence corners
-    gps_coords = [
-        (40.78236, -119.23530),  # P1
-        (40.80570, -119.21965),  # P2  
-        (40.80163, -119.18533),  # P3
-        (40.77568, -119.17971),  # P4
-        (40.76373, -119.21050),  # P5
-    ]
-    
-    # Convert GPS to relative meters (approximate)
-    # Use center of coordinates as origin
-    center_lat = sum(coord[0] for coord in gps_coords) / len(gps_coords)
-    center_lon = sum(coord[1] for coord in gps_coords) / len(gps_coords)
-    
-    def gps_to_meters(lat, lon, center_lat, center_lon):
-        # Approximate conversion: 1 degree lat ≈ 111km, 1 degree lon ≈ 111km * cos(lat)
-        lat_m = (lat - center_lat) * 111000
-        lon_m = (lon - center_lon) * 111000 * np.cos(np.radians(center_lat))
-        return lon_m, lat_m  # lon=x, lat=y
-    
-    # Convert GPS coordinates to meters
-    fence_coords_m = [gps_to_meters(lat, lon, center_lat, center_lon) for lat, lon in gps_coords]
-    
-    # Scale to fit our simulation area (trash fence should be ~3km radius)
-    current_coords = np.array(fence_coords_m)
-    current_radius = np.max(np.sqrt(current_coords[:, 0]**2 + current_coords[:, 1]**2))
-    scale_factor = conf.TRASH_FENCE_RADIUS / current_radius
-    
-    fence_x = [coord[0] * scale_factor for coord in fence_coords_m]
-    fence_y = [coord[1] * scale_factor for coord in fence_coords_m]
-    
-    # Rotate fence so longest point (apex) is at 45 degrees from north
-    # Find the point that's furthest from center (the apex)
-    distances = [np.sqrt(fence_x[i]**2 + fence_y[i]**2) for i in range(len(fence_x))]
-    apex_idx = np.argmax(distances)
-    
-    # Current angle of apex (from east, CCW)
-    current_apex_angle = np.arctan2(fence_y[apex_idx], fence_x[apex_idx])
-    
-    # Target angle: 45 degrees from north = northeast direction
-    # North is 90° from east, so 45° from north = 90° - 45° = 45° from east
-    target_apex_angle = np.radians(45)  # 45 degrees from east (northeast)
-    
-    # Calculate rotation needed
-    rotation_angle = target_apex_angle - current_apex_angle
-    
-    # Apply rotation to all points
-    rotated_x = []
-    rotated_y = []
-    for x, y in zip(fence_x, fence_y):
-        rotated_x.append(x * np.cos(rotation_angle) - y * np.sin(rotation_angle))
-        rotated_y.append(x * np.sin(rotation_angle) + y * np.cos(rotation_angle))
-    
-    fence_x = rotated_x
-    fence_y = rotated_y
-    
-    # Draw each fence segment as individual vectors
-    for i in range(5):  # 5 sides of pentagon
-        x_start, y_start = fence_x[i], fence_y[i]
-        x_end, y_end = fence_x[(i+1) % 5], fence_y[(i+1) % 5]  # Wrap around to close the fence
+    def plot_on_axis(ax, title, direction):
+        """Helper function to plot nodes and signal lines on a specific axis"""
         
-        # Draw line segment
-        plt.plot([x_start, x_end], [y_start, y_end], color='orange', linewidth=3, 
-                label='Trash Fence' if i == 0 else '', zorder=1)
+        # Draw signal strength lines between clients and routers
+        if connectivity_matrix is not None and baseline_path_loss_matrix is not None:
+            router_lookup = {r['nodeId']: r for r in routers}
+            total_connections_drawn = 0
+            max_distance_drawn = 0
+
+            for client in clients:
+                client_id = client['nodeId']
+
+                for router_id, router in router_lookup.items():
+                    # Create mock nodes for path loss calculation
+                    class MockNode:
+                        def __init__(self, config):
+                            self.nodeConfig = config
+                            self.isRouter = config['isRouter']
+                            self.z = config['z']
+
+                    client_node = MockNode(client)
+                    router_node = MockNode(router)
+
+                    # Calculate 3D distance
+                    distance = calc_dist(
+                        client['x'], router['x'],
+                        client['y'], router['y'],
+                        client['z'], router['z']
+                    )
+
+                    # Calculate path loss and RSSI based on direction
+                    if direction == "send":
+                        # Client -> Router (client transmitting to router)
+                        path_loss = calculate_burning_man_path_loss(conf, client_node, router_node, distance, conf.FREQ)
+                        rssi = (client['ptx'] + client['antennaGain'] + router['antennaGain'] - path_loss)
+                    else:
+                        # Router -> Client (router transmitting to client)
+                        path_loss = calculate_burning_man_path_loss(conf, router_node, client_node, distance, conf.FREQ)
+                        rssi = (router['ptx'] + router['antennaGain'] + client['antennaGain'] - path_loss)
+
+                    # Only draw line if signal is strong enough to be received
+                    if rssi >= conf.current_preset["sensitivity"]:
+                        total_connections_drawn += 1
+                        max_distance_drawn = max(max_distance_drawn, distance)
+
+                        # Determine line color and thickness based on signal strength
+                        if rssi >= -80:
+                            color = 'green'
+                            thickness = 2.0
+                            alpha = 0.8
+                        elif rssi >= -100:
+                            color = 'yellow'
+                            thickness = 1.5
+                            alpha = 0.6
+                        elif rssi >= -120:
+                            color = 'red'
+                            thickness = 1.0
+                            alpha = 0.4
+                        else:
+                            continue
+
+                        # Draw line from client to router
+                        ax.plot([client['x'], router['x']],
+                               [client['y'], router['y']],
+                               color=color, linewidth=thickness, alpha=alpha, zorder=1)
+
+        # Plot routers (red)
+        if routers:
+            router_x = [n['x'] for n in routers]
+            router_y = [n['y'] for n in routers]
+            ax.scatter(router_x, router_y, c='red', s=100, marker='s', label=f'Routers ({len(routers)})', zorder=3)
+
+        # Plot regular clients (blue)
+        if clients:
+            client_x = [n['x'] for n in clients]
+            client_y = [n['y'] for n in clients]
+            ax.scatter(client_x, client_y, c='blue', s=20, alpha=0.6, label=f'Clients ({len(clients)})', zorder=2)
+
+        # Plot muted clients (black)
+        if client_mutes:
+            mute_x = [n['x'] for n in client_mutes]
+            mute_y = [n['y'] for n in client_mutes]
+            ax.scatter(mute_x, mute_y, c='black', s=20, alpha=0.8, label=f'Client Mute ({len(client_mutes)})', zorder=2)
+
+        # Add center plaza circle for reference (open space)
+        center_circle = plt.Circle((0, 0), conf.CENTER_PLAZA_RADIUS, fill=False, linestyle=':', color='lightblue', alpha=0.7)
+        ax.add_patch(center_circle)
         
-        # Draw arrow to show direction/vector nature
-        mid_x, mid_y = (x_start + x_end) / 2, (y_start + y_end) / 2
-        dx, dy = x_end - x_start, y_end - y_start
-        plt.annotate('', xy=(mid_x + dx*0.1, mid_y + dy*0.1), xytext=(mid_x, mid_y),
-                    arrowprops=dict(arrowstyle='->', color='orange', lw=2))
+        # Add city radius circle for reference
+        city_circle = plt.Circle((0, 0), conf.CITY_RADIUS, fill=False, linestyle='--', color='gray', alpha=0.5)
+        ax.add_patch(city_circle)
 
-    # Set equal aspect ratio and labels
-    plt.axis('equal')
-    plt.xlabel('Distance (meters)')
-    plt.ylabel('Distance (meters)')
-    plt.title('Burning Man Mesh Network - Node Placement')
-    plt.legend()
-    plt.grid(True, alpha=0.3)
+        # Add Burning Man trash fence using actual GPS coordinates
+        import numpy as np
 
-    # Add annotations
-    plt.text(0, conf.CITY_RADIUS + 200, f'City Radius: {conf.CITY_RADIUS}m',
-             ha='center', va='bottom', fontsize=10, color='gray')
+        # Actual GPS coordinates of trash fence corners
+        gps_coords = [
+            (40.78236, -119.23530),  # P1
+            (40.80570, -119.21965),  # P2
+            (40.80163, -119.18533),  # P3
+            (40.77568, -119.17971),  # P4
+            (40.76373, -119.21050),  # P5
+        ]
 
-    # Save and show
+        # Convert GPS to relative meters (approximate)
+        center_lat = sum(coord[0] for coord in gps_coords) / len(gps_coords)
+        center_lon = sum(coord[1] for coord in gps_coords) / len(gps_coords)
+
+        def gps_to_meters(lat, lon, center_lat, center_lon):
+            lat_m = (lat - center_lat) * 111000
+            lon_m = (lon - center_lon) * 111000 * np.cos(np.radians(center_lat))
+            return lon_m, lat_m
+
+        # Convert GPS coordinates to meters
+        fence_coords_m = [gps_to_meters(lat, lon, center_lat, center_lon) for lat, lon in gps_coords]
+
+        # Scale to fit our simulation area (trash fence should be ~3km radius)
+        current_coords = np.array(fence_coords_m)
+        current_radius = np.max(np.sqrt(current_coords[:, 0]**2 + current_coords[:, 1]**2))
+        scale_factor = conf.TRASH_FENCE_RADIUS / current_radius
+
+        fence_x = [coord[0] * scale_factor for coord in fence_coords_m]
+        fence_y = [coord[1] * scale_factor for coord in fence_coords_m]
+
+        # Rotate fence so longest point (apex) is at 45 degrees from north
+        distances = [np.sqrt(fence_x[i]**2 + fence_y[i]**2) for i in range(len(fence_x))]
+        apex_idx = np.argmax(distances)
+        current_apex_angle = np.arctan2(fence_y[apex_idx], fence_x[apex_idx])
+        target_apex_angle = np.radians(45)
+        rotation_angle = target_apex_angle - current_apex_angle
+
+        # Apply rotation to all points
+        rotated_x = []
+        rotated_y = []
+        for x, y in zip(fence_x, fence_y):
+            rotated_x.append(x * np.cos(rotation_angle) - y * np.sin(rotation_angle))
+            rotated_y.append(x * np.sin(rotation_angle) + y * np.cos(rotation_angle))
+
+        fence_x = rotated_x
+        fence_y = rotated_y
+
+        # Draw each fence segment as individual vectors
+        for i in range(5):  # 5 sides of pentagon
+            x_start, y_start = fence_x[i], fence_y[i]
+            x_end, y_end = fence_x[(i+1) % 5], fence_y[(i+1) % 5]
+
+            # Draw line segment
+            ax.plot([x_start, x_end], [y_start, y_end], color='orange', linewidth=3,
+                    label='Trash Fence' if i == 0 else '', zorder=1)
+
+            # Draw arrow to show direction/vector nature
+            mid_x, mid_y = (x_start + x_end) / 2, (y_start + y_end) / 2
+            dx, dy = x_end - x_start, y_end - y_start
+            ax.annotate('', xy=(mid_x + dx*0.1, mid_y + dy*0.1), xytext=(mid_x, mid_y),
+                        arrowprops=dict(arrowstyle='->', color='orange', lw=2))
+
+        # Add legend entries for signal strength lines
+        if connectivity_matrix is not None and baseline_path_loss_matrix is not None:
+            # Add dummy lines for legend
+            ax.plot([], [], color='green', linewidth=2.0, alpha=0.8, label='Strong Signal (≥-80dBm)')
+            ax.plot([], [], color='yellow', linewidth=1.5, alpha=0.6, label='Medium Signal (-80 to -100dBm)')
+            ax.plot([], [], color='red', linewidth=1.0, alpha=0.4, label='Weak Signal (-100 to -120dBm)')
+
+        # Set equal aspect ratio and labels
+        ax.set_aspect('equal')
+        ax.set_xlabel('Distance (meters)')
+        ax.set_ylabel('Distance (meters)')
+        ax.set_title(title)
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+
+        # Add annotations
+        ax.text(0, conf.CITY_RADIUS + 200, f'City Radius: {conf.CITY_RADIUS}m',
+                ha='center', va='bottom', fontsize=10, color='gray')
+
+        return total_connections_drawn, max_distance_drawn
+
+    # Create both plots
+    print("Drawing signal strength visualization lines...")
+    
+    send_connections, send_max_dist = plot_on_axis(ax1, 'Client Send Signal (Client → Router)', 'send')
+    recv_connections, recv_max_dist = plot_on_axis(ax2, 'Client Receive Signal (Router → Client)', 'receive')
+
+    print(f"Send signal lines: {send_connections} connections, max distance: {send_max_dist:.0f}m")
+    print(f"Receive signal lines: {recv_connections} connections, max distance: {recv_max_dist:.0f}m")
+
+    # Adjust layout and save
+    plt.tight_layout()
     os.makedirs("out/graphics", exist_ok=True)
     plt.savefig("out/graphics/burning_man_nodes.png", dpi=150, bbox_inches='tight')
     plt.show()
@@ -628,12 +861,29 @@ class BurningManConfig(Config):
         self.CLIENT_HEIGHT = 1.5  # Person height
 
         # Ground clutter parameters
-        self.CITY_RADIUS = 2000  # 2km radius for main city area
-        self.TRASH_FENCE_RADIUS = 3000  # 3km radius trash fence (event perimeter)
-        self.GROUND_CLUTTER_LOSS = 25  # Additional 25dB loss in city from structures
-        self.GROUND_CLUTTER_LOSS_VARIANCE = 10  # Random variation in ground clutter (+/- 10dB)
-        self.RADIO_SHADOW_PROBABILITY = 0.15  # 15% chance of being in complete radio shadow
-        self.RADIO_SHADOW_ADDITIONAL_LOSS = 40  # Extra 40dB loss for radio shadows
+        self.CENTER_PLAZA_RADIUS = 1700  # 1.7km radius for center open space (Man area)
+        self.CITY_RADIUS = 3400  # 3.4km radius for main city area
+        self.TRASH_FENCE_RADIUS = 5175  # 5.175km radius trash fence (event perimeter)
+
+        # Realistic path loss parameters using normal distributions
+        # Light clutter: router-to-client or open areas with some obstacles
+        self.LIGHT_CLUTTER_MEAN = 6   # Average 6dB loss (field tested: >1.2km in city)
+        self.LIGHT_CLUTTER_STD = 2    # ±2dB standard deviation
+
+        # Heavy clutter: client-to-client in dense city areas with art installations
+        self.HEAVY_CLUTTER_MEAN = 10  # Average 10dB loss (desert environment with art)
+        self.HEAVY_CLUTTER_STD = 3    # ±3dB standard deviation
+
+        # Radio shadow: complete obstruction behind large art/structures
+        self.RADIO_SHADOW_MEAN = 20   # Average 20dB loss (replaces clutter, not excessive)
+        self.RADIO_SHADOW_STD = 4     # ±4dB standard deviation
+        self.RADIO_SHADOW_PROBABILITY = 0.25  # 25% chance of being in complete radio shadow
+
+        # Legacy parameters (kept for compatibility but not used in new model)
+        self.GROUND_CLUTTER_LOSS = 25  # Replaced by LIGHT/HEAVY_CLUTTER_MEAN
+        self.GROUND_CLUTTER_LOSS_VARIANCE = 10  # Replaced by STD parameters
+        self.RADIO_SHADOW_ADDITIONAL_LOSS = 40  # Replaced by RADIO_SHADOW_MEAN
+
         self.INTERFERENCE_IN_CITY = 0.15  # 15% interference level in city
         self.INTERFERENCE_OUTSIDE = 0.02  # 2% interference in open playa
 
@@ -713,10 +963,10 @@ def place_burning_man_nodes(conf, num_clients):
     # Approximate distances: A=400m, B=600m, C=800m, D=1000m, E=1200m, etc.
     router_configs = [
         {"clock": "7:30", "street": "B"},  # 7:30 & B
-        {"clock": "3:00", "street": "E"},  # 3:00 & E  
+        {"clock": "3:00", "street": "E"},  # 3:00 & E
         {"clock": "10:00", "street": "F"},  # 10:00 & F
     ]
-    
+
     # Convert clock positions to angles (12:00 = 90°, 3:00 = 0°, 6:00 = -90°, 9:00 = 180°)
     clock_to_angle = {
         "3:00": 0,
@@ -726,7 +976,7 @@ def place_burning_man_nodes(conf, num_clients):
         "10:00": 150,  # Between 9:00 and 12:00
         "12:00": 90
     }
-    
+
     # Street letter to radius mapping (approximate)
     street_to_radius = {
         "A": 400,
@@ -738,14 +988,14 @@ def place_burning_man_nodes(conf, num_clients):
         "G": 1600,
         "H": 1800,
     }
-    
+
     router_positions = []
     for config in router_configs:
         angle_deg = clock_to_angle[config["clock"]]
-        # Apply same offset as fence to keep routers in fence's coordinate system  
+        # Apply same offset as fence to keep routers in fence's coordinate system
         angle_deg -= 45  # Opposite direction to match fence coordinate system
         radius = street_to_radius[config["street"]]
-        
+
         # Convert to x,y coordinates
         angle_rad = np.radians(angle_deg)
         x = radius * np.cos(angle_rad)
@@ -773,89 +1023,63 @@ def place_burning_man_nodes(conf, num_clients):
 
     # Generate activity-based groups for realistic clustering
     activity_groups = generate_activity_groups(num_clients)
-    
+
     # Place client nodes based on activity groups with clustering
     for group in activity_groups:
         group_type = group["type"]
         group_size = group["size"]
-        
+
         # Find a suitable location for the group center
         group_center_placed = False
         attempts = 0
         while not group_center_placed and attempts < 100:
-            # Choose group center location based on group type
-            if group_type == "special_event":
-                # Special events: bias toward city center but can be anywhere
-                angle = random.uniform(0, 2 * np.pi)
-                # Weighted toward city: 70% in city, 30% outside
-                if random.random() < 0.7:
-                    radius = random.uniform(0, conf.CITY_RADIUS)
-                else:
-                    radius = random.uniform(conf.CITY_RADIUS, min(conf.CITY_RADIUS * 1.5, conf.XSIZE/2 - 200))
-            elif group_type == "large_camp":
-                # Large camps are "at home" - must be within city boundaries
-                angle = random.uniform(0, 2 * np.pi)
-                radius = random.uniform(conf.CITY_RADIUS * 0.2, conf.CITY_RADIUS * 0.9)  # Well within city
-            elif group_type == "solo":
-                # Solo wanderers: most in city, some exploring playa
-                angle = random.uniform(0, 2 * np.pi)
-                # 80% in city, 20% in outer areas
-                if random.random() < 0.8:
-                    radius = random.uniform(0, conf.CITY_RADIUS)
-                else:
-                    radius = random.uniform(conf.CITY_RADIUS, min(conf.CITY_RADIUS * 1.4, conf.XSIZE/2 - 100))
-            elif group_type == "small_group":
-                # Small groups: mostly in city, some venture out
-                angle = random.uniform(0, 2 * np.pi)
-                # 85% in city, 15% outside
-                if random.random() < 0.85:
-                    radius = random.uniform(0, conf.CITY_RADIUS)
-                else:
-                    radius = random.uniform(conf.CITY_RADIUS, min(conf.CITY_RADIUS * 1.3, conf.XSIZE/2 - 100))
-            else:  # medium_group
-                # Medium groups: prefer city but some go to playa
-                angle = random.uniform(0, 2 * np.pi)
-                # 75% in city, 25% outside
-                if random.random() < 0.75:
-                    radius = random.uniform(0, conf.CITY_RADIUS)
-                else:
-                    radius = random.uniform(conf.CITY_RADIUS, min(conf.CITY_RADIUS * 1.2, conf.XSIZE/2 - 100))
+            # Get group configuration
+            group_config = GROUP_CONFIG[group_type]
             
+            # Choose group center location based on group type
+            angle = random.uniform(0, 2 * np.pi)
+            
+            # Determine if placing in city or playa based on probability
+            if random.random() < group_config["city_probability"]:
+                # Place in city
+                city_min, city_max = group_config["city_radius_range"]
+                radius = random.uniform(conf.CITY_RADIUS * city_min, conf.CITY_RADIUS * city_max)
+            else:
+                # Place in playa (outside city)
+                playa_min, playa_max = group_config["playa_radius_range"]
+                min_radius = conf.CITY_RADIUS * playa_min
+                max_radius = min(conf.CITY_RADIUS * playa_max, conf.XSIZE/2 - 100)
+                radius = random.uniform(min_radius, max_radius)
+
             center_x = radius * np.cos(angle)
             center_y = radius * np.sin(angle)
-            
-            # Check minimum distance from other group centers
-            min_group_distance = 50 if group_type == "solo" else 100  # Smaller spacing for solo
+
+            # Get cluster radius and minimum distance from configuration
+            cluster_radius = group_config["cluster_radius"]
+            min_group_distance = group_config["min_group_distance"]
+
+            # Check if group would be at least 75% inside trash fence
+            not_too_close_to_fence = check_group_fence_coverage(center_x, center_y, cluster_radius, conf.TRASH_FENCE_RADIUS)
             too_close_to_existing = False
             for existing in nodes_config:
                 if calc_dist(center_x, existing['x'], center_y, existing['y']) < min_group_distance:
                     too_close_to_existing = True
                     break
-            
-            if not too_close_to_existing:
+
+            if not too_close_to_existing and not_too_close_to_fence:
                 group_center_placed = True
             else:
                 attempts += 1
-        
+
         if not group_center_placed:
             # Fallback: place at random location if can't find good spot
             center_x = random.uniform(-conf.XSIZE/2 + 200, conf.XSIZE/2 - 200)
             center_y = random.uniform(-conf.YSIZE/2 + 200, conf.YSIZE/2 - 200)
-        
-        # Determine clustering parameters based on group type
-        if group_type == "solo":
-            cluster_radius = 0  # No clustering for solo
-        elif group_type == "small_group":
-            cluster_radius = 20  # Tight clustering
-        elif group_type == "medium_group":
-            cluster_radius = 35  # Medium clustering
-        elif group_type == "large_camp":
-            cluster_radius = 60  # Larger spread for big camps
-        elif group_type == "special_event":
-            cluster_radius = 80  # Wide spread for special events
-        else:
-            cluster_radius = 30  # Default
-        
+
+        # Get group configuration for node placement
+        group_config = GROUP_CONFIG[group_type]
+        cluster_radius = group_config["cluster_radius"]
+
         # Place all nodes in this group
         for node_in_group in range(group_size):
             node_placed = False
@@ -868,34 +1092,34 @@ def place_burning_man_nodes(conf, num_clients):
                     # Gaussian clustering around center
                     x = center_x + random.gauss(0, cluster_radius)
                     y = center_y + random.gauss(0, cluster_radius)
-                
+
                 # Check minimum distance from other nodes
                 too_close = False
                 for other in nodes_config:
                     if calc_dist(x, other['x'], y, other['y']) < conf.MINDIST:
                         too_close = True
                         break
-                
+
                 if not too_close:
                     # Assign user behavior and other properties
                     user_behavior = assign_user_behavior(conf)
                     behavior_config = conf.USER_BEHAVIORS[user_behavior]
-                    
+
                     is_mobile = random.random() < behavior_config["movement_probability"]
-                    
+
                     initial_position_delay = 0
                     if is_mobile and behavior_config["position_period"] > 0:
                         initial_position_delay = random.uniform(0, behavior_config["position_period"])
-                    
+
                     # Determine ground clutter and radio shadows based on location
                     distance_from_center = np.sqrt(x**2 + y**2)
                     in_ground_clutter = distance_from_center <= conf.CITY_RADIUS
-                    
+
                     if in_ground_clutter:
                         in_radio_shadow = random.random() < conf.RADIO_SHADOW_PROBABILITY
                     else:
                         in_radio_shadow = random.random() < (conf.RADIO_SHADOW_PROBABILITY * 0.3)
-                    
+
                     nodes_config.append({
                         'x': x,
                         'y': y,
@@ -917,12 +1141,12 @@ def place_burning_man_nodes(conf, num_clients):
                         'activityGroup': group_type
                     })
                     node_placed = True
-                
+
                 node_attempts += 1
-            
+
             if not node_placed:
                 print(f"Warning: Could not place node {node_in_group+1} in {group_type} group")
-    
+
     # Enforce fence boundary: move any nodes outside trash fence to just inside
     nodes_config = enforce_fence_boundary(nodes_config, conf)
 
@@ -932,77 +1156,77 @@ def enforce_fence_boundary(nodes_config, conf):
     """Move any nodes outside the trash fence to just inside the boundary"""
     # Get the fence coordinates (reuse the calculation from plotting)
     import numpy as np
-    
+
     # Recreate fence coordinates (same as in plot_node_locations)
     gps_coords = [
         (40.78236, -119.23530),  # P1
-        (40.80570, -119.21965),  # P2  
+        (40.80570, -119.21965),  # P2
         (40.80163, -119.18533),  # P3
         (40.77568, -119.17971),  # P4
         (40.76373, -119.21050),  # P5
     ]
-    
+
     # Convert to meters and scale (same logic as plotting)
     center_lat = sum(coord[0] for coord in gps_coords) / len(gps_coords)
     center_lon = sum(coord[1] for coord in gps_coords) / len(gps_coords)
-    
+
     def gps_to_meters(lat, lon, center_lat, center_lon):
         lat_m = (lat - center_lat) * 111000
         lon_m = (lon - center_lon) * 111000 * np.cos(np.radians(center_lat))
         return lon_m, lat_m
-    
+
     fence_coords_m = [gps_to_meters(lat, lon, center_lat, center_lon) for lat, lon in gps_coords]
     current_coords = np.array(fence_coords_m)
     current_radius = np.max(np.sqrt(current_coords[:, 0]**2 + current_coords[:, 1]**2))
     scale_factor = conf.TRASH_FENCE_RADIUS / current_radius
-    
+
     fence_points = [(coord[0] * scale_factor, coord[1] * scale_factor) for coord in fence_coords_m]
-    
+
     # Apply fence rotation (same as plotting)
     distances = [np.sqrt(x**2 + y**2) for x, y in fence_points]
     apex_idx = np.argmax(distances)
     current_apex_angle = np.arctan2(fence_points[apex_idx][1], fence_points[apex_idx][0])
     target_apex_angle = np.radians(45)
     rotation_angle = target_apex_angle - current_apex_angle
-    
+
     # Rotate fence points
     rotated_fence = []
     for x, y in fence_points:
         rotated_x = x * np.cos(rotation_angle) - y * np.sin(rotation_angle)
         rotated_y = x * np.sin(rotation_angle) + y * np.cos(rotation_angle)
         rotated_fence.append((rotated_x, rotated_y))
-    
+
     # Check each node and move if outside fence
     nodes_moved = 0
     for node in nodes_config:
         if node['isRouter']:
             continue  # Don't move routers
-        
+
         node_x, node_y = node['x'], node['y']
-        
+
         # Simple point-in-polygon test and boundary enforcement
         if not point_in_polygon(node_x, node_y, rotated_fence):
             # Find nearest point on fence boundary
             nearest_x, nearest_y = find_nearest_fence_point(node_x, node_y, rotated_fence)
-            
+
             # Move slightly inside fence (2% closer to center)
             center_x, center_y = 0, 0  # Fence center
             inward_factor = 0.98
-            
+
             node['x'] = center_x + (nearest_x - center_x) * inward_factor
             node['y'] = center_y + (nearest_y - center_y) * inward_factor
             nodes_moved += 1
-    
+
     if nodes_moved > 0:
         print(f"Moved {nodes_moved} nodes inside trash fence boundary")
-    
+
     return nodes_config
 
 def point_in_polygon(x, y, polygon):
     """Check if point is inside polygon using ray casting"""
     n = len(polygon)
     inside = False
-    
+
     p1x, p1y = polygon[0]
     for i in range(1, n + 1):
         p2x, p2y = polygon[i % n]
@@ -1014,40 +1238,40 @@ def point_in_polygon(x, y, polygon):
                     if p1x == p2x or x <= xinters:
                         inside = not inside
         p1x, p1y = p2x, p2y
-    
+
     return inside
 
 def find_nearest_fence_point(x, y, polygon):
     """Find nearest point on polygon boundary"""
     min_dist = float('inf')
     nearest_x, nearest_y = x, y
-    
+
     n = len(polygon)
     for i in range(n):
         p1 = polygon[i]
         p2 = polygon[(i + 1) % n]
-        
+
         # Find nearest point on line segment
         nx, ny = nearest_point_on_segment(x, y, p1[0], p1[1], p2[0], p2[1])
         dist = np.sqrt((x - nx)**2 + (y - ny)**2)
-        
+
         if dist < min_dist:
             min_dist = dist
             nearest_x, nearest_y = nx, ny
-    
+
     return nearest_x, nearest_y
 
 def nearest_point_on_segment(px, py, x1, y1, x2, y2):
     """Find nearest point on line segment"""
     dx = x2 - x1
     dy = y2 - y1
-    
+
     if dx == 0 and dy == 0:
         return x1, y1
-    
+
     t = ((px - x1) * dx + (py - y1) * dy) / (dx * dx + dy * dy)
     t = max(0, min(1, t))  # Clamp to segment
-    
+
     return x1 + t * dx, y1 + t * dy
 
 def run_burning_man_simulation(num_clients=100, enable_plotting=False):
@@ -1061,8 +1285,8 @@ def run_burning_man_simulation(num_clients=100, enable_plotting=False):
     print(f"Clients: {num_clients}")
     print(f"Modem: {conf.MODEM_PRESET}")
     print(f"Simulation time: {conf.SIMTIME/1000}s")
-    print(f"Ground clutter loss: {conf.GROUND_CLUTTER_LOSS}±{conf.GROUND_CLUTTER_LOSS_VARIANCE}dB in city")
-    print(f"Radio shadow probability: {conf.RADIO_SHADOW_PROBABILITY*100:.0f}% with +{conf.RADIO_SHADOW_ADDITIONAL_LOSS}dB loss")
+    print(f"Path loss model: Light clutter {conf.LIGHT_CLUTTER_MEAN}±{conf.LIGHT_CLUTTER_STD:.0f}dB, Heavy clutter {conf.HEAVY_CLUTTER_MEAN}±{conf.HEAVY_CLUTTER_STD:.0f}dB (field calibrated)")
+    print(f"Radio shadow: {conf.RADIO_SHADOW_PROBABILITY*100:.0f}% probability with {conf.RADIO_SHADOW_MEAN}±{conf.RADIO_SHADOW_STD:.0f}dB loss")
 
     # Generate node placement
     node_configs = place_burning_man_nodes(conf, num_clients)
@@ -1072,12 +1296,12 @@ def run_burning_man_simulation(num_clients=100, enable_plotting=False):
     with open(os.path.join("out", "burningManConfig.yaml"), 'w') as file:
         yaml.dump(node_configs, file)
 
-    # Generate plot if requested
-    if enable_plotting:
-        plot_node_locations(node_configs, conf)
-
     # Precompute connectable nodes matrix (major performance optimization)
     connectivity_matrix, baseline_path_loss_matrix, rebroadcast_priority_matrix, connectivity_stats = precompute_connectable_nodes(conf, node_configs)
+
+    # Generate plot if requested
+    if enable_plotting:
+        plot_node_locations(node_configs, conf, connectivity_matrix, baseline_path_loss_matrix)
 
     # Store in config for packet creation
     conf.CONNECTIVITY_MATRIX = connectivity_matrix
@@ -1134,11 +1358,11 @@ def run_burning_man_simulation(num_clients=100, enable_plotting=False):
 
     # Run simulation with progress reporting
     print("\n====== START OF SIMULATION ======")
-    
+
     # Set up progress reporting every 10%
     progress_intervals = [conf.SIMTIME * i / 10 for i in range(1, 11)]
     current_progress_idx = 0
-    
+
     # Custom progress tracking function
     def check_progress():
         nonlocal current_progress_idx
@@ -1147,7 +1371,7 @@ def run_burning_man_simulation(num_clients=100, enable_plotting=False):
             elapsed_time = env.now / 1000  # Convert to seconds
             print(f"Progress: {progress_percent}% complete ({elapsed_time:.1f}s simulated)")
             current_progress_idx += 1
-    
+
     # Run simulation with periodic progress checks
     while env.now < conf.SIMTIME:
         # Run for small time increments to check progress
@@ -1250,7 +1474,7 @@ if __name__ == "__main__":
                        help='Number of client nodes (default: 100)')
     parser.add_argument('--plot', action='store_true',
                        help='Generate and display node placement plot')
-    
+
     args = parser.parse_args()
-    
+
     run_burning_man_simulation(args.num_clients, enable_plotting=args.plot)
