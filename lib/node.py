@@ -240,10 +240,12 @@ class MeshNode:
             if self.leastReceivedHopLimit[packet.seq] > packet.hopLimit:  # no ACK received yet, so may start transmitting
                 self.verboseprint('At time', round(self.env.now, 3), 'node', self.nodeid, 'started low level send', packet.seq, 'hopLimit', packet.hopLimit, 'original Tx', packet.origTxNodeId)
                 self.nrPacketsSent += 1
-                for rx_node in self.nodes:
-                    if packet.sensedByN[rx_node.nodeid]:
-                        if check_collision(self.conf, self.env, packet, rx_node.nodeid, self.packetsAtN) == 0:
-                            self.packetsAtN[rx_node.nodeid].append(packet)
+                # OPTIMIZATION: Only check nodes that can actually sense this packet
+                # Build list of sensing node IDs first to avoid O(n) iteration
+                sensing_node_ids = [node_id for node_id, can_sense in enumerate(packet.sensedByN) if can_sense]
+                for rx_node_id in sensing_node_ids:
+                    if check_collision(self.conf, self.env, packet, rx_node_id, self.packetsAtN) == 0:
+                        self.packetsAtN[rx_node_id].append(packet)
                 packet.startTime = self.env.now
                 packet.endTime = self.env.now + packet.timeOnAir
                 self.txAirUtilization += packet.timeOnAir
