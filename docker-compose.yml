@@ -1,0 +1,75 @@
+version: '3.8'
+
+services:
+  meshtasticator:
+    build: .
+    volumes:
+      - .:/app
+    working_dir: /app
+    environment:
+      - PYTHONPATH=/app
+    command: >
+      sh -c "
+        echo '=== Testing Configuration ===' &&
+        python3 -c \"
+        from lib.config import Config
+        c = Config()
+        print('✅ Config loaded successfully')
+        print(f'Current preset: {c.MODEM_PRESET}')
+        print(f'Preset details: {c.current_preset}')
+        print(f'SF: {c.current_preset[\\\"sf\\\"]}, BW: {c.current_preset[\\\"bw\\\"]}, CR: {c.current_preset[\\\"cr\\\"]}')
+        print(f'Sensitivity: {c.current_preset[\\\"sensitivity\\\"]} dBm')
+        \" &&
+        echo '=== Testing SHORT_TURBO preset ===' &&
+        python3 -c \"
+        from lib.config import Config
+        c = Config()
+        c.MODEM_PRESET = 'SHORT_TURBO'
+        print(f'SHORT_TURBO preset: {c.current_preset}')
+        print(f'Bandwidth: {c.current_preset[\\\"bw\\\"]/1000}kHz')
+        \" &&
+        echo '=== Syntax check on all modules ===' &&
+        python3 -m py_compile lib/config.py lib/packet.py lib/phy.py lib/mac.py lib/node.py lib/common.py lib/interactive.py &&
+        echo '✅ All syntax checks passed!'
+      "
+
+  # Service for running discrete event simulation test
+  test-discrete:
+    build: .
+    volumes:
+      - .:/app
+    working_dir: /app
+    environment:
+      - PYTHONPATH=/app
+    command: >
+      sh -c "
+        echo '=== Testing Discrete Event Simulator ===' &&
+        python3 -c \"
+        from lib.config import Config
+        from lib.packet import MeshPacket
+        from lib.node import MeshNode
+        import numpy as np
+        
+        # Create minimal test setup
+        c = Config()
+        c.NR_NODES = 2
+        c.MODEM_PRESET = 'SHORT_TURBO'
+        
+        # Test that preset access works
+        print(f'Using preset: {c.MODEM_PRESET}')
+        print(f'Preset config: {c.current_preset}')
+        print('✅ Discrete event simulator imports successful!')
+        \"
+      "
+
+  # Service for interactive mode (if needed)
+  interactive:
+    build: .
+    volumes:
+      - .:/app
+    working_dir: /app
+    environment:
+      - PYTHONPATH=/app
+    command: /bin/bash
+    stdin_open: true
+    tty: true

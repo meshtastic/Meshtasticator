@@ -176,7 +176,7 @@ def find_random_position(conf, nodes):
 				pathLoss = phy.estimate_path_loss(conf, dist, conf.FREQ)
 				rssi = conf.PTX + 2*conf.GL - pathLoss
 				# At least one node should be able to reach it
-				if rssi >= conf.SENSMODEM[conf.MODEM]:
+				if rssi >= conf.current_preset["sensitivity"]:
 					foundMax = True
 			if foundMin and foundMax:
 				x = posx
@@ -385,8 +385,8 @@ def setup_asymmetric_links(conf, nodes):
 				rssiAB = conf.PTX + nodeA.antennaGain + nodeB.antennaGain - pathLossAB - offsetAB
 				rssiBA = conf.PTX + nodeB.antennaGain + nodeA.antennaGain - pathLossAB - offsetBA
 
-				canAhearB = (rssiAB >= conf.SENSMODEM[conf.MODEM])
-				canBhearA = (rssiBA >= conf.SENSMODEM[conf.MODEM])
+				canAhearB = (rssiAB >= conf.current_preset["sensitivity"])
+				canBhearA = (rssiBA >= conf.current_preset["sensitivity"])
 
 				totalPairs += 1
 				if canAhearB and canBhearA:
