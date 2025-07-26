@@ -844,7 +844,7 @@ class BurningManConfig(Config):
     def __init__(self):
         super().__init__()
 
-        # Black Rock City is roughly 2.5 miles (4km) in diameter
+        # Black Rock City is roughly 3.4km in diameter (1.7km radius)
         # Deep playa extends much farther
         self.XSIZE = 8000  # 8km x 8km area
         self.YSIZE = 8000
@@ -861,9 +861,9 @@ class BurningManConfig(Config):
         self.CLIENT_HEIGHT = 1.5  # Person height
 
         # Ground clutter parameters
-        self.CENTER_PLAZA_RADIUS = 1700  # 1.7km radius for center open space (Man area)
-        self.CITY_RADIUS = 3400  # 3.4km radius for main city area
-        self.TRASH_FENCE_RADIUS = 5175  # 5.175km radius trash fence (event perimeter)
+        self.CENTER_PLAZA_RADIUS = 850   # 0.85km radius for center open space (Man area)
+        self.CITY_RADIUS = 1700  # 1.7km radius for main city area (3.4km diameter)
+        self.TRASH_FENCE_RADIUS = 2587  # 2.587km radius trash fence (5.175km diameter event perimeter)
 
         # Realistic path loss parameters using normal distributions
         # Light clutter: router-to-client or open areas with some obstacles
@@ -977,17 +977,17 @@ def place_burning_man_nodes(conf, num_clients):
         "12:00": 90
     }
 
-    # Street letter to radius mapping (approximate)
-    street_to_radius = {
-        "A": 400,
-        "B": 600,
-        "C": 800,
-        "D": 1000,
-        "E": 1200,
-        "F": 1400,
-        "G": 1600,
-        "H": 1800,
-    }
+    # Street letter to radius mapping based on city dimensions
+    # Esplanade borders the center plaza, then A-K span to city edge
+    streets = ['ESPLANADE', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K']
+    num_streets = len(streets)
+    inner_radius = conf.CENTER_PLAZA_RADIUS  # Esplanade at center plaza edge
+    outer_radius = conf.CITY_RADIUS * 0.9    # K street near city edge
+    
+    street_spacing = (outer_radius - inner_radius) / (num_streets - 1)
+    street_to_radius = {}
+    for i, street in enumerate(streets):
+        street_to_radius[street] = inner_radius + (i * street_spacing)
 
     router_positions = []
     for config in router_configs:
@@ -1036,37 +1036,41 @@ def place_burning_man_nodes(conf, num_clients):
             # Get group configuration
             group_config = GROUP_CONFIG[group_type]
             
-            # Choose group center location based on group type
-            angle = random.uniform(0, 2 * np.pi)
-            
-            # Determine if placing in city or playa based on probability
-            if random.random() < group_config["city_probability"]:
-                # Place in city
-                city_min, city_max = group_config["city_radius_range"]
-                radius = random.uniform(conf.CITY_RADIUS * city_min, conf.CITY_RADIUS * city_max)
-            else:
-                # Place in playa (outside city)
-                playa_min, playa_max = group_config["playa_radius_range"]
-                min_radius = conf.CITY_RADIUS * playa_min
-                max_radius = min(conf.CITY_RADIUS * playa_max, conf.XSIZE/2 - 100)
-                radius = random.uniform(min_radius, max_radius)
-
-            center_x = radius * np.cos(angle)
-            center_y = radius * np.sin(angle)
+            # Randomly place group center anywhere on the square map for even distribution
+            center_x = random.uniform(-conf.XSIZE/2 + 200, conf.XSIZE/2 - 200)
+            center_y = random.uniform(-conf.YSIZE/2 + 200, conf.YSIZE/2 - 200)
 
             # Get cluster radius and minimum distance from configuration
             cluster_radius = group_config["cluster_radius"]
             min_group_distance = group_config["min_group_distance"]
 
+            # Check if placement meets group's location preference
+            distance_from_center = np.sqrt(center_x**2 + center_y**2)
+            is_in_city = distance_from_center <= conf.CITY_RADIUS
+            
+            # Validate against group's city/playa zone preference
+            zone_preference_met = True
+            if random.random() < group_config["city_probability"]:
+                # This group wants to be in city
+                zone_preference_met = is_in_city
+            else:
+                # This group wants to be in playa
+                zone_preference_met = not is_in_city
+
             # Check if group would be at least 75% inside trash fence
-            not_too_close_to_fence = check_group_fence_coverage(center_x, center_y, cluster_radius, conf.TRASH_FENCE_RADIUS)
+            fence_valid = check_group_fence_coverage(center_x, center_y, cluster_radius, conf.TRASH_FENCE_RADIUS)
+            
+            # Check distance from existing groups
             too_close_to_existing = False
             for existing in nodes_config:
                 if calc_dist(center_x, existing['x'], center_y, existing['y']) < min_group_distance:
                     too_close_to_existing = True
                     break
 
-            if not too_close_to_existing and not_too_close_to_fence:
+            # Overall placement validation
+            placement_acceptable = zone_preference_met and fence_valid and not too_close_to_existing
+
+            if placement_acceptable:
                 group_center_placed = True
             else:
                 attempts += 1
