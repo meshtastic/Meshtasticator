@@ -176,7 +176,7 @@ def find_random_position(conf, nodes):
 				pathLoss = phy.estimate_path_loss(conf, dist, conf.FREQ)
 				rssi = conf.PTX + 2*conf.GL - pathLoss
 				# At least one node should be able to reach it
-				if rssi >= conf.SENSMODEM[conf.MODEM]:
+				if rssi >= conf.current_preset["sensitivity"]:
 					foundMax = True
 			if foundMin and foundMax:
 				x = posx
@@ -357,36 +357,35 @@ class Graph:
 
 
 def setup_asymmetric_links(conf, nodes):
-	asymLinkRng = random.Random(conf.SEED)
+	"""
+	Analyze connectivity with baseline path loss (no longer pre-generates static LINK_OFFSET).
+	LINK_OFFSET is now applied dynamically per packet transmission for realistic fading effects.
+	"""
 	totalPairs = 0
 	symmetricLinks = 0
 	asymmetricLinks = 0
 	noLinks = 0
-	for i in range(conf.NR_NODES):
-		for b in range(conf.NR_NODES):
-			if i != b:
-				if conf.MODEL_ASYMMETRIC_LINKS:
-					conf.LINK_OFFSET[(i, b)] = asymLinkRng.gauss(conf.MODEL_ASYMMETRIC_LINKS_MEAN, conf.MODEL_ASYMMETRIC_LINKS_STDDEV)
-				else:
-					conf.LINK_OFFSET[(i, b)] = 0
+	
+	# Clear any existing static LINK_OFFSET since we're now using dynamic per-packet offsets
+	conf.LINK_OFFSET = {}
 
 	for a in range(conf.NR_NODES):
 		for b in range(conf.NR_NODES):
 			if a != b:
-				# Calculate constant RSSI in both directions
+				# Calculate baseline RSSI in both directions (no random offset)
 				nodeA = nodes[a]
 				nodeB = nodes[b]
 				distAB = calc_dist(nodeA.x, nodeB.x, nodeA.y, nodeB.y, nodeA.z, nodeB.z)
 				pathLossAB = phy.estimate_path_loss(conf, distAB, conf.FREQ, nodeA.z, nodeB.z)
 
-				offsetAB = conf.LINK_OFFSET[(a, b)]
-				offsetBA = conf.LINK_OFFSET[(b, a)]
+				# Use baseline path loss (no random offset for analysis)
+				rssiAB = conf.PTX + nodeA.antennaGain + nodeB.antennaGain - pathLossAB
+				rssiBA = conf.PTX + nodeB.antennaGain + nodeA.antennaGain - pathLossAB
 
-				rssiAB = conf.PTX + nodeA.antennaGain + nodeB.antennaGain - pathLossAB - offsetAB
-				rssiBA = conf.PTX + nodeB.antennaGain + nodeA.antennaGain - pathLossAB - offsetBA
-
-				canAhearB = (rssiAB >= conf.SENSMODEM[conf.MODEM])
-				canBhearA = (rssiBA >= conf.SENSMODEM[conf.MODEM])
+				# Add some margin for dynamic variations (±5dB) when checking connectivity
+				margin = 5  # Account for dynamic fading range
+				canAhearB = (rssiAB >= conf.current_preset["sensitivity"] - margin)
+				canBhearA = (rssiBA >= conf.current_preset["sensitivity"] - margin)
 
 				totalPairs += 1
 				if canAhearB and canBhearA:
