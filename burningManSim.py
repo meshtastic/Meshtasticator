@@ -125,18 +125,8 @@ def calculate_burning_man_path_loss(conf, txNode, rxNode, dist, freq):
     tx_in_clutter = hasattr(txNode, 'nodeConfig') and txNode.nodeConfig.get('inGroundClutter', False)
     rx_in_clutter = hasattr(rxNode, 'nodeConfig') and rxNode.nodeConfig.get('inGroundClutter', False)
     
-    # Select appropriate path loss model based on environment
-    # Save original model
-    original_model = conf.MODEL
-    
-    # Use 3GPP model for all scenarios for consistency
-    conf.MODEL = 5  # 3GPP Suburban Macro
-    
-    # Calculate base path loss with appropriate model
-    base_path_loss = phy.estimate_path_loss(conf, dist, freq, txNode.z, rxNode.z)
-    
-    # Restore original model
-    conf.MODEL = original_model
+    # Calculate base path loss using 3GPP Suburban Macro model (Model 5)
+    base_path_loss = phy.estimate_path_loss(conf, dist, freq, txNode.z, rxNode.z, model=5)
 
     # Apply ground clutter loss ONCE per link based on environment
     additional_loss = 0
@@ -362,7 +352,6 @@ def precompute_connectable_nodes(conf, node_configs):
 
     connectivity_matrix = {}
     baseline_path_loss_matrix = {}
-    rebroadcast_priority_matrix = {}  # New: SNR-based rebroadcast priorities
     connectivity_stats = {
         'total_possible_links': 0,
         'connectable_links': 0,
@@ -395,52 +384,35 @@ def precompute_connectable_nodes(conf, node_configs):
                 tx_config['z'], rx_config['z']
             )
 
-            # Calculate BEST-CASE path loss (minimum possible loss)
-            base_path_loss = phy.estimate_path_loss(conf, dist_3d, conf.FREQ, tx_config['z'], rx_config['z'])
+            # Calculate REALISTIC path loss using full Burning Man model with randomized clutter
+            # Create mock node objects for the path loss calculation
+            class MockNode:
+                def __init__(self, config):
+                    self.nodeConfig = config
+                    self.z = config['z']
+                    self.isRouter = config['isRouter']
+            
+            tx_mock_node = MockNode(tx_config)
+            rx_mock_node = MockNode(rx_config)
+            
+            # Calculate full realistic path loss (includes randomized clutter effects)
+            realistic_path_loss = calculate_burning_man_path_loss(conf, tx_mock_node, rx_mock_node, dist_3d, conf.FREQ)
 
-            # Add only the minimum ground clutter loss (best case scenario)
-            min_additional_loss = 0
-            tx_in_clutter = tx_config.get('inGroundClutter', False)
-            rx_in_clutter = rx_config.get('inGroundClutter', False)
-            tx_environmental_attenuation = tx_config.get('environmentalAttenuation', 0)
-            rx_environmental_attenuation = rx_config.get('environmentalAttenuation', 0)
+            # Calculate RSSI with beneficial dynamic variation for connectivity determination
+            # Dynamic offset can be ±5dB, so consider +5dB benefit for connectivity determination
+            dynamic_variation_benefit = 5  # Max beneficial offset from random.gauss(0, 5)
+            rssi_with_benefit = (tx_config['ptx'] + tx_config['antennaGain'] + 
+                                rx_config['antennaGain'] - realistic_path_loss + 
+                                dynamic_variation_benefit)
 
-            # Apply minimum clutter loss based on actual RF path (best case scenario)
-            if tx_in_clutter and rx_in_clutter:
-                # Both in city - use heavy clutter minimum
-                min_additional_loss += max(5, conf.HEAVY_CLUTTER_MEAN - 2 * conf.HEAVY_CLUTTER_STD)
-            elif (tx_in_clutter and not rx_in_clutter) or (not tx_in_clutter and rx_in_clutter):
-                # Mixed: one in city, one in open playa
-                if tx_config['isRouter'] or rx_config['isRouter']:
-                    # Elevated router can mostly clear city clutter to reach open playa
-                    min_additional_loss += max(1, (conf.LIGHT_CLUTTER_MEAN / 3) - conf.LIGHT_CLUTTER_STD)
-                else:
-                    # Client-to-client mixed case - light clutter minimum
-                    min_additional_loss += max(3, conf.LIGHT_CLUTTER_MEAN - 2 * conf.LIGHT_CLUTTER_STD)
-            # else: both in open playa - no additional clutter loss
-
-            # Add environmental attenuation (use worst case between nodes)
-            environmental_loss = max(tx_environmental_attenuation, rx_environmental_attenuation)
-            min_additional_loss += environmental_loss
-
-            best_case_path_loss = base_path_loss + min_additional_loss
-
-            # Calculate best-case RSSI
-            best_case_rssi = tx_config['ptx'] + tx_config['antennaGain'] + rx_config['antennaGain'] - best_case_path_loss
-
-            # Check if nodes could plausibly communicate
-            if best_case_rssi >= conf.current_preset["sensitivity"]:
+            # Check if nodes could plausibly communicate (including potential dynamic benefit)
+            if rssi_with_benefit >= conf.current_preset["sensitivity"]:
                 connectable_nodes.append(rx_idx)
-                baseline_path_loss[rx_idx] = best_case_path_loss
+                # Store the realistic path loss (with randomized clutter) as the baseline
+                baseline_path_loss[rx_idx] = realistic_path_loss
                 total_connectable += 1
                 connectivity_stats['distance_stats'].append(dist_3d)
 
-                # Calculate rebroadcast priority score
-                # Higher score = more likely to be the one that actually rebroadcasts
-                priority_score = calculate_rebroadcast_priority(
-                    best_case_rssi, rx_config, dist_3d, conf
-                )
-                rebroadcast_candidates.append((rx_idx, priority_score))
 
                 # Count router vs client links
                 if tx_config['isRouter'] or rx_config['isRouter']:
@@ -448,18 +420,9 @@ def precompute_connectable_nodes(conf, node_configs):
                 else:
                     connectivity_stats['client_links'] += 1
 
-        # Sort rebroadcast candidates by priority (highest first)
-        rebroadcast_candidates.sort(key=lambda x: x[1], reverse=True)
-
-        # Store top N candidates most likely to actually rebroadcast
-        # This is where the major optimization happens - instead of checking all connectable
-        # nodes, we only check the top candidates who will win the contention window
-        # AGGRESSIVE: Only keep top 5 to maximize performance
-        top_rebroadcasters = rebroadcast_candidates[:min(5, len(rebroadcast_candidates))]
 
         connectivity_matrix[tx_idx] = connectable_nodes
         baseline_path_loss_matrix[tx_idx] = baseline_path_loss
-        rebroadcast_priority_matrix[tx_idx] = [idx for idx, score in top_rebroadcasters]
 
         # Update stats
         num_connectable = len(connectable_nodes)
@@ -485,13 +448,7 @@ def precompute_connectable_nodes(conf, node_configs):
     if total_connectable > 0:
         print(f"   Performance improvement: ~{total_pairs/total_connectable:.1f}x reduction in calculations")
 
-        # Calculate rebroadcast optimization stats
-        total_priority_nodes = sum(len(rebroadcast_priority_matrix[tx_idx]) for tx_idx in rebroadcast_priority_matrix)
-        avg_priority_nodes = total_priority_nodes / len(node_configs) if node_configs else 0
-        print(f"   Rebroadcast optimization: avg {avg_priority_nodes:.1f} priority nodes vs {connectivity_stats['avg_connectable']:.1f} total connectable")
-        if connectivity_stats['avg_connectable'] > 0:
-            rebroadcast_reduction = connectivity_stats['avg_connectable'] / avg_priority_nodes if avg_priority_nodes > 0 else 1
-            print(f"   Additional {rebroadcast_reduction:.1f}x reduction from SNR-based rebroadcast prioritization")
+        # Removed rebroadcast optimization stats (using all connectable nodes now)
     else:
         print(f"   WARNING: No connectable node pairs found! Check path loss parameters.")
 
@@ -653,7 +610,7 @@ def precompute_connectable_nodes(conf, node_configs):
         if router_connectivity_pct < 100:
             print(f"   ⚠️  Warning: Not all routers can communicate directly!")
 
-    return connectivity_matrix, baseline_path_loss_matrix, rebroadcast_priority_matrix, connectivity_stats
+    return connectivity_matrix, baseline_path_loss_matrix, connectivity_stats
 
 class OptimizedMeshPacket(MeshPacket):
     """
@@ -688,23 +645,8 @@ class OptimizedMeshPacket(MeshPacket):
 
         # Use precomputed connectivity matrix for optimization
         if hasattr(conf, 'CONNECTIVITY_MATRIX') and txNodeId in conf.CONNECTIVITY_MATRIX:
-            # For performance, prioritize nodes most likely to actually rebroadcast
-            # This is the key optimization: instead of processing ALL connectable nodes,
-            # we focus on the ones that will actually matter for routing
-            priority_nodes = conf.REBROADCAST_PRIORITY_MATRIX.get(txNodeId, [])
-
-            # AGGRESSIVE OPTIMIZATION: Only process top N most likely rebroadcasters
-            # This sacrifices some simulation fidelity for major performance gains
-            max_candidates = getattr(conf, 'MAX_REBROADCAST_CANDIDATES', 3)
-            nodes_to_process = priority_nodes[:max_candidates]
-
-            # Always include routers if not already included (they're critical for routing)
-            all_connectable = conf.CONNECTIVITY_MATRIX[txNodeId]
-            for rx_nodeid in all_connectable:
-                if (nodes[rx_nodeid].isRouter and
-                    rx_nodeid not in nodes_to_process and
-                    len(nodes_to_process) < 4):  # Cap at 4 total nodes
-                    nodes_to_process.append(rx_nodeid)
+            # Process all connectable nodes (no artificial prioritization)
+            nodes_to_process = conf.CONNECTIVITY_MATRIX[txNodeId]
 
             for rx_nodeid in nodes_to_process:
                 # Get baseline path loss from precomputation
@@ -757,16 +699,12 @@ class OptimizedMeshPacket(MeshPacket):
     def _calculate_dynamic_path_loss(self, baseline_path_loss, tx_nodeid, rx_nodeid, nodes):
         """
         Apply dynamic factors to baseline path loss to get actual path loss.
-        OPTIMIZED: Minimize dynamic calculations for performance.
+        OPTIMIZED: Dynamic variations are now applied per-packet in packet.py
         """
-        # OPTIMIZATION: Skip most dynamic factors for performance
-        # The baseline already includes ground clutter, so asymmetric links
-        # are the main remaining dynamic factor
-
-        if (self.conf.MODEL_ASYMMETRIC_LINKS and
-            (tx_nodeid, rx_nodeid) in self.conf.LINK_OFFSET):
-            return baseline_path_loss + self.conf.LINK_OFFSET[(tx_nodeid, rx_nodeid)]
-
+        # OPTIMIZATION: Dynamic LINK_OFFSET variations are now applied per-packet
+        # in lib/packet.py for more realistic fading simulation.
+        # The baseline already includes all deterministic factors.
+        
         return baseline_path_loss
 
 class OptimizedMeshNode(MeshNode):
@@ -1590,7 +1528,7 @@ def run_burning_man_simulation(num_clients=100, enable_plotting=False, hop_limit
         conf.BROADCAST_CSV_WRITER = broadcast_writer
 
     # Precompute connectable nodes matrix (major performance optimization)
-    connectivity_matrix, baseline_path_loss_matrix, rebroadcast_priority_matrix, connectivity_stats = precompute_connectable_nodes(conf, node_configs)
+    connectivity_matrix, baseline_path_loss_matrix, connectivity_stats = precompute_connectable_nodes(conf, node_configs)
 
     # Generate plot if requested
     if enable_plotting:
@@ -1599,7 +1537,6 @@ def run_burning_man_simulation(num_clients=100, enable_plotting=False, hop_limit
     # Store in config for packet creation
     conf.CONNECTIVITY_MATRIX = connectivity_matrix
     conf.BASELINE_PATH_LOSS_MATRIX = baseline_path_loss_matrix
-    conf.REBROADCAST_PRIORITY_MATRIX = rebroadcast_priority_matrix
 
     # Setup simulation
     random.seed(conf.SEED)
@@ -1863,7 +1800,7 @@ def run_burning_man_simulation(num_clients=100, enable_plotting=False, hop_limit
             },
             'connectivity': {
                 'connectable_nodes': len(connectivity_matrix.get(i, [])),
-                'priority_nodes': len(rebroadcast_priority_matrix.get(i, []))
+                'priority_nodes': len(connectivity_matrix.get(i, []))  # All connectable nodes are potential rebroadcasters
             }
         }
 

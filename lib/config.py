@@ -152,7 +152,7 @@ class Config:
         # Adds a random offset to the link quality of each link
         self.MODEL_ASYMMETRIC_LINKS = True
         self.MODEL_ASYMMETRIC_LINKS_MEAN = 0
-        self.MODEL_ASYMMETRIC_LINKS_STDDEV = 3
+        self.MODEL_ASYMMETRIC_LINKS_STDDEV = 5
         # Stores the offset for each link
         # Populated when the simulator first starts
         self.LINK_OFFSET = {}
