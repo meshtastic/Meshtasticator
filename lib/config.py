@@ -176,6 +176,8 @@ class Config:
         self.SMART_POSITION_DISTANCE_THRESHOLD = 100
         # 30s minimum time in firmware
         self.SMART_POSITION_DISTANCE_MIN_TIME = 30 * self.ONE_SECOND_INTERVAL
+        # 5 minute maximum location update interval
+        self.GPS_MAX_UPDATE_INTERVAL = 5 * self.ONE_MIN_INTERVAL
         # This mirrors the firmware's approach to monitoring channel utilization
         self.CHANNEL_UTILIZATION_PERIODS = 6
 

@@ -54,8 +54,10 @@ class MeshNode:
         self.airUtilization = 0
         self.droppedByDelay = 0
         self.rebroadcastPackets = 0
+        self.packetsHeard = 0  # Track total packets received for rebroadcast analysis
         self.isMoving = False
         self.gpsEnabled = False
+        self.nextGpsUpdateTime = 0  # Will be set if GPS is enabled
         # Track last broadcast position/time
         self.lastBroadcastX = self.x
         self.lastBroadcastY = self.y
@@ -76,6 +78,8 @@ class MeshNode:
             self.isMoving = True
             if self.moveRng.random() <= self.conf.APPROX_RATIO_OF_NODES_MOVING_W_GPS_ENABLED:
                 self.gpsEnabled = True
+                # Random start time for GPS updates (0 to 5 minutes)
+                self.nextGpsUpdateTime = self.moveRng.randint(0, self.conf.GPS_MAX_UPDATE_INTERVAL)
 
             # Randomly assign a movement speed
             possibleSpeeds = [
@@ -137,18 +141,14 @@ class MeshNode:
             self.x = new_x
             self.y = new_y
 
-            if self.gpsEnabled:
-                distanceTraveled = calc_dist(self.lastBroadcastX, self.x, self.lastBroadcastY, self.y)
-                timeElapsed = env.now - self.lastBroadcastTime
-                if distanceTraveled >= self.conf.SMART_POSITION_DISTANCE_THRESHOLD and timeElapsed >= self.conf.SMART_POSITION_DISTANCE_MIN_TIME:
-                    currentUtil = self.channel_utilization_percent()
-                    if currentUtil < 25.0:
-                        self.send_packet(NODENUM_BROADCAST, "POSITION")
-                        self.lastBroadcastX = self.x
-                        self.lastBroadcastY = self.y
-                        self.lastBroadcastTime = env.now
-                    else:
-                        self.verboseprint(f"At time {env.now} node {self.nodeid} SKIPS POSITION broadcast (util={currentUtil:.1f}% > 25%)")
+            if self.gpsEnabled and env.now >= self.nextGpsUpdateTime:
+                self.send_packet(NODENUM_BROADCAST, "POSITION")
+                self.lastBroadcastX = self.x
+                self.lastBroadcastY = self.y
+                self.lastBroadcastTime = env.now
+                # Schedule next GPS update in exactly 5 minutes
+                self.nextGpsUpdateTime = env.now + self.conf.GPS_MAX_UPDATE_INTERVAL
+                self.verboseprint(f"At time {env.now} node {self.nodeid} sends POSITION broadcast, next at {self.nextGpsUpdateTime}")
 
             # Wait until next move
             nextMove = self.get_next_time(self.conf.ONE_MIN_INTERVAL)
@@ -240,6 +240,27 @@ class MeshNode:
             if self.leastReceivedHopLimit[packet.seq] > packet.hopLimit:  # no ACK received yet, so may start transmitting
                 self.verboseprint('At time', round(self.env.now, 3), 'node', self.nodeid, 'started low level send', packet.seq, 'hopLimit', packet.hopLimit, 'original Tx', packet.origTxNodeId)
                 self.nrPacketsSent += 1
+                
+                # Log broadcast to CSV
+                if hasattr(self.conf, 'BROADCAST_CSV_WRITER'):
+                    broadcast_type = 'original' if packet.origTxNodeId == self.nodeid else 'rebroadcast'
+                    node_type = 'router' if self.isRouter else 'client'
+                    self.conf.BROADCAST_CSV_WRITER.writerow([
+                        round(self.env.now, 3),  # timestamp
+                        self.nodeid,             # node_id
+                        node_type,               # node_type
+                        broadcast_type,          # broadcast_type
+                        packet.seq,              # seq
+                        packet.destId,           # dest_id
+                        packet.origTxNodeId,     # orig_tx_node_id
+                        packet.hopLimit,         # hop_limit
+                        packet.packetLen,        # packet_length
+                        self.x,                  # x
+                        self.y,                  # y
+                        self.z,                  # z
+                        self.nodeConfig.get('environmentalAttenuation', 0),  # environmental_attenuation
+                        self.nodeConfig.get('inGroundClutter', False)        # in_ground_clutter
+                    ])
                 # OPTIMIZATION: Only check nodes that can actually sense this packet
                 # Build list of sensing node IDs first to avoid O(n) iteration
                 sensing_node_ids = [node_id for node_id, can_sense in enumerate(packet.sensedByN) if can_sense]
@@ -304,10 +325,14 @@ class MeshNode:
                 realAckReceived = False
                 for sentPacket in self.packets:
                     # check if ACK for message you currently have in queue
+                    # Routers ignore implicit ACKs from other routers (matching firmware behavior)
                     if sentPacket.txNodeId == self.nodeid and sentPacket.seq == p.seq:
-                        self.verboseprint('At time', round(self.env.now, 3), 'node', self.nodeid, 'received implicit ACK for message in queue.')
-                        ackReceived = True
-                        sentPacket.ackReceived = True
+                        if not self.isRouter:  # Only non-routers respect implicit ACKs
+                            self.verboseprint('At time', round(self.env.now, 3), 'node', self.nodeid, 'received implicit ACK for message in queue.')
+                            ackReceived = True
+                            sentPacket.ackReceived = True
+                        else:
+                            self.verboseprint('At time', round(self.env.now, 3), 'router', self.nodeid, 'ignores implicit ACK for message in queue.')
                     # check if real ACK for message sent
                     if sentPacket.origTxNodeId == self.nodeid and p.isAck and sentPacket.seq == p.requestId:
                         self.verboseprint('At time', round(self.env.now, 3), 'node', self.nodeid, 'received real ACK.')
@@ -324,11 +349,16 @@ class MeshNode:
                     self.packets.append(pAck)
                     self.env.process(self.transmit(pAck))
                 # Rebroadcasting Logic for received message. This is a broadcast or a DM not meant for us.
-                elif not p.destId == self.nodeid and not ackReceived and not realAckReceived and p.hopLimit > 0:
+                # Routers ignore implicit ACKs from other routers (matching firmware FloodingRouter::perhapsCancelDupe)
+                elif not p.destId == self.nodeid and p.hopLimit > 0 and (
+                    self.isRouter or (not ackReceived and not realAckReceived)
+                ):
+                    self.packetsHeard += 1  # Count packets that could potentially be rebroadcast
                     # FloodingRouter: rebroadcast received packet
                     if self.conf.SELECTED_ROUTER_TYPE == self.conf.ROUTER_TYPE.MANAGED_FLOOD:
                         if not self.isClientMute:
                             self.verboseprint('At time', round(self.env.now, 3), 'node', self.nodeid, 'rebroadcasts received packet', p.seq)
+                            self.rebroadcastPackets += 1  # Track rebroadcast count
                             pNew = MeshPacket(self.conf, self.nodes, p.origTxNodeId, p.destId, self.nodeid, p.packetLen, p.seq, p.genTime, p.wantAck, False, None, self.env.now, self.verboseprint)
                             pNew.hopLimit = p.hopLimit - 1
                             self.packets.append(pNew)
