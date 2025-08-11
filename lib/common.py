@@ -48,7 +48,7 @@ def gen_scenario(conf):
 	role_ax.set_visible(False)
 	# HopLimit slider
 	slider_ax = fig.add_axes([0.86, 0.34, 0.1, 0.22])
-	slider = Slider(slider_ax, 'HopLimit', 0, 7, conf.hopLimit, valstep=1, orientation="vertical")
+	slider = Slider(slider_ax, 'HopLimit', 0, 7, valinit=conf.hopLimit, valstep=1, orientation="vertical")
 	slider_ax.set_visible(False)
 	# Height textbox
 	height_ax = fig.add_axes([0.89, 0.22, 0.05, 0.04])
