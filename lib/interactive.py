@@ -747,11 +747,11 @@ class CommandProcessor(cmd.Cmd):
         self.sim.send_broadcast(txt, fromNode)
 
     def do_dm(self, line):
-        """DM <fromNode> <toNode> <txt>
+        """dm <fromNode> <toNode> <txt>
         Send a Direct Message from node \x1B[3mfromNode\x1B[0m to node \x1B[3mtoNode\x1B[0m with text \x1B[3mtxt\x1B[0m."""
         arguments = line.split()
         if len(arguments) < 3:
-            print('Please use the syntax: "DM <fromNode> <toNode> <txt>"')
+            print('Please use the syntax: "dm <fromNode> <toNode> <txt>"')
             return False
         fromNode = int(arguments[0])
         if self.sim.get_node_iface_by_id(fromNode) is None:
