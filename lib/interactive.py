@@ -561,11 +561,11 @@ class InteractiveSim:
     def show_nodes(self, id=None):
         if id is not None:
             print('NodeDB as seen by node', id)
-            self.nodes[id].iface.show_nodes()
+            self.nodes[id].iface.showNodes()
         else:
             for n in self.nodes:
                 print('NodeDB as seen by node', n.nodeid)
-                n.iface.show_nodes()
+                n.iface.showNodes()
 
     def send_broadcast(self, text, fromNode):
         self.get_node_iface_by_id(fromNode).sendText(text)
