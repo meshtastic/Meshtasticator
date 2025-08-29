@@ -24,8 +24,8 @@ HW_ID_OFFSET = 16
 TCP_PORT_OFFSET = 4403
 TCP_PORT_CLIENT = 4402
 MAX_TO_FROM_RADIO_SIZE = 512
-DEVICE_SIM_DOCKER_IMAGE = "meshtastic/device-simulator"
-MESHTASTICD_PATH_DOCKER = "./meshtasticd"
+DEVICE_SIM_DOCKER_IMAGE = "meshtastic/meshtasticd"
+MESHTASTICD_PATH_DOCKER = "meshtasticd"
 
 
 class InteractiveNode:
@@ -151,8 +151,7 @@ class InteractiveGraph(Graph):
         self.routes = False
 
     def init_routes(self, sim):
-        if not sim.docker:
-            sim.close_nodes()
+        sim.close_nodes()
         if not self.routes:
             self.routes = True
             self.sim = sim
@@ -173,8 +172,6 @@ class InteractiveGraph(Graph):
             self.fig.canvas.draw_idle()
             self.fig.canvas.get_tk_widget().focus_set()
             plt.show()
-        elif sim.docker:
-            sim.close_nodes()
 
     def clear_route(self):
         for arr in self.arrows.copy():
@@ -390,19 +387,19 @@ class InteractiveSim:
             if sys.platform == "darwin":
                 self.container = dockerClient.containers.run(
                     DEVICE_SIM_DOCKER_IMAGE,
-                    f"{startNode} -d /home/node{n0.nodeid} -h {n0.hwId} -p {n0.TCPPort}",
+                    f"{startNode} -s -d /home/node{n0.nodeid} -h {n0.hwId} -p {n0.TCPPort}",
                     ports=dict(zip((f'{n.TCPPort}/tcp' for n in self.nodes), (n.TCPPort for n in self.nodes))),
                     name="Meshtastic", detach=True, auto_remove=True, user="root"
                 )
                 for n in self.nodes[1:]:
                     if self.emulateCollisions:
                         time.sleep(2)  # Wait a bit to avoid immediate collisions when starting multiple nodes
-                    self.container.exec_run(f"{startNode} -d /home/node{n0.nodeid} -h {n.hwId} -p {n.TCPPort}", detach=True, user="root")
+                    self.container.exec_run(f"{startNode} -s -d /home/node{n0.nodeid} -h {n.hwId} -p {n.TCPPort}", detach=True, user="root")
                 print(f"Docker container with name {self.container.name} is started.")
             else:
                 self.container = dockerClient.containers.run(
                     DEVICE_SIM_DOCKER_IMAGE,
-                    f"sh -c '{startNode} -d /home/node{n0.nodeid} -h {n0.hwId} -p {n0.TCPPort} > /home/out_{n0.nodeid}.log'",
+                    command=f"sh -cx '{startNode} -s -d /home/node{n0.nodeid} -h {n0.hwId} -p {n0.TCPPort} > /home/out_{n0.nodeid}.log'",
                     ports=dict(zip((f'{n.TCPPort}/tcp' for n in self.nodes), (n.TCPPort for n in self.nodes))),
                     name="Meshtastic", detach=True, auto_remove=True, user="root",
                     volumes={"Meshtasticator": {'bind': '/home/', 'mode': 'rw'}}
@@ -410,7 +407,7 @@ class InteractiveSim:
                 for n in self.nodes[1:]:
                     if self.emulateCollisions:
                         time.sleep(2)  # Wait a bit to avoid immediate collisions when starting multiple nodes
-                    self.container.exec_run(f"sh -c '{startNode} -d /home/node{n.nodeid} -h {n.hwId} -p {n.TCPPort} > /home/out_{n.nodeid}.log'", detach=True, user="root")
+                    self.container.exec_run(f"sh -cx '{startNode} -s -d /home/node{n.nodeid} -h {n.hwId} -p {n.TCPPort} > /home/out_{n.nodeid}.log'", detach=True, user="root")
                 print(f"Docker container with name {self.container.name} is started.")
                 print(f"You can check the device logs using 'docker exec -it {self.container.name} cat /home/out_x.log', where x is the node number.")
         else:
@@ -432,7 +429,8 @@ class InteractiveSim:
                 # executable
                 call += [os.path.join(args.program, 'program')]
                 # node parameters
-                call += [f"-d {os.path.expanduser('~')}/.portduino/node{n.nodeid}",
+                call += [f"-s",
+                         f"-d {os.path.expanduser('~')}/.portduino/node{n.nodeid}",
                          f"-h {n.hwId}",
                          f"-p {n.TCPPort}"]
                 if self.removeConfig:
