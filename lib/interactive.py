@@ -702,7 +702,7 @@ class InteractiveSim:
             pathLoss = phy.estimate_path_loss(conf, dist_3d, conf.FREQ, tx.z, rx.z)
             RSSI = conf.PTX + tx.antennaGain + rx.antennaGain - pathLoss
             SNR = RSSI-conf.NOISE_LEVEL
-            if RSSI >= conf.SENSMODEM[conf.MODEM]:
+            if RSSI >= conf.current_preset["sensitivity"]:
                 rxs.append(rx)
                 rssis.append(RSSI)
                 snrs.append(SNR)

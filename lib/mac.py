@@ -35,22 +35,32 @@ def get_tx_delay_msec_weighted(node, rssi):  # from RadioInterface::getTxDelayMs
     CWsize = int((snr - SNR_MIN) * (CWmax - CWmin) / (SNR_MAX - SNR_MIN) + CWmin)
     if node.isRouter:
         CW = random.randint(0, 2 * CWsize - 1)
+        delay = CW * SLOT_TIME
     else:
         CW = random.randint(0, 2 ** CWsize - 1)
+        delay = (2 * CWmax * SLOT_TIME) + (CW * SLOT_TIME)
     verboseprint(f'Node {node.nodeid} has CW size {CWsize} and picked CW {CW}')
-    return CW * SLOT_TIME
+    return delay
 
 
 def get_tx_delay_msec(node):  # from RadioInterface::getTxDelayMsec
     channelUtil = node.airUtilization / node.env.now * 100
     CWsize = int(channelUtil * (CWmax - CWmin) / 100 + CWmin)
-    CW = random.randint(0, 2 ** CWsize - 1)
+    
+    if node.isRouter:
+        CW = random.randint(0, 2 * CWsize - 1)
+        delay = CW * SLOT_TIME
+    else:
+        CW = random.randint(0, 2 ** CWsize - 1)
+        delay = (2 * CWmax * SLOT_TIME) + (CW * SLOT_TIME)
+    
     verboseprint(f'Current channel utilization is {channelUtil}, so picked CW {CW}')
-    return CW * SLOT_TIME
+    return delay
 
 
 def get_retransmission_msec(node, packet):  # from RadioInterface::getRetransmissionMsec
-    packetAirtime = int(airtime(node.conf, node.conf.SFMODEM[node.conf.MODEM], node.conf.CRMODEM[node.conf.MODEM], packet.packetLen, node.conf.BWMODEM[node.conf.MODEM]))
+    preset = node.conf.current_preset
+    packetAirtime = int(airtime(node.conf, preset["sf"], preset["cr"], packet.packetLen, preset["bw"]))
     channelUtil = node.airUtilization / node.env.now * 100
     CWsize = int(channelUtil * (CWmax - CWmin) / 100 + CWmin)
     return 2 * packetAirtime + (2 ** CWsize + 2 ** (int((CWmax + CWmin) / 2))) * SLOT_TIME + PROCESSING_TIME_MSEC

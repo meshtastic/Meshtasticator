@@ -16,7 +16,7 @@ def verboseprint(*args, **kwargs):
 
 
 #                           CAD duration   +     airPropagationTime+TxRxTurnaround+MACprocessing
-SLOT_TIME = 8.5 * (2.0 ** conf.SFMODEM[conf.MODEM]) / conf.BWMODEM[conf.MODEM] * 1000 + 0.2 + 0.4 + 7
+SLOT_TIME = 8.5 * (2.0 ** conf.current_preset["sf"]) / conf.current_preset["bw"] * 1000 + 0.2 + 0.4 + 7
 
 
 def check_collision(conf, env, packet, rx_nodeId, packetsAtN):
@@ -110,33 +110,58 @@ def airtime(conf, sf, cr, pl, bw):
     return (Tpream + Tpayload) * 1000
 
 
-def estimate_path_loss(conf, dist, freq, txZ=conf.HM, rxZ=conf.HM):
+def estimate_path_loss(conf, dist, freq, txZ=None, rxZ=None, model=None):
+    """
+    Calculate path loss using specified model.
+    
+    Args:
+        conf: Configuration object
+        dist: Distance in meters
+        freq: Frequency in Hz
+        txZ: Transmitter height in meters (defaults to conf.HM)
+        rxZ: Receiver height in meters (defaults to conf.HM)  
+        model: Path loss model to use (defaults to conf.MODEL)
+               0 = Log-Distance
+               1-4 = Okumura-Hata variants
+               5-6 = 3GPP models
+    
+    Returns:
+        Path loss in dB
+    """
+    # Set defaults
+    if txZ is None:
+        txZ = conf.HM
+    if rxZ is None:
+        rxZ = conf.HM
+    if model is None:
+        model = conf.MODEL
+    
     # With randomized movements we may end up on top of another node which is problematic for log(dist)
     dist = max(dist, .001)
 
     # Log-Distance model
-    if conf.MODEL == 0:
+    if model == 0:
         Lpl = conf.LPLD0 + 10 * conf.GAMMA * math.log10(dist / conf.D0)
 
     # Okumura-Hata model
-    elif 1 <= conf.MODEL <= 4:
+    elif 1 <= model <= 4:
         # small and medium-size cities
-        if conf.MODEL == 1:
+        if model == 1:
             ahm = (1.1 * (math.log10(freq) - 6.0) - 0.7) * txZ - (1.56 * (math.log10(freq) - 6.0) - 0.8)
             C = 0
         # metropolitan areas
-        elif conf.MODEL == 2:
+        elif model == 2:
             if freq <= 200000000:
                 ahm = 8.29 * ((math.log10(1.54 * txZ)) ** 2) - 1.1
             elif freq >= 400000000:
                 ahm = 3.2 * ((math.log10(11.75 * txZ)) ** 2) - 4.97
             C = 0
         # suburban environments
-        elif conf.MODEL == 3:
+        elif model == 3:
             ahm = (1.1 * (math.log10(freq) - 6.0) - 0.7) * txZ - (1.56 * (math.log10(freq) - 6.0) - 0.8)
             C = -2 * ((math.log10(freq) - math.log10(28000000)) ** 2) - 5.4
         # rural area
-        elif conf.MODEL == 4:
+        elif model == 4:
             ahm = (1.1 * (math.log10(freq) - 6.0) - 0.7) * txZ - (1.56 * (math.log10(freq) - 6.0) - 0.8)
             C = -4.78 * ((math.log10(freq) - 6.0) ** 2) + 18.33 * (math.log10(freq) - 6.0) - 40.98
 
@@ -145,23 +170,26 @@ def estimate_path_loss(conf, dist, freq, txZ=conf.HM, rxZ=conf.HM):
         Lpl = A + B * (math.log10(dist) - 3.0) + C
 
     # 3GPP model
-    elif 5 <= conf.MODEL < 7:
+    elif 5 <= model < 7:
         # Suburban Macro
-        if conf.MODEL == 5:
+        if model == 5:
             C = 0  # dB
         # Urban Macro
-        elif conf.MODEL == 6:
+        elif model == 6:
             C = 3  # dB
 
         Lpl = (44.9 - 6.55 * math.log10(rxZ)) * (math.log10(dist) - 3.0) \
             + 45.5 + (35.46 - 1.1 * txZ) * (math.log10(freq) - 6.0) \
             - 13.82 * math.log10(txZ) + 0.7 * txZ + C
+    
+    else:
+        raise ValueError(f"Unsupported path loss model: {model}")
 
     return Lpl
 
 
 def zero_link_budget(dist):
-    return conf.PTX + 2 * conf.GL - estimate_path_loss(conf, dist, conf.FREQ) - conf.SENSMODEM[conf.MODEM]
+    return conf.PTX + 2 * conf.GL - estimate_path_loss(conf, dist, conf.FREQ) - conf.current_preset["sensitivity"]
 
 
 MAXRANGE = fsolve(zero_link_budget, 1500)
