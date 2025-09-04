@@ -429,7 +429,7 @@ class InteractiveSim:
                 # executable
                 call += [os.path.join(args.program, 'program')]
                 # node parameters
-                call += [f"-s",
+                call += [f"-s ",
                          f"-d {os.path.expanduser('~')}/.portduino/node{n.nodeid}",
                          f"-h {n.hwId}",
                          f"-p {n.TCPPort}"]
