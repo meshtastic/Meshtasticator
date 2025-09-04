@@ -514,6 +514,8 @@ class InteractiveSim:
         meshPacket.hop_limit = packet.get("hopLimit", meshPacket.hop_limit)
         meshPacket.hop_start = packet.get("hopStart", meshPacket.hop_start)
         meshPacket.via_mqtt = packet.get("viaMQTT", meshPacket.via_mqtt)
+        meshPacket.relay_node = packet.get("relayNode", meshPacket.relay_node)
+        meshPacket.next_hop = packet.get("nextHop", meshPacket.next_hop)
         meshPacket.decoded.request_id = packet["decoded"].get("requestId", meshPacket.decoded.request_id)
         meshPacket.decoded.want_response = packet["decoded"].get("wantResponse", meshPacket.decoded.want_response)
         meshPacket.channel = int(packet.get("channel", meshPacket.channel))
