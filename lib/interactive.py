@@ -702,7 +702,7 @@ class InteractiveSim:
         for rx in receivers:
             dist_3d = calc_dist(tx.x, rx.x, tx.y, rx.y, tx.z, rx.z)
             pathLoss = phy.estimate_path_loss(conf, dist_3d, conf.FREQ, tx.z, rx.z)
-            RSSI = conf.PTX + tx.antennaGain + rx.antennaGain - pathLoss
+            RSSI = conf.PTX + tx.antennaGain - pathLoss
             SNR = RSSI-conf.NOISE_LEVEL
             if RSSI >= conf.SENSMODEM[conf.MODEM]:
                 rxs.append(rx)
