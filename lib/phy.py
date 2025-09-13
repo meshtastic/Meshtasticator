@@ -163,5 +163,10 @@ def estimate_path_loss(conf, dist, freq, txZ=conf.HM, rxZ=conf.HM):
 def zero_link_budget(dist):
     return conf.PTX + 2 * conf.GL - estimate_path_loss(conf, dist, conf.FREQ) - conf.SENSMODEM[conf.MODEM]
 
+def zero_link_budget_with_gain(dist, gain):
+    return conf.PTX + gain - estimate_path_loss(conf, dist, conf.FREQ) - conf.SENSMODEM[conf.MODEM]
+
+def estimate_max_range(gain):
+    return fsolve(zero_link_budget_with_gain, 1500, args=(gain,))[0]
 
 MAXRANGE = fsolve(zero_link_budget, 1500)

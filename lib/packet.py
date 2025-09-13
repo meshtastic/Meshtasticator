@@ -38,7 +38,7 @@ class MeshPacket:
 			dist_3d = calc_dist(self.tx_node.x, rx_node.x, self.tx_node.y, rx_node.y, self.tx_node.z, rx_node.z)
 			offset = self.conf.LINK_OFFSET[(self.txNodeId, rx_node.nodeid)]
 			self.LplAtN[rx_node.nodeid] = estimate_path_loss(self.conf, dist_3d, self.freq, self.tx_node.z, rx_node.z) + offset
-			self.rssiAtN[rx_node.nodeid] = self.txpow + self.tx_node.antennaGain + rx_node.antennaGain - self.LplAtN[rx_node.nodeid]
+			self.rssiAtN[rx_node.nodeid] = self.txpow + self.tx_node.antennaGain - self.LplAtN[rx_node.nodeid]
 			if self.rssiAtN[rx_node.nodeid] >= self.conf.SENSMODEM[self.conf.MODEM]:
 				self.sensedByN[rx_node.nodeid] = True
 			if self.rssiAtN[rx_node.nodeid] >= self.conf.CADMODEM[self.conf.MODEM]:

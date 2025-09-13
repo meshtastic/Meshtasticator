@@ -21,6 +21,7 @@ def gen_scenario(conf):
 	nodeX = []
 	nodeY = []
 	nodeZ = []
+	circles = []
 	nodeRouter = []
 	nodeRepeater = []
 	nodeClientMute = []
@@ -33,11 +34,11 @@ def gen_scenario(conf):
 	ax = fig.add_subplot(111)
 	fig.subplots_adjust(bottom=0.20, right=0.85)  # Make room for button and config
 	title = "Double click to place a node. Then change its config (optional)."
-	plt.title(title)
-	plt.xlabel('x (m)')
-	plt.ylabel('y (m)')
-	plt.xlim(-(conf.XSIZE/2+1)+conf.OX, conf.OX+conf.XSIZE/2+1)
-	plt.ylim(-(conf.YSIZE/2+1)+conf.OY, conf.OY+conf.YSIZE/2+1)
+	ax.set_xlabel('x (m)')
+	ax.set_ylabel('y (m)')
+	ax.set_xlim(-(conf.XSIZE/2+1)+conf.OX, conf.OX+conf.XSIZE/2+1)
+	ax.set_ylim(-(conf.YSIZE/2+1)+conf.OY, conf.OY+conf.YSIZE/2+1)
+	ax.set_title(title)
 	# 'Start simulation' button
 	button_ax = fig.add_axes([0.37, 0.05, 0.2, 0.06])
 	button = Button(button_ax, 'Start simulation', color='red', hovercolor='green')
@@ -68,16 +69,15 @@ def gen_scenario(conf):
 	gainLabel.set_horizontalalignment('center')
 
 	def plotting():
-		ax.cla()
-		ax.set_xlabel('x (m)')
-		ax.set_ylabel('y (m)')
-		ax.set_xlim(-(conf.XSIZE/2+1)+conf.OX, conf.OX+conf.XSIZE/2+1)
-		ax.set_ylim(-(conf.YSIZE/2+1)+conf.OY, conf.OY+conf.YSIZE/2+1)
-		ax.set_title(title)
-		for i, (nx, ny) in enumerate(zip(nodeX, nodeY)):
-			ax.annotate(str(i), (nx-5, ny+5))
-			circle = plt.Circle((nx, ny), radius=phy.MAXRANGE, color=plt.cm.Set1(i), alpha=0.1)
-			ax.add_patch(circle)
+    # Add latest node 
+		nx = nodeX[-1]
+		ny = nodeY[-1]
+		ax.annotate(str(len(nodeX)-1), (nx-5, ny+5))
+		circle = plt.Circle((nx, ny), radius=phy.MAXRANGE, color=plt.cm.Set1(len(nodeX)-1), alpha=0.1)
+		circles.append(circle)
+		ax.add_patch(circle)
+		ax.scatter(nx, ny) # small dot in the middle
+
 		if len(nodeTxts) > 0:
 			# Remove last 'Configure node x' text
 			nodeTxts[-1].set_visible(False)
@@ -93,7 +93,6 @@ def gen_scenario(conf):
 			)
 		)
 
-		ax.scatter(nodeX, nodeY)
 		fig.canvas.draw_idle()
 		fig.canvas.get_tk_widget().focus_set()
 
@@ -112,6 +111,11 @@ def gen_scenario(conf):
 		fig.canvas.mpl_disconnect(cid)
 		plt.close()
 	button.on_clicked(submit)
+	
+	def submit_gain(text):
+		circles[-1].set_radius(phy.estimate_max_range(float(text)))
+		fig.canvas.draw_idle()
+	gain_textbox.on_submit(submit_gain)
 
 	def onclick(event):
 		if event.dblclick:
@@ -124,16 +128,17 @@ def gen_scenario(conf):
 				nodeHopLimit.append(slider.val)
 				gains.append(float(gain_textbox.text))
 				neighborInfo.append(bool(0))
-				# Reset config values
-				roleButton.set_active(1 if conf.router else 0)
-				height_textbox.set_val(conf.HM)
-				slider.set_val(conf.hopLimit)
-				gain_textbox.set_val(conf.GL)
 
 			# New node placement
 			nodeX.append(float(event.xdata))
 			nodeY.append(float(event.ydata))
 			plotting()
+			
+			# Reset config values only after new node is placed
+			roleButton.set_active(1 if conf.router else 0)
+			height_textbox.set_val(conf.HM)
+			slider.set_val(conf.hopLimit)
+			gain_textbox.set_val(conf.GL)
 
 	cid = fig.canvas.mpl_connect('button_press_event', onclick)
 	plt.show()
@@ -341,7 +346,7 @@ class Graph:
 		# Plot the coverage circle
 		circle = plt.Circle(
 			(node.x, node.y),
-			radius=phy.MAXRANGE,
+			radius=phy.estimate_max_range(node.antennaGain),
 			color=plt.cm.Set1(node.nodeid),
 			alpha=0.1
 		)
@@ -382,8 +387,8 @@ def setup_asymmetric_links(conf, nodes):
 				offsetAB = conf.LINK_OFFSET[(a, b)]
 				offsetBA = conf.LINK_OFFSET[(b, a)]
 
-				rssiAB = conf.PTX + nodeA.antennaGain + nodeB.antennaGain - pathLossAB - offsetAB
-				rssiBA = conf.PTX + nodeB.antennaGain + nodeA.antennaGain - pathLossAB - offsetBA
+				rssiAB = conf.PTX + nodeA.antennaGain - pathLossAB - offsetAB
+				rssiBA = conf.PTX + nodeB.antennaGain - pathLossAB - offsetBA
 
 				canAhearB = (rssiAB >= conf.SENSMODEM[conf.MODEM])
 				canBhearA = (rssiBA >= conf.SENSMODEM[conf.MODEM])
