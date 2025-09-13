@@ -65,49 +65,60 @@ class InteractiveNode:
         self.iface = iface
 
     def set_config(self):
-        requiresReboot = False
         # Set a long and short name
         p = admin_pb2.AdminMessage()
         p.set_owner.long_name = "Node "+str(self.nodeid)
         p.set_owner.short_name = str(self.nodeid)
         self.iface.localNode._sendAdmin(p)
+        time.sleep(0.1)
+
+        # Disable UDP as it causes packets to be received even if not in range
+        p = admin_pb2.AdminMessage()
+        p.set_config.network.enabled_protocols = 0
+        networkConfig = self.iface.localNode.localConfig.network
+        setattr(networkConfig, 'enabled_protocols', 0)
+        p.set_config.network.CopyFrom(networkConfig)
+        self.iface.localNode._sendAdmin(p)
+        time.sleep(0.1)
+
         if self.hopLimit != 3:
             loraConfig = self.iface.localNode.localConfig.lora
             setattr(self.iface.localNode.localConfig.lora, 'hop_limit', self.hopLimit)
             p = admin_pb2.AdminMessage()
             p.set_config.lora.CopyFrom(loraConfig)
             self.iface.localNode._sendAdmin(p)
+            time.sleep(0.1)
 
         if self.isRouter:
-            requiresReboot = True
             deviceConfig = self.iface.localNode.localConfig.device
             setattr(deviceConfig, 'role', "ROUTER")
             p = admin_pb2.AdminMessage()
             p.set_config.device.CopyFrom(deviceConfig)
             self.iface.localNode._sendAdmin(p)
+            time.sleep(0.1)
         elif self.isRepeater:
-            requiresReboot = True
             deviceConfig = self.iface.localNode.localConfig.device
             setattr(deviceConfig, 'role', "REPEATER")
             p = admin_pb2.AdminMessage()
             p.set_config.device.CopyFrom(deviceConfig)
             self.iface.localNode._sendAdmin(p)
+            time.sleep(0.1)
         elif self.isClientMute:
-            requiresReboot = True
             deviceConfig = self.iface.localNode.localConfig.device
             setattr(deviceConfig, 'role', "CLIENT_MUTE")
             p = admin_pb2.AdminMessage()
             p.set_config.device.CopyFrom(deviceConfig)
             self.iface.localNode._sendAdmin(p)
+            time.sleep(0.1)
 
         if self.neighborInfo:
-            requiresReboot = True
             moduleConfig = self.iface.localNode.moduleConfig.neighbor_info
             setattr(moduleConfig, 'enabled', 1)
             setattr(moduleConfig, 'update_interval', 30)
             p = admin_pb2.AdminMessage()
             p.set_module_config.neighbor_info.CopyFrom(moduleConfig)
             self.iface.localNode._sendAdmin(p)
+            time.sleep(0.1)
 
         base_lat = 44
         base_lon = -105
@@ -115,8 +126,6 @@ class InteractiveNode:
         lat = base_lat + (self.y * conv_factor)
         lon = base_lon + (self.x * conv_factor)
         self.iface.sendPosition(lat, lon, 0)
-
-        return requiresReboot
 
     def add_admin_channel(self):
         ch = self.iface.localNode.getChannelByChannelIndex(1)
@@ -469,8 +478,8 @@ class InteractiveSim:
                 iface0.localNode.nodeNum = self.nodes[0].hwId
                 iface0.connect()  # real connection now
             for n in self.nodes:
-                requiresReboot = n.set_config()
-                if requiresReboot and self.emulateCollisions and n.nodeid != len(self.nodes) - 1:
+                n.set_config()
+                if self.emulateCollisions and n.nodeid != len(self.nodes) - 1:
                     time.sleep(2)  # Wait a bit to avoid immediate collisions when starting multiple nodes
             self.reconnect_nodes()
             pub.subscribe(self.on_receive, "meshtastic.receive.simulator")
