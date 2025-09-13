@@ -21,7 +21,7 @@ from lib.common import calc_dist, gen_scenario, find_random_position, Graph
 
 conf = Config()
 HW_ID_OFFSET = 16
-TCP_PORT_OFFSET = 4403
+TCP_PORT_OFFSET = 4404
 TCP_PORT_CLIENT = 4402
 MAX_TO_FROM_RADIO_SIZE = 512
 DEVICE_SIM_DOCKER_IMAGE = "meshtastic/meshtasticd"
