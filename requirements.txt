@@ -5,4 +5,4 @@ pandas==1.5.3
 PyPubSub==4.0.3
 simpy==4.1.1
 PyYAML~=6.0.2
-protobuf~=4.21.12
+protobuf~=4.25.8
