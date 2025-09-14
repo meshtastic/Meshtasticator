@@ -1,6 +1,5 @@
 meshtastic~=2.6.1
 numpy==1.26.4
-scipy==1.14.0
 matplotlib==3.10.0
 pandas==1.5.3
 PyPubSub==4.0.3

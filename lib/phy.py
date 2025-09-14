@@ -1,8 +1,6 @@
 import math
 import random
 
-from scipy.optimize import fsolve
-
 from lib.config import Config
 
 conf = Config()
@@ -163,10 +161,27 @@ def estimate_path_loss(conf, dist, freq, txZ=conf.HM, rxZ=conf.HM):
 def zero_link_budget(dist):
     return conf.PTX + 2 * conf.GL - estimate_path_loss(conf, dist, conf.FREQ) - conf.SENSMODEM[conf.MODEM]
 
+
+def rootFinder(func, x0, args=(), tol=1, maxiter=100):
+  """Newton-Raphson root finder."""
+  x = x0
+  for _ in range(maxiter):
+      fx = func(x, *args)
+      dfx = (func(x + 1e-6, *args) - fx) / 1e-6
+      if dfx == 0:
+          print("Warning: could not estimate max. range")
+          return x
+      x_new = x - fx / dfx
+      if abs(x_new - x) < tol:
+          return x_new
+      x = x_new
+  print("Warning: could not estimate max. range")
+  return x
+
 def zero_link_budget_with_gain(dist, gain):
     return conf.PTX + gain - estimate_path_loss(conf, dist, conf.FREQ) - conf.SENSMODEM[conf.MODEM]
 
 def estimate_max_range(gain):
-    return fsolve(zero_link_budget_with_gain, 1500, args=(gain,))[0]
+    return rootFinder(zero_link_budget_with_gain, 1500, args=(gain,))
 
-MAXRANGE = fsolve(zero_link_budget, 1500)
+MAXRANGE = rootFinder(zero_link_budget, 1500)
