@@ -79,7 +79,6 @@ class InteractiveNode:
         setattr(networkConfig, 'enabled_protocols', 0)
         p.set_config.network.CopyFrom(networkConfig)
         self.iface.localNode._sendAdmin(p)
-        time.sleep(0.1)
 
         if self.hopLimit != 3:
             loraConfig = self.iface.localNode.localConfig.lora
@@ -87,7 +86,6 @@ class InteractiveNode:
             p = admin_pb2.AdminMessage()
             p.set_config.lora.CopyFrom(loraConfig)
             self.iface.localNode._sendAdmin(p)
-            time.sleep(0.1)
 
         if self.isRouter:
             deviceConfig = self.iface.localNode.localConfig.device
@@ -95,21 +93,18 @@ class InteractiveNode:
             p = admin_pb2.AdminMessage()
             p.set_config.device.CopyFrom(deviceConfig)
             self.iface.localNode._sendAdmin(p)
-            time.sleep(0.1)
         elif self.isRepeater:
             deviceConfig = self.iface.localNode.localConfig.device
             setattr(deviceConfig, 'role', "REPEATER")
             p = admin_pb2.AdminMessage()
             p.set_config.device.CopyFrom(deviceConfig)
             self.iface.localNode._sendAdmin(p)
-            time.sleep(0.1)
         elif self.isClientMute:
             deviceConfig = self.iface.localNode.localConfig.device
             setattr(deviceConfig, 'role', "CLIENT_MUTE")
             p = admin_pb2.AdminMessage()
             p.set_config.device.CopyFrom(deviceConfig)
             self.iface.localNode._sendAdmin(p)
-            time.sleep(0.1)
 
         if self.neighborInfo:
             moduleConfig = self.iface.localNode.moduleConfig.neighbor_info
@@ -473,10 +468,16 @@ class InteractiveSim:
             for n in self.nodes[int(self.forwardToClient):]:
                 iface = tcp_interface.TCPInterface(hostname="localhost", portNumber=n.TCPPort)
                 n.add_interface(iface)
+
             if self.forwardToClient:
                 self.clientConnected = True
                 iface0.localNode.nodeNum = self.nodes[0].hwId
                 iface0.connect()  # real connection now
+
+            # wait for all nodes to connect
+            while not all(n.iface.isConnected.isSet() for n in self.nodes[int(self.forwardToClient):]):
+                time.sleep(0.1)
+
             for n in self.nodes:
                 n.set_config()
                 if self.emulateCollisions and n.nodeid != len(self.nodes) - 1:
