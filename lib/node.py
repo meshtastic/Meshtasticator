@@ -39,7 +39,6 @@ class MeshNode:
         self.env = env
         self.period = period
         self.bc_pipe = bc_pipe
-        self.rx_snr = 0
         self.nodes = nodes
         self.messages = messages
         self.packetsAtN = packetsAtN
@@ -174,6 +173,25 @@ class MeshNode:
         if self.env.now+nextGen + self.hopLimit * airtime(self.conf, self.conf.SFMODEM[self.conf.MODEM], self.conf.CRMODEM[self.conf.MODEM], self.conf.PACKETLENGTH, self.conf.BWMODEM[self.conf.MODEM]) < self.conf.SIMTIME:
             return nextGen
         return -1
+    
+    def was_seen_recently(self, packet, ownTransmit = False):
+        if packet.seq not in self.leastReceivedHopLimit:
+            if not ownTransmit:
+              # self.verboseprint('Node', self.nodeid, 'received packet nr.', p.seq, 'orig. Tx', p.origTxNodeId, "for the first time.")
+              self.usefulPackets += 1
+            # First time seeing this packet, mark with hop limit
+            self.leastReceivedHopLimit[packet.seq] = packet.hopLimit + 1 if ownTransmit else packet.hopLimit
+            return False
+        elif not ownTransmit and packet.hopLimit < self.leastReceivedHopLimit[packet.seq]:
+            # Seen before, but with higher hop limit, update to lower hop limit
+            self.leastReceivedHopLimit[packet.seq] = packet.hopLimit
+            return True
+    
+    def perhaps_cancel_dupe(self, packet):
+        if packet.seq in self.leastReceivedHopLimit:
+            if self.leastReceivedHopLimit[packet.seq] <= packet.hopLimit:
+                return True
+        return False
 
     def generate_message(self):
         while True:
@@ -209,11 +227,11 @@ class MeshNode:
                         if minRetransmissions > 0:  # generate new packet with same sequence number
                             pNew = MeshPacket(self.conf, self.nodes, self.nodeid, p.destId, self.nodeid, p.packetLen, p.seq, p.genTime, p.wantAck, False, None, self.env.now, self.verboseprint)
                             pNew.retransmissions = minRetransmissions - 1
-                            self.verboseprint('At time', round(self.env.now, 3), 'node', self.nodeid, 'wants to retransmit its generated packet to', destId, 'with seq.nr.', p.seq, 'minRetransmissions', minRetransmissions)
+                            self.verboseprint(round(self.env.now, 3), 'Node', self.nodeid, 'wants to retransmit its generated packet to', destId, 'with seq.nr.', p.seq, 'minRetransmissions', minRetransmissions)
                             self.packets.append(pNew)
                             self.env.process(self.transmit(pNew))
                         else:
-                            self.verboseprint('At time', round(self.env.now, 3), 'node', self.nodeid, 'reliable send of', p.seq, 'failed.')
+                            self.verboseprint(round(self.env.now, 3), 'Node', self.nodeid, 'reliable send of', p.seq, 'failed.')
                             break
             else:  # do not send this message anymore, since it is close to the end of the simulation
                 break
@@ -235,10 +253,9 @@ class MeshNode:
             self.verboseprint(round(self.env.now, 3), 'Node', self.nodeid, 'ends waiting')
 
             # check if you received an ACK for this message in the meantime
-            if packet.seq not in self.leastReceivedHopLimit:
-                self.leastReceivedHopLimit[packet.seq] = packet.hopLimit + 1
-            if self.leastReceivedHopLimit[packet.seq] > packet.hopLimit:  # no ACK received yet, so may start transmitting
-                self.verboseprint('At time', round(self.env.now, 3), 'node', self.nodeid, 'started low level send', packet.seq, 'hopLimit', packet.hopLimit, 'original Tx', packet.origTxNodeId)
+            self.was_seen_recently(packet, ownTransmit=True)
+            if not self.perhaps_cancel_dupe(packet):  # if you did not receive an ACK for this message in the meantime
+                self.verboseprint(round(self.env.now, 3), 'Node', self.nodeid, 'started low level send', packet.seq, 'hopLimit', packet.hopLimit, 'original Tx', packet.origTxNodeId)
                 self.nrPacketsSent += 1
                 for rx_node in self.nodes:
                     if packet.sensedByN[rx_node.nodeid]:
@@ -281,13 +298,8 @@ class MeshNode:
                 self.verboseprint(round(self.env.now, 3), 'Node', self.nodeid, 'received packet', p.seq, 'with delay', round(self.env.now - p.genTime, 2))
                 self.delays.append(self.env.now - p.genTime)
 
-                # update hopLimit for this message
-                if p.seq not in self.leastReceivedHopLimit:  # did not yet receive packet with this seq nr.
-                    # self.verboseprint('Node', self.nodeid, 'received packet nr.', p.seq, 'orig. Tx', p.origTxNodeId, "for the first time.")
-                    self.usefulPackets += 1
-                    self.leastReceivedHopLimit[p.seq] = p.hopLimit
-                if p.hopLimit < self.leastReceivedHopLimit[p.seq]:  # hop limit of received packet is lower than previously received one
-                    self.leastReceivedHopLimit[p.seq] = p.hopLimit
+                # Update history of received packets
+                self.was_seen_recently(p)
 
                 # check if implicit ACK for own generated message
                 if p.origTxNodeId == self.nodeid:
