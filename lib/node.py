@@ -188,7 +188,7 @@ class MeshNode:
     def perhaps_cancel_dupe(self, packet):
         # Cancel if we've already seen this sequence number
         if packet.seq in self.timesReceived:
-            return self.timesReceived[packet.seq] > 1 if self.isRouter or self.isRepeater else self.timesReceived[packet.seq] > 0
+            return self.timesReceived[packet.seq] > 2 if self.isRouter or self.isRepeater else self.timesReceived[packet.seq] > 1
         return False
 
 
