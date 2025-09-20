@@ -190,12 +190,12 @@ class MeshNode:
     def perhaps_cancel_dupe(self, packet):
         if packet.seq in self.snrsReceived:
             if self.isRouter or self.isRepeater:
-                # Routers and repeaters cancel if we've seen it more than once
-                return len(self.snrsReceived[packet.seq]) > 1
+                # Routers and repeaters cancel if we've seen it more than twice
+                return len(self.snrsReceived[packet.seq]) > 2
             else:
-                if len(self.snrsReceived[packet.seq]) > 1:
+                if len(self.snrsReceived[packet.seq]) > 2:
                     return True
-                elif len(self.snrsReceived[packet.seq]) == 1:
+                elif len(self.snrsReceived[packet.seq]) == 2:
                     return self.snrsReceived[packet.seq][-1] >= self.conf.SNR_THRESHOLD
         return False
 
