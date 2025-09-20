@@ -331,10 +331,9 @@ class Graph:
 		plt.pause(0.01)
 
 	def add_node(self, node):
-		# place the node
-		if not self.conf.RANDOM:
-			txt = self.ax.annotate(str(node.nodeid), (node.x - 5, node.y + 5))
-			self.node_labels[node.nodeid] = txt
+		# place the node with label, marker, and circle
+		txt = self.ax.annotate(str(node.nodeid), (node.x - 5, node.y + 5))
+		self.node_labels[node.nodeid] = txt
 
 		# Plot the node marker
 		(marker,) = self.ax.plot(

@@ -46,6 +46,8 @@ class Config:
         }
         self.REGION = self.regions["US"]  # Select a different region here
         self.CHANNEL_NUM = 27  # Channel number
+
+        self.PLOT = False # whether to plot the time schedule of packets after the simulation
         ### End of discrete-event specific ###
 
         ### PHY parameters (normally no change needed) ###
@@ -70,8 +72,6 @@ class Config:
 
         # Misc
         self.SEED = 44  # random seed to use
-        self.PLOT = True
-        self.RANDOM = False
         # End of misc
 
         # Initializers
