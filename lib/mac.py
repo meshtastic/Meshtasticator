@@ -16,7 +16,7 @@ def verboseprint(*args, **kwargs):
 def set_transmit_delay(node, packet):  # from RadioLibInterface::setTransmitDelay
     for p in reversed(node.packetsAtN[node.nodeid]):
         if p.seq == packet.seq and p.rssiAtN[node.nodeid] != 0 and p.receivedAtN[node.nodeid] is True:
-            # verboseprint('At time', round(self.env.now, 3), 'pick delay with RSSI of node', self.nodeid, 'is', p.rssiAtN[self.nodeid])
+            # verboseprint(round(self.env.now, 3), 'Pick delay with RSSI of node', self.nodeid, 'is', p.rssiAtN[self.nodeid])
             return get_tx_delay_msec_weighted(node, p.rssiAtN[node.nodeid])  # weighted waiting based on RSSI
     return get_tx_delay_msec(node)
 
