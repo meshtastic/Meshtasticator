@@ -45,7 +45,7 @@ class MeshNode:
         self.nrPacketsSent = 0
         self.packets = packets
         self.delays = delays
-        self.leastReceivedHopLimit = {}
+        self.timesReceived = {}
         self.isReceiving = []
         self.isTransmitting = False
         self.usefulPackets = 0
@@ -174,24 +174,23 @@ class MeshNode:
             return nextGen
         return -1
     
-    def was_seen_recently(self, packet, ownTransmit = False):
-        if packet.seq not in self.leastReceivedHopLimit:
+
+    def was_seen_recently(self, packet, ownTransmit=False):
+        if packet.seq not in self.timesReceived:
+            # First time we know about this packet
+            self.timesReceived[packet.seq] = 0 if ownTransmit else 1
             if not ownTransmit:
-              # self.verboseprint('Node', self.nodeid, 'received packet nr.', p.seq, 'orig. Tx', p.origTxNodeId, "for the first time.")
-              self.usefulPackets += 1
-            # First time seeing this packet, mark with hop limit
-            self.leastReceivedHopLimit[packet.seq] = packet.hopLimit + 1 if ownTransmit else packet.hopLimit
-            return False
-        elif not ownTransmit and packet.hopLimit < self.leastReceivedHopLimit[packet.seq]:
-            # Seen before, but with higher hop limit, update to lower hop limit
-            self.leastReceivedHopLimit[packet.seq] = packet.hopLimit
-            return True
-    
+                self.usefulPackets += 1
+        else:
+            self.timesReceived[packet.seq] += 0 if ownTransmit else 1
+
+
     def perhaps_cancel_dupe(self, packet):
-        if packet.seq in self.leastReceivedHopLimit:
-            if self.leastReceivedHopLimit[packet.seq] <= packet.hopLimit:
-                return True
+        # Cancel if we've already seen this sequence number
+        if packet.seq in self.timesReceived:
+            return self.timesReceived[packet.seq] > 1 if self.isRouter or self.isRepeater else self.timesReceived[packet.seq] > 0
         return False
+
 
     def generate_message(self):
         while True:
