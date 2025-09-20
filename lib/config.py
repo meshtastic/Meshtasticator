@@ -23,6 +23,7 @@ class Config:
         self.hopLimit = 3  # default 3
         self.router = False  # set role of each node as router (True) or normal client (False)
         self.maxRetransmission = 3  # default 3 -- not configurable by Meshtastic
+        self.SNR_THRESHOLD = -10000  # dB, SNR threshold above which a packet is considered good enough to be a duplicate
         ### End of Meshtastic specific ###
 
         self.ONE_SECOND_INTERVAL = 1000

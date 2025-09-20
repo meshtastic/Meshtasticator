@@ -45,7 +45,7 @@ class MeshNode:
         self.nrPacketsSent = 0
         self.packets = packets
         self.delays = delays
-        self.timesReceived = {}
+        self.snrsReceived = {}
         self.isReceiving = []
         self.isTransmitting = False
         self.usefulPackets = 0
@@ -176,19 +176,27 @@ class MeshNode:
     
 
     def was_seen_recently(self, packet, ownTransmit=False):
-        if packet.seq not in self.timesReceived:
+        snr = packet.rssiAtN[self.nodeid] - self.conf.NOISE_LEVEL
+        if packet.seq not in self.snrsReceived:
             # First time we know about this packet
-            self.timesReceived[packet.seq] = 0 if ownTransmit else 1
+            self.snrsReceived[packet.seq] = []
             if not ownTransmit:
-                self.usefulPackets += 1
-        else:
-            self.timesReceived[packet.seq] += 0 if ownTransmit else 1
+                self.snrsReceived[packet.seq].append(snr)
+                self.usefulPackets += 1               
+        elif not ownTransmit:
+            self.snrsReceived[packet.seq].append(snr)
 
 
     def perhaps_cancel_dupe(self, packet):
-        # Cancel if we've already seen this sequence number
-        if packet.seq in self.timesReceived:
-            return self.timesReceived[packet.seq] > 1 if self.isRouter or self.isRepeater else self.timesReceived[packet.seq] > 0
+        if packet.seq in self.snrsReceived:
+            if self.isRouter or self.isRepeater:
+                # Routers and repeaters cancel if we've seen it more than once
+                return len(self.snrsReceived[packet.seq]) > 1
+            else:
+                if len(self.snrsReceived[packet.seq]) > 1:
+                    return True
+                elif len(self.snrsReceived[packet.seq]) == 1:
+                    return self.snrsReceived[packet.seq][-1] >= self.conf.SNR_THRESHOLD
         return False
 
 
