@@ -578,7 +578,7 @@ class InteractiveSim:
                 n.iface.showNodes()
 
     def send_broadcast(self, text, fromNode):
-        self.get_node_iface_by_id(fromNode).sendText(text)
+        self.get_node_iface_by_id(fromNode).sendText(text, wantAck=True)
 
     def send_dm(self, text, fromNode, toNode):
         self.get_node_iface_by_id(fromNode).sendText(text, destinationId=self.node_id_to_hw_id(toNode), wantAck=True)
