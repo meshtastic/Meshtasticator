@@ -8,6 +8,7 @@ import yaml
 from matplotlib.widgets import Button, Slider, RadioButtons, TextBox
 
 from lib import phy
+from lib.point import Point
 
 try:
     matplotlib.use("TkAgg")
@@ -165,6 +166,7 @@ def find_random_position(conf, nodes):
     foundMin = True
     foundMax = False
     tries = 0
+    position = None
     x = 0
     y = 0
     while not (foundMin and foundMax):
@@ -172,9 +174,10 @@ def find_random_position(conf, nodes):
         b = random.random()
         posx = a*conf.XSIZE+conf.OX-conf.XSIZE/2
         posy = b*conf.YSIZE+conf.OY-conf.YSIZE/2
+        pos_candidate = Point(posx, posy, conf.HM)
         if len(nodes) > 0:
             for n in nodes:
-                dist = calc_dist(n.x, posx, n.y, posy)
+                dist = n.position.euclidean_distance(pos_candidate)
                 if dist < conf.MINDIST:
                     foundMin = False
                     break
@@ -184,18 +187,16 @@ def find_random_position(conf, nodes):
                 if rssi >= conf.current_preset["sensitivity"]:
                     foundMax = True
             if foundMin and foundMax:
-                x = posx
-                y = posy
+                position = pos_candidate
         else:
-            x = posx
-            y = posy
+            position = pos_candidate
             foundMin = True
             foundMax = True
         tries += 1
         if tries > 1000:
             print('Could not find a location to place the node. Try increasing XSIZE/YSIZE or decreasing MINDIST.')
             break
-    return max(-conf.XSIZE/2, x), max(-conf.YSIZE/2, y)
+    return max(-conf.XSIZE/2, position.x), max(-conf.YSIZE/2, position.y)
 
 
 def run_graph_updates(env, graph, nodes, interval):
@@ -314,16 +315,16 @@ class Graph:
 
             # 1) Update the marker
             marker = self.node_markers[node_id]
-            marker.set_xdata([node.x])
-            marker.set_ydata([node.y])
+            marker.set_xdata([node.position.x])
+            marker.set_ydata([node.position.y])
 
             # 2) Update the circle center
             circle = self.node_circles[node_id]
-            circle.center = (node.x, node.y)
+            circle.center = (node.position.x, node.position.y)
 
             # 3) (Optional) Update the text label, if you have one
             if node_id in self.node_labels:
-                self.node_labels[node_id].set_position((node.x - 5, node.y + 5))
+                self.node_labels[node_id].set_position((node.position.x - 5, node.position.y + 5))
 
         # 4) Redraw the canvas
         self.fig.canvas.draw_idle()
@@ -332,19 +333,19 @@ class Graph:
 
     def add_node(self, node):
         # place the node with label, marker, and circle
-        txt = self.ax.annotate(str(node.nodeid), (node.x - 5, node.y + 5))
+        txt = self.ax.annotate(str(node.nodeid), (node.position.x - 5, node.position.y + 5))
         self.node_labels[node.nodeid] = txt
 
         # Plot the node marker
         (marker,) = self.ax.plot(
-            node.x, node.y,
+            node.position.x, node.position.y,
             marker="o", markersize=2.5, color="grey"
         )
         self.node_markers[node.nodeid] = marker
 
         # Plot the coverage circle
         circle = plt.Circle(
-            (node.x, node.y),
+            (node.position.x, node.position.y),
             radius=phy.estimate_max_range(node.antennaGain),
             color=plt.cm.Set1(node.nodeid),
             alpha=0.1
@@ -380,8 +381,8 @@ def setup_asymmetric_links(conf, nodes):
                 # Calculate constant RSSI in both directions
                 nodeA = nodes[a]
                 nodeB = nodes[b]
-                distAB = calc_dist(nodeA.x, nodeB.x, nodeA.y, nodeB.y, nodeA.z, nodeB.z)
-                pathLossAB = phy.estimate_path_loss(conf, distAB, conf.FREQ, nodeA.z, nodeB.z)
+                distAB = nodeA.position.euclidean_distance(nodeB.position)
+                pathLossAB = phy.estimate_path_loss(conf, distAB, conf.FREQ, nodeA.position.z, nodeB.position.z)
 
                 offsetAB = conf.LINK_OFFSET[(a, b)]
                 offsetBA = conf.LINK_OFFSET[(b, a)]

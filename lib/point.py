@@ -1,0 +1,23 @@
+from numpy import sqrt
+
+class Point:
+    def __init__(self, x: float, y: float, z: float):
+        self.x = x
+        self.y = y
+        self.z = z
+
+    def euclidean_distance(self, p2) -> float:
+        """
+        calculate the eucliden distance/euclidean norm between
+        this point and a second point p2
+
+        p2: another Point object
+        """
+        x_diff = self.x - p2.x
+        y_diff = self.y - p2.y
+        z_diff = self.z - p2.z
+        return sqrt( x_diff ** 2 + y_diff ** 2 + z_diff ** 2 )
+
+    def update_xy(self, x: float, y: float):
+        self.x = x
+        self.y = y

@@ -9,10 +9,15 @@ from lib.common import calc_dist, find_random_position
 from lib.mac import set_transmit_delay, get_retransmission_msec
 from lib.phy import check_collision, is_channel_active, airtime
 from lib.packet import NODENUM_BROADCAST, MeshPacket, MeshMessage
+from lib.point import Point
 
 logger = logging.getLogger(__name__)
 
 class MeshNode:
+    """
+    Class containing all the particular state of a MeshNode, references to necessary
+    external resources like the simpy env, and process functions for simulation
+    """
     def __init__(self, conf, nodes, env, bc_pipe, nodeid, period, messages, packetsAtN, packets, delays, nodeConfig, messageSeq):
         self.conf = conf
         self.nodeid = nodeid
@@ -20,17 +25,16 @@ class MeshNode:
         self.nodeRng = random.Random(nodeid)
         self.rebroadcastRng = random.Random()
         if nodeConfig is not None:
-            self.x = nodeConfig['x']
-            self.y = nodeConfig['y']
-            self.z = nodeConfig['z']
+            self.position = Point(nodeConfig['x'], nodeConfig['y'], nodeConfig['z'])
             self.isRouter = nodeConfig['isRouter']
             self.isRepeater = nodeConfig['isRepeater']
             self.isClientMute = nodeConfig['isClientMute']
             self.hopLimit = nodeConfig['hopLimit']
             self.antennaGain = nodeConfig['antennaGain']
         else:
-            self.x, self.y = find_random_position(self.conf, nodes)
-            self.z = self.conf.HM
+            x, y = find_random_position(self.conf, nodes)
+            z = self.conf.HM
+            self.position = Point(x, y, z)
             self.isRouter = self.conf.router
             self.isRepeater = False
             self.isClientMute = False
@@ -57,8 +61,7 @@ class MeshNode:
         self.isMoving = False
         self.gpsEnabled = False
         # Track last broadcast position/time
-        self.lastBroadcastX = self.x
-        self.lastBroadcastY = self.y
+        self.lastBroadcastPosition = self.position
         self.lastBroadcastTime = 0
         # track total transmit time for the last 6 buckets (each is 10s in firmware logic)
         self.channelUtilization = [0] * self.conf.CHANNEL_UTILIZATION_PERIODS  # each entry is ms spent on air in that interval
@@ -130,22 +133,20 @@ class MeshNode:
             topBound = self.conf.OY + self.conf.YSIZE / 2
 
             # Then in moveNode:
-            new_x = min(max(self.x + dx, leftBound), rightBound)
-            new_y = min(max(self.y + dy, bottomBound), topBound)
+            new_x = min(max(self.position.x + dx, leftBound), rightBound)
+            new_y = min(max(self.position.y + dy, bottomBound), topBound)
 
             # Update node’s position
-            self.x = new_x
-            self.y = new_y
+            self.position.update_xy(new_x, new_y)
 
             if self.gpsEnabled:
-                distanceTraveled = calc_dist(self.lastBroadcastX, self.x, self.lastBroadcastY, self.y)
+                distanceTraveled = self.position.euclidean_distance(self.lastBroadcastPosition)
                 timeElapsed = env.now - self.lastBroadcastTime
                 if distanceTraveled >= self.conf.SMART_POSITION_DISTANCE_THRESHOLD and timeElapsed >= self.conf.SMART_POSITION_DISTANCE_MIN_TIME:
                     currentUtil = self.channel_utilization_percent()
                     if currentUtil < 25.0:
                         self.send_packet(NODENUM_BROADCAST, "POSITION")
-                        self.lastBroadcastX = self.x
-                        self.lastBroadcastY = self.y
+                        self.lastBroadcastPosition.update_xy(self.position.x, self.position.y)
                         self.lastBroadcastTime = env.now
                     else:
                         logger.debug(f"{self.env.now:.3f} node {self.nodeid} SKIPS POSITION broadcast (util={currentUtil:.1f}% > 25%)")
