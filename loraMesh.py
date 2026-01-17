@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import argparse
 import os
 import sys
 import random
@@ -23,44 +24,48 @@ def verboseprint(*args, **kwargs):
 
 
 def parse_params(conf, args):
-	# TODO: refactor with argparse
-	if len(args) > 3:
-		print("Usage: ./loraMesh [nr_nodes] [--from-file [file_name]]")
-		print("Do not specify the number of nodes when reading from a file.")
-		exit(1)
+
+	# previous cli behavior:
+	# loraMesh.py [nr_nodes [router_type]] | [--from-file [file_name]]
+	# we'll replicate the intent with argparse, but more strictly, so flags like '--never--from-file' will no longer be accepted
+	parser = argparse.ArgumentParser(
+		description='run a single interactive or discrete Meshtastic network simulation'
+		)
+
+	# only allow one of --from-file optional, or nr_nodes positional exclusively
+	group = parser.add_mutually_exclusive_group()
+	group.add_argument('nr_nodes', nargs='?', type=int, help='Number of nodes to generate. If unspecified, do interactive simulation')
+	group.add_argument('--from-file', nargs='?', const='nodeConfig.yaml', type=str, metavar='filename', help='Name of yaml file storing node config under "out/" directory. If unspecified, defaults to "nodeConfig.yaml".')
+
+	# the earlier behavior of specifying `router_type` as an optional positional arg with `nr_nodes` is difficult to exactly
+	# replicate with argparse, especially since nesting groups was an unintended feature and deprecated.
+	# Just implement as an optional argument, and manually treat it as incompatible with `--from-file`
+	parser.add_argument('--router-type', type=conf.ROUTER_TYPE, choices=conf.ROUTER_TYPE, help='Router type to use, taken from ROUTER_TYPE enum. Omit the leading "ROUTER_TYPE". Incompatible with --from-file')
+
+	parsed_arguments = parser.parse_args()
+
+	if parsed_arguments.from_file is not None and parsed_arguments.router_type is not None:
+		parser.error("Incompatible argument selection. --from-file and --router-type can not be used together")
+
+	if parsed_arguments.from_file is not None:
+		with open(os.path.join("out", parsed_arguments.from_file), 'r') as file:
+			config = yaml.load(file, Loader=yaml.FullLoader)
+	elif parsed_arguments.nr_nodes is not None:
+		conf.NR_NODES = parsed_arguments.nr_nodes
+		config = [None for _ in range(conf.NR_NODES)]
+		if parsed_arguments.router_type is not None:
+			routerType = parsed_arguments.router_type
+			conf.SELECTED_ROUTER_TYPE = routerType
+			conf.update_router_dependencies()
 	else:
-		if len(args) > 1:
-			if isinstance(args[1], str) and ("--from-file" in args[1]):
-				if len(args) > 2:
-					string = args[2]
-				else:
-					string = 'nodeConfig.yaml'
-				with open(os.path.join("out", string), 'r') as file:
-					config = yaml.load(file, Loader=yaml.FullLoader)
-			else:
-				conf.NR_NODES = int(args[1])
-				config = [None for _ in range(conf.NR_NODES)]
-				if len(args) > 2:
-					try:
-						# Attempt to convert the string args[2] into a valid enum member
-						routerType = conf.ROUTER_TYPE(args[2])
-						conf.SELECTED_ROUTER_TYPE = routerType
-						conf.update_router_dependencies()
-					except ValueError:
-						# If it fails, print possible values
-						valid_types = [member.name for member in conf.ROUTER_TYPE]
-						print(f"Invalid router type: {args[2]}")
-						print(f"Router type must be one of: {', '.join(valid_types)}")
-						exit(1)
-				if conf.NR_NODES == -1:
-					config = gen_scenario(conf)
-		else:
-			config = gen_scenario(conf)
-		if config[0] is not None:
-			conf.NR_NODES = len(config.keys())
-		if conf.NR_NODES < 2:
-			print("Need at least two nodes.")
-			exit(1)
+		config = gen_scenario(conf)
+
+	if config[0] is not None:
+		# yaml file or unspecified nr_nodes
+		conf.NR_NODES = len(config.keys())
+
+	if conf.NR_NODES < 2:
+		parser.error(f"Need at least two nodes. You specified {conf.NR_NODES}")
 
 	print("Number of nodes:", conf.NR_NODES)
 	print("Modem:", conf.MODEM)
