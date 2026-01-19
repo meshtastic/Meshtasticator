@@ -6,7 +6,7 @@ import simpy
 
 def sim_report(conf, data, subdir, param):
 	os.makedirs(os.path.join("out", "report", subdir), exist_ok=True)
-	fname = f"simReport_{conf.MODEM}_{param}.csv"
+	fname = f"simReport_{conf.MODEM_PRESET}_{param}.csv"
 	df_new = pd.DataFrame(data)
 	df_new.to_csv(os.path.join("out", "report", subdir, fname), index=False)
 

@@ -179,7 +179,7 @@ def rootFinder(func, x0, args=(), tol=1, maxiter=100):
   return x
 
 def zero_link_budget_with_gain(dist, gain):
-    return conf.PTX + gain - estimate_path_loss(conf, dist, conf.FREQ) - conf.SENSMODEM[conf.MODEM]
+    return conf.PTX + gain - estimate_path_loss(conf, dist, conf.FREQ) - conf.current_preset["sensitivity"]
 
 def estimate_max_range(gain):
     return rootFinder(zero_link_budget_with_gain, 1500, args=(gain,))

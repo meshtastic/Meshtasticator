@@ -63,7 +63,7 @@ def parse_params(conf, args):
 			exit(1)
 
 	print("Number of nodes:", conf.NR_NODES)
-	print("Modem:", conf.MODEM)
+	print("Modem:", conf.MODEM_PRESET)
 	print("Simulation time (s):", conf.SIMTIME/1000)
 	print("Period (s):", conf.PERIOD/1000)
 	print("Interference level:", conf.INTERFERENCE_LEVEL)
