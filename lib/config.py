@@ -53,64 +53,74 @@ class Config:
         ### PHY parameters (normally no change needed) ###
         self.PTX = self.REGION["power_limit"]
 
-        # Modem presets from firmware RadioInterface::applyModemConfig()
+        # Modem presets from firmware RadioInterface::applyModemConfig() in src/mesh/RadioInterface.cpp
+        # minimum sensitivity from https://www.rfwireless-world.com/calculators/LoRa-Sensitivity-Calculator.html, using a Noise Figure (NF) of 6dB
+        # minimum received power for CAD: 3dB less than sensitivity
         self.MODEM_PRESETS = {
             "SHORT_TURBO": {
                 "bw": 500e3,
-                "sf": 7,
                 "cr": 5,
+                "sf": 7,
                 "sensitivity": -121.5,
                 "cad_threshold": -124.5
             },
             "SHORT_FAST": {
                 "bw": 250e3,
-                "sf": 7,
                 "cr": 5,
+                "sf": 7,
                 "sensitivity": -121.5,
                 "cad_threshold": -124.5
             },
             "SHORT_SLOW": {
                 "bw": 250e3,
-                "sf": 8,
                 "cr": 5,
+                "sf": 8,
                 "sensitivity": -124.0,
                 "cad_threshold": -127.0
             },
             "MEDIUM_FAST": {
                 "bw": 250e3,
-                "sf": 9,
                 "cr": 5,
+                "sf": 9,
                 "sensitivity": -126.5,
                 "cad_threshold": -129.5
             },
             "MEDIUM_SLOW": {
                 "bw": 250e3,
-                "sf": 10,
                 "cr": 5,
+                "sf": 10,
                 "sensitivity": -129.0,
                 "cad_threshold": -132.0
             },
+            "LONG_TURBO": {
+                "bw": 500e3,
+                "cr": 8,
+                "sf": 11,
+                "sensitivity": -128.5,
+                "cad_threshold": -131.5
+            },
             "LONG_FAST": {
                 "bw": 250e3,
-                "sf": 11,
                 "cr": 5,
+                "sf": 11,
                 "sensitivity": -131.5,
                 "cad_threshold": -134.5
             },
             "LONG_MODERATE": {
                 "bw": 125e3,
-                "sf": 11,
                 "cr": 8,
+                "sf": 11,
                 "sensitivity": -134.5,
                 "cad_threshold": -137.5
             },
             "LONG_SLOW": {
                 "bw": 125e3,
-                "sf": 12,
                 "cr": 8,
+                "sf": 12,
                 "sensitivity": -137.0,
                 "cad_threshold": -140.0
             },
+            # It doesn't appear like this is a preset that actually exists in the firmware now?
             "VERY_LONG_SLOW": {
                 "bw": 62.5e3,
                 "sf": 12,
