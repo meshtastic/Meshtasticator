@@ -319,8 +319,8 @@ class Config:
                 "bw": 500e3,
                 "cr": 5,
                 "sf": 7,
-                "sensitivity": -121.5,
-                "cad_threshold": -124.5
+                "sensitivity": -118.5,
+                "cad_threshold": -121.5
             },
             "SHORT_FAST": {
                 "bw": 250e3,
