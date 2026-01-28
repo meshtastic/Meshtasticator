@@ -27,9 +27,9 @@ class MeshPacket:
 		self.onAirToN = [True for _ in range(self.conf.NR_NODES)]
 
 		# configuration values
-		self.sf = self.conf.SFMODEM[self.conf.MODEM]
-		self.cr = self.conf.CRMODEM[self.conf.MODEM]
-		self.bw = self.conf.BWMODEM[self.conf.MODEM]
+		self.sf = self.conf.current_preset["sf"]
+		self.cr = self.conf.current_preset["cr"]
+		self.bw = self.conf.current_preset["bw"]
 		self.freq = self.conf.FREQ
 		self.tx_node = next(n for n in nodes if n.nodeid == self.txNodeId)
 		for rx_node in nodes:
@@ -38,10 +38,10 @@ class MeshPacket:
 			dist_3d = calc_dist(self.tx_node.x, rx_node.x, self.tx_node.y, rx_node.y, self.tx_node.z, rx_node.z)
 			offset = self.conf.LINK_OFFSET[(self.txNodeId, rx_node.nodeid)]
 			self.LplAtN[rx_node.nodeid] = estimate_path_loss(self.conf, dist_3d, self.freq, self.tx_node.z, rx_node.z) + offset
-			self.rssiAtN[rx_node.nodeid] = self.txpow + self.tx_node.antennaGain - self.LplAtN[rx_node.nodeid]
-			if self.rssiAtN[rx_node.nodeid] >= self.conf.SENSMODEM[self.conf.MODEM]:
+			self.rssiAtN[rx_node.nodeid] = self.txpow + self.tx_node.antennaGain + rx_node.antennaGain - self.LplAtN[rx_node.nodeid]
+			if self.rssiAtN[rx_node.nodeid] >= self.conf.current_preset["sensitivity"]:
 				self.sensedByN[rx_node.nodeid] = True
-			if self.rssiAtN[rx_node.nodeid] >= self.conf.CADMODEM[self.conf.MODEM]:
+			if self.rssiAtN[rx_node.nodeid] >= self.conf.current_preset["cad_threshold"]:
 				self.detectedByN[rx_node.nodeid] = True
 
 		self.packetLen = plen

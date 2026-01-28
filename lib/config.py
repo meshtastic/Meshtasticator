@@ -31,18 +31,275 @@ class Config:
         self.ONE_HR_INTERVAL = self.ONE_MIN_INTERVAL * 60
 
         ### Discrete-event specific ###
-        self.MODEM = 4  # LoRa modem to use: 0 = ShortFast, 1 = Short Slow, ... 7 = Very Long Slow (default 4 is LongFast)
+        self.MODEM_PRESET = "LONG_FAST"  # LoRa modem preset to use (default LONG_FAST matches firmware)
         self.PERIOD = 100 * self.ONE_SECOND_INTERVAL  # mean period of generating a new message with exponential distribution in ms
         self.PACKETLENGTH = 40  # payload in bytes
         self.SIMTIME = 30 * self.ONE_MIN_INTERVAL  # duration of one simulation in ms
         self.INTERFERENCE_LEVEL = 0.05  # chance that at a given moment there is already a LoRa packet being sent on your channel, outside of the Meshtastic traffic. Given in a ratio from 0 to 1.
         self.COLLISION_DUE_TO_INTERFERENCE = False
         self.DMs = False  # Set True for sending DMs (with random destination), False for broadcasts
-        # from RadioInterface.cpp RegionInfo regions[]
+        # from firmware RegionInfo regions[] in src/mesh/RadioInterface.cpp
         self.regions = {
-            "US": {"freq_start": 902e6, "freq_end": 928e6, "power_limit": 30},
-            "EU433": {"freq_start": 433e6, "freq_end": 434e6, "power_limit": 12},
-            "EU868": {"freq_start": 868e6, "freq_end": 868e6, "power_limit": 27},
+            "US": {
+                "freq_start": 902.0e6,
+                "freq_end": 928.0e6,
+                "duty_cycle": 100,
+                "spacing": 0,
+                "power_limit": 30,
+                "audio_permitted": True,
+                "frequency_switching": False,
+                "wide_lora": False
+            },
+            "EU_433": {
+                "freq_start": 433.0e6,
+                "freq_end": 434.0e6,
+                "duty_cycle": 10,
+                "spacing": 0,
+                "power_limit": 10,
+                "audio_permitted": True,
+                "frequency_switching": False,
+                "wide_lora": False
+            },
+            "EU_868": {
+                "freq_start": 869.4e6,
+                "freq_end": 869.65e6,
+                "duty_cycle": 10,
+                "spacing": 0,
+                "power_limit": 27,
+                "audio_permitted": False,
+                "frequency_switching": False,
+                "wide_lora": False
+            },
+            "CN": {
+                "freq_start": 470.0e6,
+                "freq_end": 510.0e6,
+                "duty_cycle": 100,
+                "spacing": 0,
+                "power_limit": 19,
+                "audio_permitted": True,
+                "frequency_switching": False,
+                "wide_lora": False
+            },
+            "JP": {
+                "freq_start": 920.5e6,
+                "freq_end": 923.5e6,
+                "duty_cycle": 100,
+                "spacing": 0,
+                "power_limit": 13,
+                "audio_permitted": True,
+                "frequency_switching": False,
+                "wide_lora": False
+            },
+            "ANZ": {
+                "freq_start": 915.0e6,
+                "freq_end": 928.0e6,
+                "duty_cycle": 100,
+                "spacing": 0,
+                "power_limit": 30,
+                "audio_permitted": True,
+                "frequency_switching": False,
+                "wide_lora": False
+            },
+            "ANZ_433": {
+                "freq_start": 433.05e6,
+                "freq_end": 434.79e6,
+                "duty_cycle": 100,
+                "spacing": 0,
+                "power_limit": 14,
+                "audio_permitted": True,
+                "frequency_switching": False,
+                "wide_lora": False
+            },
+            "RU": {
+                "freq_start": 868.7e6,
+                "freq_end": 869.2e6,
+                "duty_cycle": 100,
+                "spacing": 0,
+                "power_limit": 20,
+                "audio_permitted": True,
+                "frequency_switching": False,
+                "wide_lora": False
+            },
+            "KR": {
+                "freq_start": 920.0e6,
+                "freq_end": 923.0e6,
+                "duty_cycle": 100,
+                "spacing": 0,
+                "power_limit": 23,
+                "audio_permitted": True,
+                "frequency_switching": False,
+                "wide_lora": False
+            },
+            "TW": {
+                "freq_start": 920.0e6,
+                "freq_end": 925.0e6,
+                "duty_cycle": 100,
+                "spacing": 0,
+                "power_limit": 27,
+                "audio_permitted": True,
+                "frequency_switching": False,
+                "wide_lora": False
+            },
+            "IN": {
+                "freq_start": 865.0e6,
+                "freq_end": 867.0e6,
+                "duty_cycle": 100,
+                "spacing": 0,
+                "power_limit": 30,
+                "audio_permitted": True,
+                "frequency_switching": False,
+                "wide_lora": False
+            },
+            "NZ_865": {
+                "freq_start": 864.0e6,
+                "freq_end": 868.0e6,
+                "duty_cycle": 100,
+                "spacing": 0,
+                "power_limit": 36,
+                "audio_permitted": True,
+                "frequency_switching": False,
+                "wide_lora": False
+            },
+            "TH": {
+                "freq_start": 920.0e6,
+                "freq_end": 925.0e6,
+                "duty_cycle": 100,
+                "spacing": 0,
+                "power_limit": 16,
+                "audio_permitted": True,
+                "frequency_switching": False,
+                "wide_lora": False
+            },
+            "UA_433": {
+                "freq_start": 433.0e6,
+                "freq_end": 434.7e6,
+                "duty_cycle": 10,
+                "spacing": 0,
+                "power_limit": 10,
+                "audio_permitted": True,
+                "frequency_switching": False,
+                "wide_lora": False
+            },
+            "UA_868": {
+                "freq_start": 868.0e6,
+                "freq_end": 868.6e6,
+                "duty_cycle": 1,
+                "spacing": 0,
+                "power_limit": 14,
+                "audio_permitted": True,
+                "frequency_switching": False,
+                "wide_lora": False
+            },
+            "MY_433": {
+                "freq_start": 433.0e6,
+                "freq_end": 435.0e6,
+                "duty_cycle": 100,
+                "spacing": 0,
+                "power_limit": 20,
+                "audio_permitted": True,
+                "frequency_switching": False,
+                "wide_lora": False
+            },
+            "MY_919": {
+                "freq_start": 919.0e6,
+                "freq_end": 924.0e6,
+                "duty_cycle": 100,
+                "spacing": 0,
+                "power_limit": 27,
+                "audio_permitted": True,
+                "frequency_switching": True,
+                "wide_lora": False
+            },
+            "SG_923": {
+                "freq_start": 917.0e6,
+                "freq_end": 925.0e6,
+                "duty_cycle": 100,
+                "spacing": 0,
+                "power_limit": 20,
+                "audio_permitted": True,
+                "frequency_switching": False,
+                "wide_lora": False
+            },
+            "PH_433": {
+                "freq_start": 433.0e6,
+                "freq_end": 434.7e6,
+                "duty_cycle": 100,
+                "spacing": 0,
+                "power_limit": 10,
+                "audio_permitted": True,
+                "frequency_switching": False,
+                "wide_lora": False
+            },
+            "PH_868": {
+                "freq_start": 868.0e6,
+                "freq_end": 869.4e6,
+                "duty_cycle": 100,
+                "spacing": 0,
+                "power_limit": 14,
+                "audio_permitted": True,
+                "frequency_switching": False,
+                "wide_lora": False
+            },
+            "PH_915": {
+                "freq_start": 915.0e6,
+                "freq_end": 918.0e6,
+                "duty_cycle": 100,
+                "spacing": 0,
+                "power_limit": 24,
+                "audio_permitted": True,
+                "frequency_switching": False,
+                "wide_lora": False
+            },
+            "KZ_433": {
+                "freq_start": 433.075e6,
+                "freq_end": 434.775e6,
+                "duty_cycle": 100,
+                "spacing": 0,
+                "power_limit": 10,
+                "audio_permitted": True,
+                "frequency_switching": False,
+                "wide_lora": False
+            },
+            "KZ_863": {
+                "freq_start": 863.0e6,
+                "freq_end": 868.0e6,
+                "duty_cycle": 100,
+                "spacing": 0,
+                "power_limit": 30,
+                "audio_permitted": True,
+                "frequency_switching": False,
+                "wide_lora": False
+            },
+            "NP_865": {
+                "freq_start": 865.0e6,
+                "freq_end": 868.0e6,
+                "duty_cycle": 100,
+                "spacing": 0,
+                "power_limit": 30,
+                "audio_permitted": True,
+                "frequency_switching": False,
+                "wide_lora": False
+            },
+            "BR_902": {
+                "freq_start": 902.0e6,
+                "freq_end": 907.5e6,
+                "duty_cycle": 100,
+                "spacing": 0,
+                "power_limit": 30,
+                "audio_permitted": True,
+                "frequency_switching": False,
+                "wide_lora": False
+            },
+            "LORA_24": {
+                "freq_start": 2400.0e6,
+                "freq_end": 2483.5e6,
+                "duty_cycle": 100,
+                "spacing": 0,
+                "power_limit": 10,
+                "audio_permitted": True,
+                "frequency_switching": False,
+                "wide_lora": True
+            },
         }
         self.REGION = self.regions["US"]  # Select a different region here
         self.CHANNEL_NUM = 27  # Channel number
@@ -52,15 +309,86 @@ class Config:
 
         ### PHY parameters (normally no change needed) ###
         self.PTX = self.REGION["power_limit"]
-        # from RadioInterface::applyModemConfig()
-        self.BWMODEM = np.array([250e3, 250e3, 250e3, 250e3, 250e3, 125e3, 125e3, 62.5e3])  # bandwidth
-        self.SFMODEM = np.array([7, 8, 9, 10, 11, 11, 12, 12])  # spreading factor
-        self.CRMODEM = np.array([8, 8, 8, 8, 8, 8, 8, 8])  # coding rate
-        # minimum sensitivity from https://www.rfwireless-world.com/calculators/LoRa-Sensitivity-Calculator.html
-        self.SENSMODEM = np.array([-121.5, -124.0, -126.5, -129.0, -131.5, -134.5, -137.0, -140.0])
-        # minimum received power for CAD (3dB less than sensitivity)
-        self.CADMODEM = np.array([-124.5, -127.0, -129.5, -132.0, -134.5, -137.5, -140.0, -143.0])
-        self.FREQ = self.REGION["freq_start"]+self.BWMODEM[self.MODEM]*self.CHANNEL_NUM
+
+        # Modem presets from firmware RadioInterface::applyModemConfig() in src/mesh/RadioInterface.cpp
+        # minimum sensitivity from https://www.rfwireless-world.com/calculators/LoRa-Sensitivity-Calculator.html, using a Noise Figure (NF) of 6dB
+        # minimum received power for CAD: 3dB less than sensitivity
+        # TODO: the 'bw' parameter is changed based on the region's 'wide_lora' setting. Implement this.
+        self.MODEM_PRESETS = {
+            "SHORT_TURBO": {
+                "bw": 500e3,
+                "cr": 5,
+                "sf": 7,
+                "sensitivity": -118.5,
+                "cad_threshold": -121.5
+            },
+            "SHORT_FAST": {
+                "bw": 250e3,
+                "cr": 5,
+                "sf": 7,
+                "sensitivity": -121.5,
+                "cad_threshold": -124.5
+            },
+            "SHORT_SLOW": {
+                "bw": 250e3,
+                "cr": 5,
+                "sf": 8,
+                "sensitivity": -124.0,
+                "cad_threshold": -127.0
+            },
+            "MEDIUM_FAST": {
+                "bw": 250e3,
+                "cr": 5,
+                "sf": 9,
+                "sensitivity": -126.5,
+                "cad_threshold": -129.5
+            },
+            "MEDIUM_SLOW": {
+                "bw": 250e3,
+                "cr": 5,
+                "sf": 10,
+                "sensitivity": -129.0,
+                "cad_threshold": -132.0
+            },
+            "LONG_TURBO": {
+                "bw": 500e3,
+                "cr": 8,
+                "sf": 11,
+                "sensitivity": -128.5,
+                "cad_threshold": -131.5
+            },
+            "LONG_FAST": {
+                "bw": 250e3,
+                "cr": 5,
+                "sf": 11,
+                "sensitivity": -131.5,
+                "cad_threshold": -134.5
+            },
+            "LONG_MODERATE": {
+                "bw": 125e3,
+                "cr": 8,
+                "sf": 11,
+                "sensitivity": -134.5,
+                "cad_threshold": -137.5
+            },
+            "LONG_SLOW": {
+                "bw": 125e3,
+                "cr": 8,
+                "sf": 12,
+                "sensitivity": -137.0,
+                "cad_threshold": -140.0
+            },
+            # It doesn't appear like this is a preset that actually exists in the firmware now?
+            "VERY_LONG_SLOW": {
+                "bw": 62.5e3,
+                "sf": 12,
+                "cr": 8,
+                "sensitivity": -140.0,
+                "cad_threshold": -143.0
+            }
+        }
+
+        self.FREQ = self.REGION["freq_start"] + self.MODEM_PRESETS[self.MODEM_PRESET]["bw"] * self.CHANNEL_NUM
         self.HEADERLENGTH = 16  # number of Meshtastic header bytes
         self.ACKLENGTH = 2  # ACK payload in bytes
         self.NOISE_LEVEL = -119.25  # some noise level in dB, based on SNR_MIN and minimum receiver sensitivity
@@ -118,6 +446,11 @@ class Config:
         self.SMART_POSITION_DISTANCE_MIN_TIME = 30 * self.ONE_SECOND_INTERVAL
         # This mirrors the firmware's approach to monitoring channel utilization
         self.CHANNEL_UTILIZATION_PERIODS = 6
+
+    @property
+    def current_preset(self):
+        """Returns the currently selected modem preset configuration"""
+        return self.MODEM_PRESETS[self.MODEM_PRESET]
 
     # Function that needs to be run to ensure the router dependent variables change appropriately
     def update_router_dependencies(self):

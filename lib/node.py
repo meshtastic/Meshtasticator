@@ -170,7 +170,7 @@ class MeshNode:
     def get_next_time(self, period):
         nextGen = self.nodeRng.expovariate(1.0 / float(period))
         # do not generate message near the end of the simulation (otherwise flooding cannot finish in time)
-        if self.env.now+nextGen + self.hopLimit * airtime(self.conf, self.conf.SFMODEM[self.conf.MODEM], self.conf.CRMODEM[self.conf.MODEM], self.conf.PACKETLENGTH, self.conf.BWMODEM[self.conf.MODEM]) < self.conf.SIMTIME:
+        if self.env.now+nextGen + self.hopLimit * airtime(self.conf, self.conf.current_preset["sf"], self.conf.current_preset["cr"], self.conf.PACKETLENGTH, self.conf.current_preset["bw"]) < self.conf.SIMTIME:
             return nextGen
         return -1
     

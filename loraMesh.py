@@ -68,7 +68,7 @@ def parse_params(conf, args):
 		parser.error(f"Need at least two nodes. You specified {conf.NR_NODES}")
 
 	print("Number of nodes:", conf.NR_NODES)
-	print("Modem:", conf.MODEM)
+	print("Modem:", conf.MODEM_PRESET)
 	print("Simulation time (s):", conf.SIMTIME/1000)
 	print("Period (s):", conf.PERIOD/1000)
 	print("Interference level:", conf.INTERFERENCE_LEVEL)
