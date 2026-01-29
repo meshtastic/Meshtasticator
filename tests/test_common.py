@@ -41,7 +41,7 @@ class TestCommonFunctions(unittest.TestCase):
     def test_find_random_position(self):
         # mock up the needed objects
         # conf: config from lib.config.Config(). Must have
-        # - XSIZE, YSIZE, OX, OY, MINDIST, FREQ, PTX, GL, SENSMODEM, MODEM
+        # - XSIZE, YSIZE, OX, OY, MINDIST, FREQ, PTX, GL, current_preset property
         # - MODEL, LPLD0, GAMMA, D0
         # (just use an actual config object)
         # nodes: empty list OR list of nodes which must have:
@@ -101,7 +101,7 @@ class TestCommonFunctions(unittest.TestCase):
         # we're using. There are lots of those, but they shouldn't change often.
         pathLoss = estimate_path_loss(conf, distance, conf.FREQ)
         rssi = conf.PTX + 2*conf.GL - pathLoss
-        self.assertGreaterEqual(rssi, conf.SENSMODEM[conf.MODEM], f"found {position=} is within radio range of {n=}")
+        self.assertGreaterEqual(rssi, conf.current_preset["sensitivity"], f"found {position=} is within radio range of {n=}")
 
 if __name__ == '__main__':
     unittest.main()
