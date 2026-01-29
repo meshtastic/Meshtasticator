@@ -31,6 +31,10 @@ Furthermore, since the simulator has an 'oracle view' of the network, it allows 
 
 ![](/img/route_plot.png)
 
+# Tests
+
+Unit tests can be executed by running `python3 -m unittest` from the root of the repo. Don't forget to activate your virtual env before running tests.
+
 ## License
 Part of the source code is based on the work in [1], which eventually stems from [2]. The LoRaSim library from [2] can be found [here](https://www.lancaster.ac.uk/scc/sites/lora/lorasim.html).
 
