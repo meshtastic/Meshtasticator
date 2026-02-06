@@ -5,9 +5,8 @@ NODENUM_BROADCAST = 0xFFFFFFFF
 
 
 class MeshPacket:
-	def __init__(self, conf, nodes, origTxNodeId, destId, txNodeId, plen, seq, genTime, wantAck, isAck, requestId, now, verboseprint):
+	def __init__(self, conf, nodes, origTxNodeId, destId, txNodeId, plen, seq, genTime, wantAck, isAck, requestId, now):
 		self.conf = conf
-		self.verboseprint = verboseprint
 		self.origTxNodeId = origTxNodeId
 		self.destId = destId
 		self.txNodeId = txNodeId
