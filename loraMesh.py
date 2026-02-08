@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import logging
 import os
 import sys
 import random
@@ -13,15 +14,12 @@ from lib.config import Config
 from lib.discrete_event import BroadcastPipe
 from lib.node import MeshNode
 
-VERBOSE = True
 conf = Config()
 random.seed(conf.SEED)
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO) # default log level
 
-
-def verboseprint(*args, **kwargs):
-	if VERBOSE:
-		print(*args, **kwargs)
-
+log_level = logging.INFO
 
 def parse_params(conf, args):
 
@@ -41,8 +39,19 @@ def parse_params(conf, args):
 	# replicate with argparse, especially since nesting groups was an unintended feature and deprecated.
 	# Just implement as an optional argument, and manually treat it as incompatible with `--from-file`
 	parser.add_argument('--router-type', type=conf.ROUTER_TYPE, choices=conf.ROUTER_TYPE, help='Router type to use, taken from ROUTER_TYPE enum. Omit the leading "ROUTER_TYPE". Incompatible with --from-file')
+	parser.add_argument('-v', '--verbose', action='store_true', help='enable verbose/debug output')
 
 	parsed_arguments = parser.parse_args()
+
+	if parsed_arguments.verbose:
+		# set this logger and the loggers for lib.* to DEBUG
+		# however, the default of INFO means we shouldn't see debug logs
+		# from matplotlib or  PIL. If you want to see those and more, set
+		# the default log level for the root logger to DEBUG.
+		logger.setLevel(logging.DEBUG)
+		lib_logger = logging.getLogger('lib')
+		lib_logger.setLevel(logging.DEBUG)
+		print("verbose output enabled")
 
 	if parsed_arguments.from_file is not None and parsed_arguments.router_type is not None:
 		parser.error("Incompatible argument selection. --from-file and --router-type can not be used together")
@@ -94,7 +103,7 @@ noLinks = 0
 
 graph = Graph(conf)
 for i in range(conf.NR_NODES):
-	node = MeshNode(conf, nodes, env, bc_pipe, i, conf.PERIOD, messages, packetsAtN, packets, delays, nodeConfig[i], messageSeq, verboseprint)
+	node = MeshNode(conf, nodes, env, bc_pipe, i, conf.PERIOD, messages, packetsAtN, packets, delays, nodeConfig[i], messageSeq)
 	nodes.append(node)
 	graph.add_node(node)
 

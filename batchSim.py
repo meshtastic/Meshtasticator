@@ -27,11 +27,6 @@ SHOW_GRAPH = False
 SAVE = True
 
 
-def verboseprint(*args, **kwargs):
-    if VERBOSE:
-        print(*args, **kwargs)
-
-
 #############################
 ####### BATCH PARAMS ########
 #############################
@@ -269,7 +264,7 @@ for rt_i, routerType in enumerate(routerTypes):
                 node = MeshNode(
                     routerTypeConf, nodes, env, bc_pipe, nodeId, routerTypeConf.PERIOD,
                     messages, packetsAtN, packets, delays, nodeConfig,
-                    messageSeq, verboseprint
+                    messageSeq
                 )
                 nodes.append(node)
                 if SHOW_GRAPH:

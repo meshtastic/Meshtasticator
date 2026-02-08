@@ -1,3 +1,4 @@
+import logging
 import math
 import random
 
@@ -5,12 +6,9 @@ from lib.config import Config
 
 conf = Config()
 
-VERBOSE = False
+logger = logging.getLogger(__name__)
 
 
-def verboseprint(*args, **kwargs):
-    if VERBOSE:
-        print(*args, **kwargs)
 
 
 #                           CAD duration   +     airPropagationTime+TxRxTurnaround+MACprocessing
@@ -28,7 +26,7 @@ def check_collision(conf, env, packet, rx_nodeId, packetsAtN):
         for other in packetsAtN[rx_nodeId]:
             if frequency_collision(packet, other) and sf_collision(packet, other):
                 if timing_collision(conf, env, packet, other):
-                    verboseprint(f'Packet nr. {packet.seq} from {packet.txNodeId} and packet nr. {other.seq} from {other.txNodeId} will collide!')
+                    logger.debug(f'Packet nr. {packet.seq} from {packet.txNodeId} and packet nr. {other.seq} from {other.txNodeId} will collide!')
                     c = power_collision(packet, other, rx_nodeId)
                     # mark all the collided packets
                     for p in c:
