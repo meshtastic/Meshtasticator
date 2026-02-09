@@ -2,9 +2,9 @@ import logging
 import math
 import random
 
-from lib.config import Config
+from lib.config import CONFIG
 
-conf = Config()
+conf = CONFIG
 
 logger = logging.getLogger(__name__)
 

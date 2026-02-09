@@ -46,13 +46,13 @@ class TestCommonFunctions(unittest.TestCase):
         # (just use an actual config object)
         # nodes: empty list OR list of nodes which must have:
         #  - x, y attributes
-        from lib.config import Config
+        from lib.config import CONFIG
         from lib.phy import estimate_path_loss
 
         # TODO: iterate this test for each of our supported models, since they
         # change the return value of estimate_path_loss. Also, each LoRa preset
         # has its own sensitivity which changes radio range.
-        conf = Config()
+        conf = CONFIG
 
         class MyNode:
             def __init__(self, x, y):
