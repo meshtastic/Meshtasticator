@@ -2,9 +2,9 @@ import logging
 import math
 import random
 
-from lib.config import Config
+from lib.config import CONFIG
 
-conf = Config()
+conf = CONFIG
 
 logger = logging.getLogger(__name__)
 
@@ -12,7 +12,8 @@ logger = logging.getLogger(__name__)
 
 
 #                           CAD duration   +     airPropagationTime+TxRxTurnaround+MACprocessing
-SLOT_TIME = 8.5 * (2.0 ** conf.current_preset["sf"]) / conf.current_preset["bw"] * 1000 + 0.2 + 0.4 + 7
+def get_current_slot_time():
+    return 8.5 * (2.0 ** conf.current_preset["sf"]) / conf.current_preset["bw"] * 1000 + 0.2 + 0.4 + 7
 
 
 def check_collision(conf, env, packet, rx_nodeId, packetsAtN):
@@ -83,7 +84,7 @@ def is_channel_active(node, env):
     for p in node.packets:
         if p.detectedByN[node.nodeid]:
             # You will miss detecting a packet if it has just started before you could do CAD
-            if p.startTime + SLOT_TIME <= env.now <= p.endTime:
+            if p.startTime + get_current_slot_time() <= env.now <= p.endTime:
                 return True
     return False
 

@@ -10,11 +10,11 @@ import simpy
 import numpy as np
 
 from lib.common import Graph, plot_schedule, gen_scenario, run_graph_updates, setup_asymmetric_links
-from lib.config import Config
+from lib.config import CONFIG
 from lib.discrete_event import BroadcastPipe
 from lib.node import MeshNode
 
-conf = Config()
+conf = CONFIG
 random.seed(conf.SEED)
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO) # default log level

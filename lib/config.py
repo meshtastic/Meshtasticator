@@ -1,6 +1,4 @@
 from enum import Enum
-import numpy as np
-
 
 class Config:
 
@@ -458,3 +456,6 @@ class Config:
         # if self.SELECTED_ROUTER_TYPE == self.ROUTER_TYPE.AWESOME_ROUTER:
         #     Change config values if necessary for your router here
         return
+
+# single module-level config for all users to reference unambiguously
+CONFIG = Config()

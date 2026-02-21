@@ -1,7 +1,7 @@
 import logging
 import random
 
-from lib.phy import airtime, SLOT_TIME
+from lib.phy import airtime, get_current_slot_time
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +34,7 @@ def get_tx_delay_msec_weighted(node, rssi):  # from RadioInterface::getTxDelayMs
     else:
         CW = random.randint(0, 2 ** CWsize - 1)
     logger.debug(f'Node {node.nodeid} has CW size {CWsize} and picked CW {CW}')
-    return CW * SLOT_TIME
+    return CW * get_current_slot_time()
 
 
 def get_tx_delay_msec(node):  # from RadioInterface::getTxDelayMsec
@@ -42,7 +42,7 @@ def get_tx_delay_msec(node):  # from RadioInterface::getTxDelayMsec
     CWsize = int(channelUtil * (CWmax - CWmin) / 100 + CWmin)
     CW = random.randint(0, 2 ** CWsize - 1)
     logger.debug(f'Current channel utilization is {channelUtil}, so picked CW {CW}')
-    return CW * SLOT_TIME
+    return CW * get_current_slot_time()
 
 
 def get_retransmission_msec(node, packet):  # from RadioInterface::getRetransmissionMsec
@@ -50,4 +50,4 @@ def get_retransmission_msec(node, packet):  # from RadioInterface::getRetransmis
     packetAirtime = int(airtime(node.conf, preset["sf"], preset["cr"], packet.packetLen, preset["bw"]))
     channelUtil = node.airUtilization / node.env.now * 100
     CWsize = int(channelUtil * (CWmax - CWmin) / 100 + CWmin)
-    return 2 * packetAirtime + (2 ** CWsize + 2 ** (int((CWmax + CWmin) / 2))) * SLOT_TIME + PROCESSING_TIME_MSEC
+    return 2 * packetAirtime + (2 ** CWsize + 2 ** (int((CWmax + CWmin) / 2))) * get_current_slot_time() + PROCESSING_TIME_MSEC
