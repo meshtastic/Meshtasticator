@@ -2,6 +2,8 @@ import unittest
 
 import lib.common
 
+from lib.point import Point
+
 class TestCommonFunctions(unittest.TestCase):
 
     def test_calc_dist(self):
@@ -55,12 +57,11 @@ class TestCommonFunctions(unittest.TestCase):
         conf = CONFIG
 
         class MyNode:
-            def __init__(self, x, y):
-                self.x = x
-                self.y = y
+            def __init__(self, p):
+                self.position = p
 
             def __repr__(self):
-                return f"MyNode(x={self.x}, y={self.y})"
+                return f"MyNode(p={self.position})"
 
         lower_bound_x = conf.OX - conf.XSIZE/2
         upper_bound_x = conf.OX + conf.XSIZE/2
@@ -83,7 +84,7 @@ class TestCommonFunctions(unittest.TestCase):
         self.assertLessEqual(position[1], upper_bound_y, f"y within bounds {position=}")
 
         # second node case
-        n = MyNode(0, 0)
+        n = MyNode(Point(0, 0, 0))
         nodes = [n]
         position = lib.common.find_random_position(conf, nodes)
         self.assertIsNotNone(position, "always return position")
@@ -92,7 +93,7 @@ class TestCommonFunctions(unittest.TestCase):
         self.assertGreaterEqual(position[1], lower_bound_y, f"y within bounds {position=}")
         self.assertLessEqual(position[1], upper_bound_y, f"y within bounds {position=}")
 
-        distance = lib.common.calc_dist(n.x, position[0], n.y, position[1])
+        distance = lib.common.calc_dist(n.position.x, position[0], n.position.y, position[1])
         self.assertGreaterEqual(distance, conf.MINDIST, f"{position=} not within MINDIST of {n=}")
 
         # this directly replicates the logic from the function which I dislike.
