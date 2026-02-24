@@ -5,7 +5,7 @@ import random
 
 import simpy
 
-from lib.common import calc_dist, find_random_position
+from lib.common import find_random_position
 from lib.mac import set_transmit_delay, get_retransmission_msec
 from lib.phy import check_collision, is_channel_active, airtime
 from lib.packet import NODENUM_BROADCAST, MeshPacket, MeshMessage

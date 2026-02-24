@@ -167,8 +167,6 @@ def find_random_position(conf, nodes):
     foundMax = False
     tries = 0
     position = None
-    x = 0
-    y = 0
     while not (foundMin and foundMax):
         a = random.random()
         b = random.random()
@@ -207,6 +205,7 @@ def run_graph_updates(env, graph, nodes, interval):
         graph.update_positions(nodes)
 
 
+# TODO: once lib/interactive no longer uses this, we can remove this and put all distance calculation in Point
 def calc_dist(x0, x1, y0, y1, z0=0, z1=0):
     return np.sqrt(((abs(x0-x1))**2)+((abs(y0-y1))**2)+((abs(z0-z1)**2)))
 

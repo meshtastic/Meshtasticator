@@ -1,4 +1,3 @@
-from lib.common import calc_dist
 from lib.phy import airtime, estimate_path_loss
 
 NODENUM_BROADCAST = 0xFFFFFFFF
