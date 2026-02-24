@@ -61,7 +61,7 @@ class MeshNode:
         self.isMoving = False
         self.gpsEnabled = False
         # Track last broadcast position/time
-        self.lastBroadcastPosition = self.position
+        self.lastBroadcastPosition = self.position.copy()
         self.lastBroadcastTime = 0
         # track total transmit time for the last 6 buckets (each is 10s in firmware logic)
         self.channelUtilization = [0] * self.conf.CHANNEL_UTILIZATION_PERIODS  # each entry is ms spent on air in that interval
@@ -141,6 +141,7 @@ class MeshNode:
 
             if self.gpsEnabled:
                 distanceTraveled = self.position.euclidean_distance(self.lastBroadcastPosition)
+                logger.debug(f"{self.env.now:.3f} node {self.nodeid} checks last broadcast position distance: {distanceTraveled} from {self.lastBroadcastPosition} to {self.position}")
                 timeElapsed = env.now - self.lastBroadcastTime
                 if distanceTraveled >= self.conf.SMART_POSITION_DISTANCE_THRESHOLD and timeElapsed >= self.conf.SMART_POSITION_DISTANCE_MIN_TIME:
                     currentUtil = self.channel_utilization_percent()

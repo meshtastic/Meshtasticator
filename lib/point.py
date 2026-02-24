@@ -1,3 +1,5 @@
+import copy
+
 from numpy import sqrt
 
 class Point:
@@ -28,6 +30,13 @@ class Point:
         """
         self.x = x
         self.y = y
+
+    def copy(self):
+        """
+        return a copy of this point, so that mutations on the new point
+        do not effect this point
+        """
+        return copy.copy(self)
 
     def __repr__(self):
         return f"Point(x={self.x}, y={self.y}, z={self.z})"
