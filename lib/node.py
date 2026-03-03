@@ -60,7 +60,36 @@ def generate_node_list(conf, node_configs, env, bc_pipe, period, messages, packe
             node = MeshNode(conf, nodes, env, bc_pipe, period, messages, packetsAtN, packets, delays, node_config, messageSeq)
             nodes.append(node)
         else:
-            raise NotImplementedError("need to convert interactively created config to NodeConfig objects")
+            # convert dict from interactive GUI gen_scenario to NodeConfig objects, create nodes.
+            node_config_dict = node_configs[n]
+            position = Point(node_config_dict['x'], node_config_dict['y'], node_config_dict['z'])
+
+            # roles
+            isRouter = node_config_dict['isRouter']
+            isRepeater = node_config_dict['isRepeater']
+            isClientMute = node_config_dict['isClientMute']
+
+            # sanity check that only one role is set
+            if (isRouter and isRepeater) or \
+               (isRepeater and isClientMute) or \
+               (isClientMute and isRouter):
+               raise Exception(f"invalid combination of roles: {node_config_dict}")
+
+            if isRouter:
+                role = MESHTASTIC_ROLE.ROUTER
+            elif isRepeater:
+                role = MESHTASTIC_ROLE.REPEATER
+            elif isClientMute:
+                role = MESHTASTIC_ROLE.CLIENT_MUTE
+            else:
+                role = MESHTASTIC_ROLE.CLIENT
+
+            # make node config
+            node_config = NodeConfig(i, position, role, node_config_dict['antennaGain'], node_config_dict['hopLimit'], node_config_dict['neighborInfo'])
+            i += 1
+
+            node = MeshNode(conf, nodes, env, bc_pipe, period, messages, packetsAtN, packets, delays, node_config, messageSeq)
+            nodes.append(node)
 
     return nodes
 
