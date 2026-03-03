@@ -17,7 +17,8 @@ from matplotlib.widgets import TextBox
 
 from lib.config import Config
 import lib.phy as phy
-from lib.common import calc_dist, gen_scenario, find_random_position, Graph
+from lib.common import calc_dist, find_random_position
+from lib.gui import gen_scenario, Graph
 
 conf = Config()
 HW_ID_OFFSET = 16
