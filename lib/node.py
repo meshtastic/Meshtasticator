@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from enum import Enum
 import logging
 import math
 import random
@@ -12,6 +13,35 @@ from lib.packet import NODENUM_BROADCAST, MeshPacket, MeshMessage
 from lib.point import Point
 
 logger = logging.getLogger(__name__)
+
+# roles taken from the protobuf config meshtastic/config.proto in https://github.com/meshtastic/protobufs
+# deprecated roles are included for simulation utility
+class MESHTASTIC_ROLE(Enum):
+    CLIENT = 'CLIENT'
+    CLIENT_MUTE = 'CLIENT_MUTE'
+    ROUTER = 'ROUTER'
+    ROUTER_CLIENT = 'ROUTER_CLIENT'
+    REPEATER = 'REPEATER'
+    TRACKER = 'TRACKER'
+    SENSOR = 'SENSOR'
+    TAK = 'TAK'
+    CLIENT_HIDDEN = 'CLIENT_HIDDEN'
+    LOST_AND_FOUND = 'LOST_AND_FOUND'
+    TAK_TRACKER = 'TAK_TRACKER'
+    ROUTER_LATE = 'ROUTER_LATE'
+    CLIENT_BASE = 'CLIENT_BASE'
+
+class NodeConfig:
+    """
+    specific configuration settings for a node
+    """
+    def __init__(self, node_id: int, position: Point, role: MESHTASTIC_ROLE = MESHTASTIC_ROLE.CLIENT, antenna_gain: float = 0, hop_limit: int = 3, neighbor_info: bool = False):
+        self.node_id = node_id
+        self.position = position.copy() # make sure we keep our own point
+        self.role = role
+        self.antenna_gain = antenna_gain
+        self.hop_limit = hop_limit
+        self.neighbor_info = neighbor_info
 
 class MeshNode:
     """
