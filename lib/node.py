@@ -14,7 +14,7 @@ from lib.point import Point
 
 logger = logging.getLogger(__name__)
 
-def generate_node_list(conf, node_config, env, bc_pipe, period, messages, packetsAtN, packets, delays, messageSeq):
+def generate_node_list(conf, node_configs, env, bc_pipe, period, messages, packetsAtN, packets, delays, messageSeq):
     """
     default function for randomly choosing node configurations for a simulation
     run, based on the provided config and desired number of nodes.
@@ -29,7 +29,7 @@ def generate_node_list(conf, node_config, env, bc_pipe, period, messages, packet
 
     # replicate default 'no prior config' setup:
     i = 0
-    for n in node_config:
+    for n in node_configs:
         if n is None:
             # no specified node config, randomly generate one
             # get node's position
