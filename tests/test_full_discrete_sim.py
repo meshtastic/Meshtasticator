@@ -21,8 +21,9 @@ class TestFullDiscreteSim(unittest.TestCase):
         import simpy
         import numpy as np
 
-        from lib.common import Graph, run_graph_updates, setup_asymmetric_links
+        from lib.common import setup_asymmetric_links
         from lib.discrete_event import BroadcastPipe
+        from lib.gui import Graph, run_graph_updates
         from lib.node import MeshNode
 
         # crucial!! and perhaps a tad fragile

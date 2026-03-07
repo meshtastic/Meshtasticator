@@ -17,7 +17,9 @@ from matplotlib.widgets import TextBox
 
 from lib.config import Config
 import lib.phy as phy
-from lib.common import calc_dist, gen_scenario, find_random_position, Graph
+from lib.common import find_random_position
+from lib.gui import gen_scenario, Graph
+from lib.point import Point
 
 conf = Config()
 HW_ID_OFFSET = 16
@@ -29,10 +31,11 @@ MESHTASTICD_PATH_DOCKER = "meshtasticd"
 
 
 class InteractiveNode:
-    def __init__(self, nodes, nodeId, hwId, TCPPort, nodeConfig):
+    def __init__(self, conf, nodes, nodeId, hwId, TCPPort, nodeConfig):
+        self.conf = conf
         self.nodeid = nodeId
         if nodeConfig is not None:
-            self.x, self.y, self.z = nodeConfig['x'], nodeConfig['y'], nodeConfig['z']
+            self.position = Point(nodeConfig['x'], nodeConfig['y'], nodeConfig['z'])
             self.isRouter = nodeConfig['isRouter']
             self.isRepeater = nodeConfig['isRepeater']
             self.isClientMute = nodeConfig['isClientMute']
@@ -40,13 +43,14 @@ class InteractiveNode:
             self.antennaGain = nodeConfig['antennaGain']
             self.neighborInfo = nodeConfig['neighborInfo']
         else:
-            self.x, self.y = find_random_position(conf, nodes)
-            self.z = conf.HM
-            self.isRouter = conf.router
+            x, y = find_random_position(self.conf, nodes)
+            z = self.conf.HM
+            self.position = Point(x, y, z)
+            self.isRouter = self.conf.router
             self.isRepeater = False
             self.isClientMute = False
-            self.hopLimit = conf.hopLimit
-            self.antennaGain = conf.GL
+            self.hopLimit = self.conf.hopLimit
+            self.antennaGain = self.conf.GL
             self.neighborInfo = False
         self.iface = None
         self.hwId = hwId
@@ -118,8 +122,8 @@ class InteractiveNode:
         base_lat = 44
         base_lon = -105
         conv_factor = 0.0001
-        lat = base_lat + (self.y * conv_factor)
-        lon = base_lon + (self.x * conv_factor)
+        lat = base_lat + (self.position.y * conv_factor)
+        lon = base_lon + (self.position.x * conv_factor)
         self.iface.sendPosition(lat, lon, 0)
 
     def add_admin_channel(self):
@@ -214,7 +218,7 @@ class InteractiveGraph(Graph):
                         pairs.get(tx).append((rx.nodeid, rxCnt))
                     kw = dict(arrowstyle=style, color=plt.cm.Set1(tx.nodeid))
                     rad = str(rxCnt*0.1)  # set the rad to Tx-Rx pair count
-                    patch = patches.FancyArrowPatch((tx.x, tx.y), (rx.x, rx.y), connectionstyle="arc3,rad="+rad, **kw)
+                    patch = patches.FancyArrowPatch((tx.position.x, tx.position.y), (rx.position.x, rx.position.y), connectionstyle="arc3,rad="+rad, **kw)
                     self.ax.add_patch(patch)
 
                     if int(p.packet["to"]) == BROADCAST_NUM:
@@ -254,7 +258,7 @@ class InteractiveGraph(Graph):
                              , f"RSSI: {round(p.rssis[ri], 2)} dBm"
                              ]
                     table = "\n".join(filter(None, fields))
-                    annot = self.ax.annotate(table, xy=((tx.x+rx.x)/2, rx.y+150), bbox=dict(boxstyle="round", fc="w"))
+                    annot = self.ax.annotate(table, xy=((tx.position.x+rx.position.x)/2, rx.position.y+150), bbox=dict(boxstyle="round", fc="w"))
                     annot.get_bbox_patch().set_facecolor(patch.get_facecolor())
                     annot.get_bbox_patch().set_alpha(0.4)
                     annot.set_visible(False)
@@ -365,7 +369,7 @@ class InteractiveSim:
 
         self.graph = InteractiveGraph()
         for n in range(conf.NR_NODES):
-            node = InteractiveNode(self.nodes, n, self.node_id_to_hw_id(n), n + TCP_PORT_OFFSET, config[n])
+            node = InteractiveNode(conf, self.nodes, n, self.node_id_to_hw_id(n), n + TCP_PORT_OFFSET, config[n])
             self.nodes.append(node)
             self.graph.add_node(node)
 
@@ -710,8 +714,8 @@ class InteractiveSim:
         rssis = []
         snrs = []
         for rx in receivers:
-            dist_3d = calc_dist(tx.x, rx.x, tx.y, rx.y, tx.z, rx.z)
-            pathLoss = phy.estimate_path_loss(conf, dist_3d, conf.FREQ, tx.z, rx.z)
+            dist_3d = tx.position.euclidean_distance(rx.position)
+            pathLoss = phy.estimate_path_loss(conf, dist_3d, conf.FREQ, tx.position.z, rx.position.z)
             RSSI = conf.PTX + tx.antennaGain - pathLoss
             SNR = RSSI-conf.NOISE_LEVEL
             if RSSI >= conf.current_preset["sensitivity"]:

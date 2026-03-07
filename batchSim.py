@@ -15,8 +15,9 @@ import random
 import matplotlib.pyplot as plt
 
 from lib.config import Config
-from lib.common import Graph, find_random_position, run_graph_updates, setup_asymmetric_links
+from lib.common import find_random_position, setup_asymmetric_links
 from lib.discrete_event import BroadcastPipe, sim_report
+from lib.gui import Graph, run_graph_updates
 from lib.node import MeshNode
 
 # TODO - There should really be two separate concepts here, a STATE and a CONFIG
