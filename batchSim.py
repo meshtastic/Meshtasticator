@@ -19,6 +19,7 @@ from lib.common import find_random_position, setup_asymmetric_links
 from lib.discrete_event import BroadcastPipe, sim_report
 from lib.gui import Graph, run_graph_updates
 from lib.node import MeshNode
+from lib.point import Point
 
 # TODO - There should really be two separate concepts here, a STATE and a CONFIG
 # today, the config also maintains state
@@ -145,10 +146,9 @@ for rt in routerTypes:
 # Pre generate node positions so we have apples to apples between router types
 ##############################################################################
 class TempNode:
-    """A lightweight node-like object with .x and .y attributes."""
-    def __init__(self, x, y):
-        self.x = x
-        self.y = y
+    """A lightweight node-like object with position attribute."""
+    def __init__(self, conf, x, y):
+        self.position = Point(x, y, conf.HM)
 
 
 positions_cache = {}  # (nrNodes, rep) -> list of (x, y)
@@ -160,8 +160,8 @@ for nrNodes in numberOfNodes:
         found = False
         temp_nodes = []
 
-        # We attempt to place 'nrNodes' one by one using findRandomPosition,
-        # but pass in a list of TempNode objects so it can do n.x, n.y
+        # We attempt to place 'nrNodes' one by one using find_random_position,
+        # but pass in a list of TempNode objects so it can use the position
         while not found:
             temp_nodes = []
             for _ in range(nrNodes):
@@ -170,7 +170,7 @@ for nrNodes in numberOfNodes:
                     # means we failed to place a node
                     break
                 # Wrap coordinates in a TempNode
-                temp_nodes.append(TempNode(xnew, ynew))
+                temp_nodes.append(TempNode(conf, xnew, ynew))
 
             if len(temp_nodes) == nrNodes:
                 found = True
@@ -178,7 +178,7 @@ for nrNodes in numberOfNodes:
                 pass
 
         # Convert the final TempNodes to (x, y) tuples
-        coords = [(tn.x, tn.y) for tn in temp_nodes]
+        coords = [(tn.position.x, tn.position.y) for tn in temp_nodes]
         positions_cache[(nrNodes, rep)] = coords
 
 ###########################################################
