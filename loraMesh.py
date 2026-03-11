@@ -8,12 +8,9 @@ import random
 import yaml
 import numpy as np
 
-from lib.common import setup_asymmetric_links
 from lib.config import CONFIG
-from lib.discrete_event import BroadcastPipe
 from lib.discrete_event_sim import DiscreteEventSim
-from lib.gui import Graph, plot_schedule, gen_scenario, run_graph_updates
-from lib.node import MeshNode
+from lib.gui import Graph, plot_schedule, gen_scenario
 
 conf = CONFIG
 random.seed(conf.SEED)
