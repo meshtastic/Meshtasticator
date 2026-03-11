@@ -16,7 +16,6 @@ class TestDiscreteEventSim(unittest.TestCase):
 
     # TODO: add default-skip GUI test?
     def test_discrete_sim_ten_nodes(self):
-        import simpy
         import numpy as np
 
         from lib.config import CONFIG
@@ -31,11 +30,10 @@ class TestDiscreteEventSim(unittest.TestCase):
         conf.NR_NODES = 10
         nodeConfig = [None for _ in range(conf.NR_NODES)]
         conf.update_router_dependencies()
-        env = simpy.Environment()
         # skipping GUI graphing to speed things up
 
         # set up sim
-        sim = lib.discrete_event_sim.DiscreteEventSim(env, conf, nodeConfig)
+        sim = lib.discrete_event_sim.DiscreteEventSim(conf, nodeConfig)
         sim.run_simulation()
 
         # collect & unpack results for easy copy/paste of asserts

@@ -6,7 +6,6 @@ import sys
 import random
 
 import yaml
-import simpy
 import numpy as np
 
 from lib.common import setup_asymmetric_links
@@ -87,11 +86,10 @@ def parse_params(conf, args):
 
 nodeConfig = parse_params(conf, sys.argv)
 conf.update_router_dependencies()
-env = simpy.Environment()
 graph = Graph(conf)
 
 # set up sim
-sim = DiscreteEventSim(env, conf, nodeConfig, graph)
+sim = DiscreteEventSim(conf, nodeConfig, graph)
 
 # run sim
 print("\n====== START OF SIMULATION ======")

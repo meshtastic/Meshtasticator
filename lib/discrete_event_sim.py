@@ -27,11 +27,10 @@ class DiscreteEventSim:
     """
 
     # TODO: once our PR for #48 is merged we'll have a NodeConfig class we can accept, rather than obscuring all node placement/creation in this class
-    def __init__(self, env: SimpyEnvironment, config: Config, node_configs: [] = [], graph: Graph | None = None):
+    def __init__(self, config: Config, node_configs: [] = [], graph: Graph | None = None):
         """Constructor.
 
         Arguments:
-        env -- SimPy Environment object to use
         config -- Config object defining global constants for simulation.
         node_configs -- Output of parse_params. List of node configurations. Default [].
         graph -- Optional Graph object for GUI. If provided GUI will be used. Default None, for no GUI.
@@ -42,13 +41,13 @@ class DiscreteEventSim:
         # and then only relevant ones passed to the constructor.
 
         # set state from parameters
-        self.env = env
+        self.env = SimpyEnvironment()
         self.conf = config
         self.node_configs = node_configs
         self.nodes = []
 
         # internal state
-        self.bc_pipe = BroadcastPipe(env)
+        self.bc_pipe = BroadcastPipe(self.env)
         self.packets = []
         self.packetsAtN = [[] for _ in range(self.conf.NR_NODES)]
         self.messageSeq = {"val": 0}
@@ -76,7 +75,8 @@ class DiscreteEventSim:
         self.totalPairs, self.symmetricLinks, self.asymmetricLinks, self.noLinks = setup_asymmetric_links(self.conf, self.nodes)
 
         if self.graph is not None and self.conf.MOVEMENT_ENABLED:
-            env.process(run_graph_updates(self.env, self.graph, self.nodes, self.conf.ONE_MIN_INTERVAL))
+            # NOTE: this does not run under test, since we skip creating a GUI
+            self.env.process(run_graph_updates(self.env, self.graph, self.nodes, self.conf.ONE_MIN_INTERVAL))
         self.conf.update_router_dependencies()
 
     def run_simulation(self):
