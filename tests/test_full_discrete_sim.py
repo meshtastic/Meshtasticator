@@ -24,7 +24,7 @@ class TestFullDiscreteSim(unittest.TestCase):
         from lib.common import setup_asymmetric_links
         from lib.discrete_event import BroadcastPipe
         from lib.gui import Graph, run_graph_updates
-        from lib.node import MeshNode
+        from lib.node import MeshNode, generate_node_list
 
         # crucial!! and perhaps a tad fragile
         random.seed(conf.SEED)
@@ -56,10 +56,10 @@ class TestFullDiscreteSim(unittest.TestCase):
         noLinks = 0
 
         graph = Graph(conf)
-        for i in range(conf.NR_NODES):
-            node = MeshNode(conf, nodes, env, bc_pipe, i, conf.PERIOD, messages, packetsAtN, packets, delays, nodeConfig[i], messageSeq)
-            nodes.append(node)
-            graph.add_node(node)
+
+        nodes = generate_node_list(conf, nodeConfig, env, bc_pipe, conf.PERIOD, messages, packetsAtN, packets, delays, messageSeq)
+        for n in nodes:
+            graph.add_node(n)
 
         totalPairs, symmetricLinks, asymmetricLinks, noLinks = setup_asymmetric_links(conf, nodes)
 
