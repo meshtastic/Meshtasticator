@@ -111,8 +111,7 @@ class MESHTASTIC_ROLE(Enum):
     CLIENT_BASE = 'CLIENT_BASE'
 
 class NodeConfig:
-    """
-    specific configuration settings for a node
+    """Specific configuration for a node
     """
     def __init__(self, node_id: int, position: Point, role: MESHTASTIC_ROLE = MESHTASTIC_ROLE.CLIENT, antenna_gain: float = 0, hop_limit: int = 3, neighbor_info: bool = False):
         self.node_id = node_id
@@ -123,8 +122,7 @@ class NodeConfig:
         self.neighbor_info = neighbor_info
 
 class MeshNode:
-    """
-    Class containing all the particular state of a MeshNode, references to necessary
+    """Class containing all the particular state of a MeshNode, references to necessary
     external resources like the simpy env, and process functions for simulation
     """
     def __init__(self, conf, nodes, env, bc_pipe, period, messages, packetsAtN, packets, delays, nodeConfig: NodeConfig, messageSeq):

@@ -23,8 +23,7 @@ logging.basicConfig(level=logging.INFO) # default log level
 log_level = logging.INFO
 
 def parse_params(conf, args):
-    """
-    parses command-line arguments, alters global simulation config, and returns
+    """parses command-line arguments, alters global simulation config, and returns
     a list of node configurations, or a list of None.
     """
 
