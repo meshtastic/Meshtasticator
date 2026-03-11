@@ -12,6 +12,7 @@ import numpy as np
 from lib.common import setup_asymmetric_links
 from lib.config import CONFIG
 from lib.discrete_event import BroadcastPipe
+from lib.discrete_event_sim import DiscreteEventSim
 from lib.gui import Graph, plot_schedule, gen_scenario, run_graph_updates
 from lib.node import MeshNode
 
@@ -84,43 +85,34 @@ def parse_params(conf, args):
     print("Interference level:", conf.INTERFERENCE_LEVEL)
     return config
 
-
 nodeConfig = parse_params(conf, sys.argv)
 conf.update_router_dependencies()
 env = simpy.Environment()
-bc_pipe = BroadcastPipe(env)
-
-# simulation variables
-nodes = []
-messages = []
-packets = []
-delays = []
-packetsAtN = [[] for _ in range(conf.NR_NODES)]
-messageSeq = {"val": 0}
-totalPairs = 0
-symmetricLinks = 0
-asymmetricLinks = 0
-noLinks = 0
-
 graph = Graph(conf)
-for i in range(conf.NR_NODES):
-    node = MeshNode(conf, nodes, env, bc_pipe, i, conf.PERIOD, messages, packetsAtN, packets, delays, nodeConfig[i], messageSeq)
-    nodes.append(node)
-    graph.add_node(node)
 
-totalPairs, symmetricLinks, asymmetricLinks, noLinks = setup_asymmetric_links(conf, nodes)
+# set up sim
+sim = DiscreteEventSim(env, conf, nodeConfig, graph)
 
-if conf.MOVEMENT_ENABLED:
-    env.process(run_graph_updates(env, graph, nodes, conf.ONE_MIN_INTERVAL))
-
-conf.update_router_dependencies()
-
-# start simulation
+# run sim
 print("\n====== START OF SIMULATION ======")
-env.run(until=conf.SIMTIME)
+sim.run_simulation()
 
-# compute statistics
+# collect, process & display results
 print("\n====== END OF SIMULATION ======")
+
+results = sim.get_results()
+
+packets = results["packets"]
+packetsAtN = results["packetsAtN"]
+messageSeq = results["messageSeq"]
+messages = results["messages"]
+delays = results["delays"]
+totalPairs = results["totalPairs"]
+symmetricLinks = results["symmetricLinks"]
+asymmetricLinks = results["asymmetricLinks"]
+noLinks = results["noLinks"]
+nodes = results["nodes"]
+
 print("*******************************")
 print(f"\nRouter Type: {conf.SELECTED_ROUTER_TYPE}")
 print('Number of messages created:', messageSeq["val"])

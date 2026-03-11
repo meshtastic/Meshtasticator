@@ -1,13 +1,10 @@
 import random
 import unittest
 
-from lib.config import CONFIG
+import lib.discrete_event_sim
 
-conf = CONFIG
-
-class TestFullDiscreteSim(unittest.TestCase):
-    '''
-    manually replicate a 10-node default configuration discrete sim test as
+class TestDiscreteEventSim(unittest.TestCase):
+    '''manually replicate a 10-node default configuration discrete sim test as
     if executing `loraMesh.py 10`. Set up the config to match our previous
     known good test run, run the sim, then check against some hardcoded
     results from a previous known good test run.
@@ -17,60 +14,43 @@ class TestFullDiscreteSim(unittest.TestCase):
     incorrect, we can update this test.
     '''
 
+    # TODO: add default-skip GUI test?
     def test_discrete_sim_ten_nodes(self):
         import simpy
         import numpy as np
 
-        from lib.common import setup_asymmetric_links
-        from lib.discrete_event import BroadcastPipe
-        from lib.gui import Graph, run_graph_updates
-        from lib.node import MeshNode
+        from lib.config import CONFIG
+        conf = CONFIG
 
         # crucial!! and perhaps a tad fragile
         random.seed(conf.SEED)
 
         self.assertEqual(conf.SEED, 44, "expected default seed for rng")
 
-        # initial version: get the config, then just change what
-        # parse_params would change.
-        # TODO: have our own replicate of our reference config, so we
-        # have to explicitly update the test when we change config defaults
+        # imitate parse_params
         conf.NR_NODES = 10
-
         nodeConfig = [None for _ in range(conf.NR_NODES)]
         conf.update_router_dependencies()
         env = simpy.Environment()
-        bc_pipe = BroadcastPipe(env)
+        # skipping GUI graphing to speed things up
 
-        # begin loraMesh.py copypasta, so we can replicate running a sim
-        # simulation variables
-        nodes = []
-        messages = []
-        packets = []
-        delays = []
-        packetsAtN = [[] for _ in range(conf.NR_NODES)]
-        messageSeq = {"val": 0}
-        totalPairs = 0
-        symmetricLinks = 0
-        asymmetricLinks = 0
-        noLinks = 0
+        # set up sim
+        sim = lib.discrete_event_sim.DiscreteEventSim(env, conf, nodeConfig)
+        sim.run_simulation()
 
-        graph = Graph(conf)
-        for i in range(conf.NR_NODES):
-            node = MeshNode(conf, nodes, env, bc_pipe, i, conf.PERIOD, messages, packetsAtN, packets, delays, nodeConfig[i], messageSeq)
-            nodes.append(node)
-            graph.add_node(node)
+        # collect & unpack results for easy copy/paste of asserts
+        results = sim.get_results()
 
-        totalPairs, symmetricLinks, asymmetricLinks, noLinks = setup_asymmetric_links(conf, nodes)
-
-        if conf.MOVEMENT_ENABLED:
-            env.process(run_graph_updates(env, graph, nodes, conf.ONE_MIN_INTERVAL))
-
-        conf.update_router_dependencies()
-
-        # TODO: disable GUI for this, since IMO that's unwanted when running tests
-        env.run(until=conf.SIMTIME)
-        # end loraMesh.py copypasta
+        packets = results["packets"]
+        packetsAtN = results["packetsAtN"]
+        messageSeq = results["messageSeq"]
+        messages = results["messages"]
+        delays = results["delays"]
+        totalPairs = results["totalPairs"]
+        symmetricLinks = results["symmetricLinks"]
+        asymmetricLinks = results["asymmetricLinks"]
+        noLinks = results["noLinks"]
+        nodes = results["nodes"]
 
         # Begin actual tests, comparing against a hardcoded 'known
         # good' run. If these fail then a change has impacted the
