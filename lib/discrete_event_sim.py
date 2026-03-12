@@ -94,7 +94,20 @@ class DiscreteEventSim:
 
         # create nodes once we have the various things they have to be wired into
         for i in range(self.conf.NR_NODES):
-            node = MeshNode(self.conf, self.nodes, self.env, self.mutated_state.bc_pipe, i, self.conf.PERIOD, self.messages, self.mutated_state.packetsAtN, self.mutated_state.packets, self.delays, self.node_configs[i], self.mutated_state.messageSeq)
+            node = MeshNode(
+                self.conf,
+                self.nodes,
+                self.env,
+                self.mutated_state.bc_pipe,
+                i,
+                self.conf.PERIOD,
+                self.messages,
+                self.mutated_state.packetsAtN,
+                self.mutated_state.packets,
+                self.delays,
+                self.node_configs[i],
+                self.mutated_state.messageSeq
+            )
             self.nodes.append(node)
             # fun trick, this works too: graph.add_node(node) if graph else None
             if self.graph is not None:
