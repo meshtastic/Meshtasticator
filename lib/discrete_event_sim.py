@@ -32,7 +32,13 @@ class SimulationDataTracking:
     """Class to hold data used to monitor a simulation which has no
     impact on the state or progress of the simulation
     """
-    pass
+    def __init__(self):
+        self.messages = []
+        self.delays = []
+        self.totalPairs = 0
+        self.symmetricLinks = 0
+        self.asymmetricLinks = 0
+        self.noLinks = 0
 
 class SimulationResults:
     """Class to hold simulation result data. Any interesting or relevant
@@ -82,12 +88,7 @@ class DiscreteEventSim:
         self.nodes = []
 
         # stats & data tracking
-        self.messages = []
-        self.delays = []
-        self.totalPairs = 0
-        self.symmetricLinks = 0
-        self.asymmetricLinks = 0
-        self.noLinks = 0
+        self.data_tracking = SimulationDataTracking()
 
         # note: we allow user to specify if graphing will happen or not
         self.graph = graph
@@ -101,10 +102,10 @@ class DiscreteEventSim:
                 self.mutated_state.bc_pipe,
                 i,
                 self.conf.PERIOD,
-                self.messages,
+                self.data_tracking.messages,
                 self.mutated_state.packetsAtN,
                 self.mutated_state.packets,
-                self.delays,
+                self.data_tracking.delays,
                 self.node_configs[i],
                 self.mutated_state.messageSeq
             )
@@ -114,7 +115,7 @@ class DiscreteEventSim:
                 self.graph.add_node(node)
 
         # setup that requires having nodes
-        self.totalPairs, self.symmetricLinks, self.asymmetricLinks, self.noLinks = setup_asymmetric_links(self.conf, self.nodes)
+        self.data_tracking.totalPairs, self.data_tracking.symmetricLinks, self.data_tracking.asymmetricLinks, self.data_tracking.noLinks = setup_asymmetric_links(self.conf, self.nodes)
 
         if self.graph is not None and self.conf.MOVEMENT_ENABLED:
             # NOTE: this does not run under test, since we skip creating a GUI
@@ -140,12 +141,12 @@ class DiscreteEventSim:
             "packets": self.mutated_state.packets,
             "packetsAtN": self.mutated_state.packetsAtN,
             "messageSeq": self.mutated_state.messageSeq,
-            "messages": self.messages,
-            "delays": self.delays,
-            "totalPairs": self.totalPairs,
-            "symmetricLinks": self.symmetricLinks,
-            "asymmetricLinks": self.asymmetricLinks,
-            "noLinks": self.noLinks,
+            "messages": self.data_tracking.messages,
+            "delays": self.data_tracking.delays,
+            "totalPairs": self.data_tracking.totalPairs,
+            "symmetricLinks": self.data_tracking.symmetricLinks,
+            "asymmetricLinks": self.data_tracking.asymmetricLinks,
+            "noLinks": self.data_tracking.noLinks,
             "nodes": self.nodes,
         }
         # TODO: add some universally useful result calculations, like the
