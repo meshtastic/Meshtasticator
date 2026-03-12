@@ -76,11 +76,20 @@ class DiscreteEventSim:
 
         if self.graph is not None and self.conf.MOVEMENT_ENABLED:
             # NOTE: this does not run under test, since we skip creating a GUI
+            # TODO: batchSim does this, but without the 4th parameter
             self.env.process(run_graph_updates(self.env, self.graph, self.nodes, self.conf.ONE_MIN_INTERVAL))
         self.conf.update_router_dependencies()
 
     def run_simulation(self):
         self.env.run(until=self.conf.SIMTIME)
+
+    def get_env(self) -> SimpyEnvironment:
+        """get a reference to the Sim's SimPy Environment.
+        Useful for adding your own processes to the environment.
+        Originally a hack to support batchSim.py, which has a progress
+        tracking process
+        """
+        return self.env
 
     # just return a dictionary for now, refactor into an object later
     def get_results(self) -> {}:
