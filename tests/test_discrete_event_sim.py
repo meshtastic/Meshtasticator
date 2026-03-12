@@ -76,8 +76,8 @@ class TestDiscreteEventSim(unittest.TestCase):
         self.assertEqual(nrReceived, 2743, "expected number of packets received")
         meanDelay = results['meanDelay']
         self.assertEqual(round(meanDelay, 2), 9465.81, "expected rounded delay average")
-        txAirUtilization = results['txAirUtilization']
-        self.assertEqual(round(txAirUtilization * 100, 2), 5.06, "expected rounded average tx air utilization")
+        txAirUtilizationRate = results['txAirUtilizationRate']
+        self.assertEqual(round(txAirUtilizationRate * 100, 2), 5.06, "expected rounded average tx air utilization")
 
         nodeReach = results['nodeReach']
         self.assertEqual(round(nodeReach*100, 2), 85.06, "expected rounded percentage of nodes reached")

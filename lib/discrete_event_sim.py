@@ -96,11 +96,10 @@ class SimulationResults:
         self.results["meanDelay"] = np.nanmean(self.results["delays"])
 
         # various division-by-0 guarded calculations
-        # TODO: rename, rate. Average tx utilization over all nodes, per ms, for the full sim.
         if conf.NR_NODES != 0 and conf.SIMTIME != 0:
-            self.results["txAirUtilization"] = sum([n.txAirUtilization for n in nodes])/conf.NR_NODES/conf.SIMTIME
+            self.results["txAirUtilizationRate"] = sum([n.txAirUtilization for n in nodes])/conf.NR_NODES/conf.SIMTIME
         else:
-            self.results["txAirUtilization"] = np.nan
+            self.results["txAirUtilizationRate"] = np.nan
 
         if self.results["nrSensed"] != 0:
             self.results["collisionRate"] = self.results["nrCollisions"]/self.results["nrSensed"]

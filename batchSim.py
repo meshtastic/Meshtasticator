@@ -292,7 +292,7 @@ for rt_i, routerType in enumerate(routerTypes):
             nodeUsefulness[rep] = results['usefulness'] * 100
 
             meanDelay[rep] = results['meanDelay']
-            meanTxAirUtilization[rep] = results['txAirUtilization']
+            meanTxAirUtilization[rep] = results['txAirUtilizationRate']
 
             if routerTypeConf.MODEL_ASYMMETRIC_LINKS:
                 # actually percentages, not rates

@@ -115,7 +115,7 @@ nrCollisions = results['nrCollisions']
 nrSensed = results['nrSensed']
 nrReceived = results['nrReceived']
 meanDelay = results['meanDelay']
-txAirUtilization = results['txAirUtilization']
+txAirUtilizationRate = results['txAirUtilizationRate']
 collisionRate = results['collisionRate']
 nodeReach = results['nodeReach']
 usefulness = results['usefulness']
@@ -129,7 +129,7 @@ print("Number of collisions:", nrCollisions)
 print("Number of packets sensed:", nrSensed)
 print("Number of packets received:", nrReceived)
 print('Delay average (ms):', round(meanDelay, 2))
-print('Average Tx air utilization:', round(txAirUtilization * 100, 2), '%')
+print('Average Tx air utilization:', round(txAirUtilizationRate * 100, 2), '%')
 print("Percentage of packets that collided:", round(collisionRate*100, 2))
 print("Average percentage of nodes reached:", round(nodeReach*100, 2))
 print("Percentage of received packets containing new message:", round(usefulness*100, 2))
