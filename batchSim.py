@@ -271,11 +271,8 @@ for rt_i, routerType in enumerate(routerTypes):
 
             results = sim.get_results()
 
-            # TODO: some of these probably unused
             packets = results["packets"]
-            packetsAtN = results["packetsAtN"]
             messageSeq = results["messageSeq"]
-            messages = results["messages"]
             delays = results["delays"]
             totalPairs = results["totalPairs"]
             symmetricLinks = results["symmetricLinks"]
