@@ -13,6 +13,7 @@ class TestDiscreteEventSim(unittest.TestCase):
     of the sim doesn't change. Or if the prior behavior was mistaken or
     incorrect, we can update this test.
     '''
+    # TODO: add many more tests for SimulationResults, especially finalize method
 
     # TODO: add default-skip GUI test?
     def test_discrete_sim_ten_nodes(self):
@@ -39,6 +40,7 @@ class TestDiscreteEventSim(unittest.TestCase):
         # collect & unpack results for easy copy/paste of asserts
         results = sim.get_results()
 
+        # put "first order" results in local scope for easy access
         packets = results["packets"]
         packetsAtN = results["packetsAtN"]
         messageSeq = results["messageSeq"]
@@ -60,43 +62,43 @@ class TestDiscreteEventSim(unittest.TestCase):
         # simulation results is up to your judgement for which is
         # appropriate. Be cautious!
         self.assertEqual(messageSeq["val"], 180, "expected number of messages created")
-        sent = len(packets)
-        if conf.DMs:
-            potentialReceivers = sent
-        else:
-            potentialReceivers = sent*(conf.NR_NODES-1)
+        sent = results['sent']
+        potentialReceivers = results['potentialReceivers']
         self.assertEqual(sent, 875, "expected number of packets sent")
         self.assertEqual(potentialReceivers, 7875, "expected number of potential receivers")
 
-        nrCollisions = sum([1 for p in packets for n in nodes if p.collidedAtN[n.nodeid] is True])
+        nrCollisions = results['nrCollisions']
         self.assertEqual(nrCollisions, 320, "expected number of collisions")
-        nrSensed = sum([1 for p in packets for n in nodes if p.sensedByN[n.nodeid] is True])
+        nrSensed = results['nrSensed']
         self.assertEqual(nrSensed, 3071, "expected number of packets sensed")
 
-        nrReceived = sum([1 for p in packets for n in nodes if p.receivedAtN[n.nodeid] is True])
+        nrReceived = results['nrReceived']
         self.assertEqual(nrReceived, 2743, "expected number of packets received")
-        meanDelay = np.nanmean(delays)
+        meanDelay = results['meanDelay']
         self.assertEqual(round(meanDelay, 2), 9465.81, "expected rounded delay average")
-        txAirUtilization = sum([n.txAirUtilization for n in nodes])/conf.NR_NODES/conf.SIMTIME*100
-        self.assertEqual(round(txAirUtilization, 2), 5.06, "expected rounded average tx air utilization")
+        txAirUtilization = results['txAirUtilization']
+        self.assertEqual(round(txAirUtilization * 100, 2), 5.06, "expected rounded average tx air utilization")
 
-        nodeReach = sum([n.usefulPackets for n in nodes])/(messageSeq["val"]*(conf.NR_NODES-1))
+        nodeReach = results['nodeReach']
         self.assertEqual(round(nodeReach*100, 2), 85.06, "expected rounded percentage of nodes reached")
 
-        usefulness = sum([n.usefulPackets for n in nodes])/nrReceived  # nr of packets that delivered to a packet to a new receiver out of all packets sent
+        usefulness = results['usefulness']
         self.assertEqual(round(usefulness*100, 2), 50.24, "expected rounded 'usefulness' percentage")
 
-        delayDropped = sum(n.droppedByDelay for n in nodes)
+        delayDropped = results['delayDropped']
         self.assertEqual(delayDropped, 1255, "expected number of packets dropped")
         # default config has both asymmetric links and movement enabled
-        self.assertEqual(round(asymmetricLinks / totalPairs * 100, 2), 8.89, "expected rounded percentage of asymmetric links")
-        self.assertEqual(round(symmetricLinks / totalPairs * 100, 2), 42.22, "expected rounded percentage of symmetric links")
-        self.assertEqual(round(noLinks / totalPairs * 100, 2), 48.89, "expected rounded percentage of 'no' links")
+        asymmetricLinkRate = results['asymmetricLinkRate']
+        self.assertEqual(round(asymmetricLinkRate * 100, 2), 8.89, "expected rounded percentage of asymmetric links")
+        symmetricLinkRate = results['symmetricLinkRate']
+        self.assertEqual(round(symmetricLinkRate * 100, 2), 42.22, "expected rounded percentage of symmetric links")
+        noLinkRate = results['noLinkRate']
+        self.assertEqual(round(noLinkRate * 100, 2), 48.89, "expected rounded percentage of 'no' links")
 
-        movingNodes = sum([1 for n in nodes if n.isMoving is True])
+        movingNodes = results['movingNodes']
         self.assertEqual(movingNodes, 4, "expected number of moving nodes")
 
-        gpsEnabled = sum([1 for n in nodes if n.gpsEnabled is True])
+        gpsEnabled = results['gpsEnabled']
         self.assertEqual(gpsEnabled, 1, "expected number of nodes with GPS")
 
 if __name__ == '__main__':

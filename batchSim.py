@@ -280,34 +280,25 @@ for rt_i, routerType in enumerate(routerTypes):
             noLinks = results["noLinks"]
             nodes = results["nodes"]
 
-            # Calculate stats
-            nrCollisions = sum([1 for pkt in packets for n in nodes if pkt.collidedAtN[n.nodeid]])
-            nrSensed = sum([1 for pkt in packets for n in nodes if pkt.sensedByN[n.nodeid]])
-            nrReceived = sum([1 for pkt in packets for n in nodes if pkt.receivedAtN[n.nodeid]])
-            nrUseful = sum([n.usefulPackets for n in nodes])
+            # collect second-order results from finalized results
+            nrCollisions = results['nrCollisions']
+            nrSensed = results['nrSensed']
+            nrReceived = results['nrReceived']
+            nrUseful = results['nrUseful']
 
-            if nrSensed != 0:
-                collisionRate[rep] = float(nrCollisions) / nrSensed * 100
-            else:
-                collisionRate[rep] = np.NaN
+            # actually percentages, not rates
+            collisionRate[rep] = results['collisionRate'] * 100
+            nodeReach[rep] = results['nodeReach'] * 100
+            nodeUsefulness[rep] = results['usefulness'] * 100
 
-            if messageSeq["val"] != 0:
-                nodeReach[rep] = nrUseful / (messageSeq["val"] * (routerTypeConf.NR_NODES - 1)) * 100
-            else:
-                nodeReach[rep] = np.NaN
-
-            if nrReceived != 0:
-                nodeUsefulness[rep] = nrUseful / nrReceived * 100
-            else:
-                nodeUsefulness[rep] = np.NaN
-
-            meanDelay[rep] = np.nanmean(delays)
-            meanTxAirUtilization[rep] = sum([n.txAirUtilization for n in nodes]) / routerTypeConf.NR_NODES
+            meanDelay[rep] = results['meanDelay']
+            meanTxAirUtilization[rep] = results['txAirUtilization']
 
             if routerTypeConf.MODEL_ASYMMETRIC_LINKS:
-                asymmetricLinkRate[rep] = round(asymmetricLinks / totalPairs * 100, 2)
-                symmetricLinkRate[rep] = round(symmetricLinks / totalPairs * 100, 2)
-                noLinkRate[rep] = round(noLinks / totalPairs * 100, 2)
+                # actually percentages, not rates
+                asymmetricLinkRate[rep] = round(results['asymmetricLinkRate'] * 100, 2)
+                symmetricLinkRate[rep] = round(results['symmetricLinkRate'] * 100, 2)
+                noLinkRate[rep] = round(results['noLinkRate'] * 100, 2)
 
         # After finishing all repetitions for this nrNodes, compute means/stdevs
         collisions.append(np.nanmean(collisionRate))

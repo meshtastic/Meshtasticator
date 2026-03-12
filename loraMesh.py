@@ -108,49 +108,45 @@ asymmetricLinks = results["asymmetricLinks"]
 noLinks = results["noLinks"]
 nodes = results["nodes"]
 
+# collect second-order results from finalized results
+sent = results['sent']
+potentialReceivers = results['potentialReceivers']
+nrCollisions = results['nrCollisions']
+nrSensed = results['nrSensed']
+nrReceived = results['nrReceived']
+meanDelay = results['meanDelay']
+txAirUtilization = results['txAirUtilization']
+collisionRate = results['collisionRate']
+nodeReach = results['nodeReach']
+usefulness = results['usefulness']
+delayDropped = results['delayDropped']
+
 print("*******************************")
 print(f"\nRouter Type: {conf.SELECTED_ROUTER_TYPE}")
 print('Number of messages created:', messageSeq["val"])
-sent = len(packets)
-if conf.DMs:
-    potentialReceivers = sent
-else:
-    potentialReceivers = sent*(conf.NR_NODES-1)
 print('Number of packets sent:', sent, 'to', potentialReceivers, 'potential receivers')
-nrCollisions = sum([1 for p in packets for n in nodes if p.collidedAtN[n.nodeid] is True])
 print("Number of collisions:", nrCollisions)
-nrSensed = sum([1 for p in packets for n in nodes if p.sensedByN[n.nodeid] is True])
 print("Number of packets sensed:", nrSensed)
-nrReceived = sum([1 for p in packets for n in nodes if p.receivedAtN[n.nodeid] is True])
 print("Number of packets received:", nrReceived)
-meanDelay = np.nanmean(delays)
 print('Delay average (ms):', round(meanDelay, 2))
-txAirUtilization = sum([n.txAirUtilization for n in nodes])/conf.NR_NODES/conf.SIMTIME*100
-print('Average Tx air utilization:', round(txAirUtilization, 2), '%')
-if nrSensed != 0:
-    collisionRate = float((nrCollisions)/nrSensed)
-    print("Percentage of packets that collided:", round(collisionRate*100, 2))
-else:
-    print("No packets sensed.")
-nodeReach = sum([n.usefulPackets for n in nodes])/(messageSeq["val"]*(conf.NR_NODES-1))
+print('Average Tx air utilization:', round(txAirUtilization * 100, 2), '%')
+print("Percentage of packets that collided:", round(collisionRate*100, 2))
 print("Average percentage of nodes reached:", round(nodeReach*100, 2))
-if nrReceived != 0:
-    usefulness = sum([n.usefulPackets for n in nodes])/nrReceived  # nr of packets that delivered to a packet to a new receiver out of all packets sent
-    print("Percentage of received packets containing new message:", round(usefulness*100, 2))
-else:
-    print('No packets received.')
-delayDropped = sum(n.droppedByDelay for n in nodes)
+print("Percentage of received packets containing new message:", round(usefulness*100, 2))
 print("Number of packets dropped by delay/hop limit:", delayDropped)
 
 if conf.MODEL_ASYMMETRIC_LINKS:
-    print("Asymmetric links:", round(asymmetricLinks / totalPairs * 100, 2), '%')
-    print("Symmetric links:", round(symmetricLinks / totalPairs * 100, 2), '%')
-    print("No links:", round(noLinks / totalPairs * 100, 2), '%')
+    asymmetricLinkRate = results['asymmetricLinkRate']
+    symmetricLinkRate = results['symmetricLinkRate']
+    noLinkRate = results['noLinkRate']
+    print("Asymmetric links:", round(asymmetricLinkRate * 100, 2), '%')
+    print("Symmetric links:", round(symmetricLinkRate * 100, 2), '%')
+    print("No links:", round(noLinkRate * 100, 2), '%')
 
 if conf.MOVEMENT_ENABLED:
-    movingNodes = sum([1 for n in nodes if n.isMoving is True])
+    movingNodes = results['movingNodes']
+    gpsEnabled = results['gpsEnabled']
     print("Number of moving nodes:", movingNodes)
-    gpsEnabled = sum([1 for n in nodes if n.gpsEnabled is True])
     print("Number of moving nodes w/ GPS:", gpsEnabled)
 
 graph.save()

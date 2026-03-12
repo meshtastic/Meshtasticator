@@ -2,12 +2,14 @@ import logging
 
 # probably not necessary, but "Environment" seemed too generic to me
 from simpy import Environment as SimpyEnvironment
+import numpy as np
 
 from lib.common import setup_asymmetric_links
 from lib.config import Config
 from lib.discrete_event import BroadcastPipe
 from lib.gui import Graph, run_graph_updates
 from lib.node import MeshNode
+from lib.packet import MeshPacket
 
 logger = logging.getLogger(__name__)
 
@@ -46,16 +48,89 @@ class SimulationResults:
     functions can take this object and present a report to the user however
     makes sense.
 
-    Just a glorified dictionary honestly.
+    Mostly a dictionary with extra features.
     """
     def __init__(self, results: dict):
+        """Constructor. Start off results with first-order results.
+
+        Arguments:
+        results -- dictionary of first-order results from simulation. MANY keys are assumed to exist!
+        """
         self.results = results.copy() # only a shallow copy
 
-    def finalize(self):
-        """Once simulation is finished, calculate any second-order
-        data that is generally useful, such as averages.
+    def __getitem__(self, subscript: str):
+        """Implement subscript access to support `results_object['datapoint']`.
+        Very thin wrapper to index into interior dictionary, allowing Exceptions
+        to bubble up to the caller.
         """
-        pass
+        return self.results[subscript]
+
+    def finalize(self, conf: Config, nodes: [MeshNode], packets: [MeshPacket]):
+        """Once simulation is finished, calculate any second-order
+        data that is generally useful, such as averages. This requires some extra
+        state-related info.
+
+        All calculated rates are left as the 'raw' ratio. As in, 50% is 0.5,
+        100% is 1, etc. If you want percentages you should scale & round the
+        rate however you prefer.
+
+        Arguments:
+        conf -- Config object. Simulation config.
+        nodes -- list of nodes from simulation.
+        packets -- list of packets sent during simulation.
+        """
+        # replicate result enrichment/calculation from loraMesh.py and batchSim.py
+        sent = len(self.results["packets"])
+        if conf.DMs:
+            self.results["potentialReceivers"] = sent
+        else:
+            self.results["potentialReceivers"] = sent * (conf.NR_NODES - 1)
+        self.results["sent"] = sent
+
+        # TODO: inefficient. Have nodes keep counters for these and just collect them
+        self.results["nrCollisions"] = sum([1 for p in packets for n in nodes if p.collidedAtN[n.nodeid] is True])
+        self.results["nrSensed"] = sum([1 for p in packets for n in nodes if p.sensedByN[n.nodeid] is True])
+        self.results["nrReceived"] = sum([1 for p in packets for n in nodes if p.receivedAtN[n.nodeid] is True])
+        self.results["nrUseful"] = sum([n.usefulPackets for n in nodes])
+
+        self.results["meanDelay"] = np.nanmean(self.results["delays"])
+
+        # various division-by-0 guarded calculations
+        # TODO: rename, rate. Average tx utilization over all nodes, per ms, for the full sim.
+        if conf.NR_NODES != 0 and conf.SIMTIME != 0:
+            self.results["txAirUtilization"] = sum([n.txAirUtilization for n in nodes])/conf.NR_NODES/conf.SIMTIME
+        else:
+            self.results["txAirUtilization"] = np.nan
+
+        if self.results["nrSensed"] != 0:
+            self.results["collisionRate"] = self.results["nrCollisions"]/self.results["nrSensed"]
+        else:
+            self.results["collisionRate"] = np.nan
+
+        if self.results["messageSeq"]["val"] != 0 and conf.NR_NODES - 1 != 0:
+            self.results["nodeReach"] = self.results["nrUseful"]/(self.results["messageSeq"]["val"]*(conf.NR_NODES-1))
+        else:
+            self.results["nodeReach"] = np.nan
+
+        if self.results["nrReceived"] != 0:
+            usefulness = self.results["nrUseful"]/self.results["nrReceived"]  # nr of packets that delivered to a packet to a new receiver out of all packets sent
+            self.results["usefulness"] = usefulness
+        else:
+            self.results["usefulness"] = np.nan
+
+        self.results["delayDropped"] = sum(n.droppedByDelay for n in nodes)
+
+        if conf.MODEL_ASYMMETRIC_LINKS and self.results["totalPairs"] != 0:
+            asymmetricLinkRate = self.results["asymmetricLinks"] / self.results["totalPairs"]
+            symmetricLinkRate = self.results["symmetricLinks"] / self.results["totalPairs"]
+            noLinkRate = self.results["noLinks"] / self.results["totalPairs"]
+            self.results["asymmetricLinkRate"] = asymmetricLinkRate
+            self.results["symmetricLinkRate"] = symmetricLinkRate
+            self.results["noLinkRate"] = noLinkRate
+
+        if conf.MOVEMENT_ENABLED:
+            self.results["movingNodes"] = sum([1 for n in nodes if n.isMoving is True])
+            self.results["gpsEnabled"] = sum([1 for n in nodes if n.gpsEnabled is True])
 
 class DiscreteEventSim:
     """Class for a full Discrete Event Simulation. Contains
@@ -134,10 +209,10 @@ class DiscreteEventSim:
         """
         return self.env
 
-    # just return a dictionary for now, refactor into an object later
-    def get_results(self) -> {}:
+    def get_results(self) -> SimulationResults:
+        # TODO: is it possible to add a check that the sim has finished running?
         # first-order stats/data collection
-        results = {
+        first_order_results = {
             "packets": self.mutated_state.packets,
             "packetsAtN": self.mutated_state.packetsAtN,
             "messageSeq": self.mutated_state.messageSeq,
@@ -149,6 +224,9 @@ class DiscreteEventSim:
             "noLinks": self.data_tracking.noLinks,
             "nodes": self.nodes,
         }
+        results = SimulationResults(first_order_results)
+        results.finalize(self.conf, self.nodes, self.mutated_state.packets)
+
         # TODO: add some universally useful result calculations, like the
         # ones common between loraMesh.py and batchSim.py
         return results
