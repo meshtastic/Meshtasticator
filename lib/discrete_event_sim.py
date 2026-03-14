@@ -17,17 +17,17 @@ class SimulationState:
     """Class to hold all global mutated state of a simulation, not including
     node-specific state such as the position of a moving node.
     """
-    def __init__(self, config: Config, env: SimpyEnvironment):
+    def __init__(self, conf: Config, env: SimpyEnvironment):
         """Constructor
 
         Arguments:
-        config -- Config object of global sim constants. Only used for NR_NODES.
+        conf -- Config object of global sim constants. Only used for NR_NODES.
         env -- SimPy Environment for simulation. Required for internal BroadcastPipe.
         """
         self.env = env
         self.bc_pipe = BroadcastPipe(self.env)
         self.packets = [] # used mostly for data tracking, but also for state
-        self.packetsAtN = [[] for _ in range(config.NR_NODES)]
+        self.packetsAtN = [[] for _ in range(conf.NR_NODES)]
         self.messageSeq = {"val": 0} # TODO: turn this into a locked counter
 
 class SimulationDataTracking:
@@ -136,23 +136,19 @@ class DiscreteEventSim:
     simulation config, all necessary state, and sim plumbing.
     """
 
-    # TODO: once our PR for #48 is merged we'll have a NodeConfig class we can accept, rather than obscuring all node placement/creation in this class
-    def __init__(self, config: Config, node_configs: [] = [], graph: Graph | None = None):
+    # TODO: once our PR for #48 is merged we'll have a NodeConfig class we can accept, rather than a list of dictionaries
+    def __init__(self, conf: Config, node_configs: [] = [], graph: Graph | None = None):
         """Constructor.
 
         Arguments:
-        config -- Config object defining global constants for simulation.
+        conf -- Config object defining global constants for simulation.
         node_configs -- Output of parse_params. List of node configurations. Default [].
         graph -- Optional Graph object for GUI. If provided GUI will be used. Default None, for no GUI.
         """
-        # InteractiveSim takes argparse output as the single parameter here, tightly
-        # coupling CLI arguments to this class. This works but try with a looser
-        # coupling first, so that parameters can be translated/normalized first,
-        # and then only relevant ones passed to the constructor.
 
         # set constant state/initial state from parameters
         self.env = SimpyEnvironment()
-        self.conf = config
+        self.conf = conf
         self.node_configs = node_configs
 
         # internal global state which changes
@@ -193,6 +189,8 @@ class DiscreteEventSim:
 
         if self.graph is not None and self.conf.MOVEMENT_ENABLED:
             # NOTE: this does not run under test, since we skip creating a GUI
+            # TODO: revisit this design decision sometime. Do we want graphing/GUI to be handled in this object,
+            # or by some external object the user wires in, like how batchSim.py adds in the simulation_progress process?
             # TODO: batchSim does this, but without the 4th parameter
             self.env.process(run_graph_updates(self.env, self.graph, self.nodes, self.conf.ONE_MIN_INTERVAL))
         self.conf.update_router_dependencies()
@@ -226,7 +224,5 @@ class DiscreteEventSim:
         results = SimulationResults(first_order_results)
         results.finalize(self.conf, self.nodes, self.mutated_state.packets)
 
-        # TODO: add some universally useful result calculations, like the
-        # ones common between loraMesh.py and batchSim.py
         return results
 
