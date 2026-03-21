@@ -419,17 +419,23 @@ class InteractiveSim:
                     self.container.exec_run(f"{startNode} -s -d /home/node{n0.nodeid} -h {n.hwId} -p {n.TCPPort}", detach=True, user="root")
                 print(f"Docker container with name {self.container.name} is started.")
             else:
+                # Start container with infinite loop so it stays alive between node restarts.
+                # Those processes exit, but this one doesn't (until killed)
                 self.container = dockerClient.containers.run(
                     DEVICE_SIM_DOCKER_IMAGE,
-                    command=f"sh -cx '{startNode} -s -d /home/node{n0.nodeid} -h {n0.hwId} -p {n0.TCPPort} > /home/out_{n0.nodeid}.log'",
+                    command=f"sh -cx 'while true; do sleep 1; done'",
                     ports=dict(zip((f'{n.TCPPort}/tcp' for n in self.nodes), (n.TCPPort for n in self.nodes))),
                     name="Meshtastic", detach=True, auto_remove=True, user="root",
                     volumes={"Meshtasticator": {'bind': '/home/', 'mode': 'rw'}}
                 )
-                for n in self.nodes[1:]:
+                for n in self.nodes:
+                    # start node processes in container
                     if self.emulateCollisions:
                         time.sleep(2)  # Wait a bit to avoid immediate collisions when starting multiple nodes
-                    self.container.exec_run(f"sh -cx '{startNode} -s -d /home/node{n.nodeid} -h {n.hwId} -p {n.TCPPort} > /home/out_{n.nodeid}.log'", detach=True, user="root")
+                    self.container.exec_run(f"sh -cx '{startNode} -s -d /home/node{n.nodeid} -h {n.hwId} -p {n.TCPPort} > /home/out_{n.nodeid}.log'",
+                        detach=True,
+                        user="root"
+                    )
                 print(f"Docker container with name {self.container.name} is started.")
                 print(f"You can check the device logs using 'docker exec -it {self.container.name} cat /home/out_x.log', where x is the node number.")
         else:
