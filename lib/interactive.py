@@ -5,6 +5,7 @@ import threading
 import time
 import yaml
 import os
+import logging
 from shutil import which
 
 import google.protobuf.json_format as proto
@@ -20,6 +21,8 @@ import lib.phy as phy
 from lib.common import find_random_position
 from lib.gui import gen_scenario, Graph
 from lib.point import Point
+
+logger = logging.getLogger(__name__)
 
 conf = Config()
 HW_ID_OFFSET = 16
@@ -69,7 +72,12 @@ class InteractiveNode:
         self.iface = iface
 
     def set_config(self):
+        # TODO: check for methods of meshtastic.node.Node that we can
+        # use to set various node settings rather than directly using
+        # the implied-private _sendAdmin method
+
         # Set a long and short name
+        # TODO: use setOwner of the meshtastic.node.Node class instead?
         p = admin_pb2.AdminMessage()
         p.set_owner.long_name = "Node "+str(self.nodeid)
         p.set_owner.short_name = str(self.nodeid)
@@ -366,6 +374,12 @@ class InteractiveSim:
         if not self.docker and not sys.platform.startswith('linux'):
             print("Docker is required for non-Linux OS.")
             self.docker = True
+
+        if args.verbose:
+            logger.setLevel(logging.DEBUG)
+            logger.debug("debug/verbose output enabled. However it is currently quite limited.")
+            meshtastic_logger = logging.getLogger('meshtastic')
+            meshtastic_logger.setLevel(logging.DEBUG)
 
         self.graph = InteractiveGraph()
         for n in range(conf.NR_NODES):
