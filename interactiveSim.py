@@ -7,7 +7,10 @@
 import os
 import time
 import argparse
+import logging
 from lib.interactive import InteractiveSim, CommandProcessor
+
+logger = logging.getLogger(__name__)
 
 parser = argparse.ArgumentParser(prog='interactiveSim')
 parser.add_argument('-s', '--script', action='store_true')
@@ -16,6 +19,7 @@ parser.add_argument('--from-file', action='store_true')
 parser.add_argument('-f', '--forward', action='store_true')
 parser.add_argument('-p', '--program', type=str, default=os.getcwd())
 parser.add_argument('-c', '--collisions', action='store_true')
+parser.add_argument('-v', '--verbose', action='store_true', help='enable debug logging')
 parser.add_argument('nrNodes', type=int, nargs='?', choices=range(0, 11), default=0)
 
 sim = InteractiveSim(parser.parse_args())  # Start the simulator

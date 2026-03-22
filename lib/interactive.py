@@ -5,6 +5,7 @@ import threading
 import time
 import yaml
 import os
+import logging
 from shutil import which
 
 import google.protobuf.json_format as proto
@@ -21,13 +22,15 @@ from lib.common import find_random_position
 from lib.gui import gen_scenario, Graph
 from lib.point import Point
 
+logger = logging.getLogger(__name__)
+
 conf = Config()
 HW_ID_OFFSET = 16
 TCP_PORT_OFFSET = 4404
 TCP_PORT_CLIENT = 4402
 MAX_TO_FROM_RADIO_SIZE = 512
 DEVICE_SIM_DOCKER_IMAGE = "meshtastic/meshtasticd"
-MESHTASTICD_PATH_DOCKER = "meshtasticd"
+MESHTASTICD_PATH_DOCKER = "/usr/bin/meshtasticd"
 
 
 class InteractiveNode:
@@ -69,7 +72,12 @@ class InteractiveNode:
         self.iface = iface
 
     def set_config(self):
+        # TODO: check for methods of meshtastic.node.Node that we can
+        # use to set various node settings rather than directly using
+        # the implied-private _sendAdmin method
+
         # Set a long and short name
+        # TODO: use setOwner of the meshtastic.node.Node class instead?
         p = admin_pb2.AdminMessage()
         p.set_owner.long_name = "Node "+str(self.nodeid)
         p.set_owner.short_name = str(self.nodeid)
@@ -367,6 +375,12 @@ class InteractiveSim:
             print("Docker is required for non-Linux OS.")
             self.docker = True
 
+        if args.verbose:
+            logger.setLevel(logging.DEBUG)
+            logger.debug("debug/verbose output enabled. However it is currently quite limited.")
+            meshtastic_logger = logging.getLogger('meshtastic')
+            meshtastic_logger.setLevel(logging.DEBUG)
+
         self.graph = InteractiveGraph()
         for n in range(conf.NR_NODES):
             node = InteractiveNode(conf, self.nodes, n, self.node_id_to_hw_id(n), n + TCP_PORT_OFFSET, config[n])
@@ -405,17 +419,23 @@ class InteractiveSim:
                     self.container.exec_run(f"{startNode} -s -d /home/node{n0.nodeid} -h {n.hwId} -p {n.TCPPort}", detach=True, user="root")
                 print(f"Docker container with name {self.container.name} is started.")
             else:
+                # Start container with infinite loop so it stays alive between node restarts.
+                # Those processes exit, but this one doesn't (until killed)
                 self.container = dockerClient.containers.run(
                     DEVICE_SIM_DOCKER_IMAGE,
-                    command=f"sh -cx '{startNode} -s -d /home/node{n0.nodeid} -h {n0.hwId} -p {n0.TCPPort} > /home/out_{n0.nodeid}.log'",
+                    command=f"sh -cx 'while true; do sleep 1; done'",
                     ports=dict(zip((f'{n.TCPPort}/tcp' for n in self.nodes), (n.TCPPort for n in self.nodes))),
                     name="Meshtastic", detach=True, auto_remove=True, user="root",
                     volumes={"Meshtasticator": {'bind': '/home/', 'mode': 'rw'}}
                 )
-                for n in self.nodes[1:]:
+                for n in self.nodes:
+                    # start node processes in container
                     if self.emulateCollisions:
                         time.sleep(2)  # Wait a bit to avoid immediate collisions when starting multiple nodes
-                    self.container.exec_run(f"sh -cx '{startNode} -s -d /home/node{n.nodeid} -h {n.hwId} -p {n.TCPPort} > /home/out_{n.nodeid}.log'", detach=True, user="root")
+                    self.container.exec_run(f"sh -cx '{startNode} -s -d /home/node{n.nodeid} -h {n.hwId} -p {n.TCPPort} > /home/out_{n.nodeid}.log'",
+                        detach=True,
+                        user="root"
+                    )
                 print(f"Docker container with name {self.container.name} is started.")
                 print(f"You can check the device logs using 'docker exec -it {self.container.name} cat /home/out_x.log', where x is the node number.")
         else:
