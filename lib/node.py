@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from enum import Enum
 import logging
 import math
 import random
@@ -13,33 +14,129 @@ from lib.point import Point
 
 logger = logging.getLogger(__name__)
 
-class MeshNode:
+def generate_node_list(conf, node_configs, env, bc_pipe, period, messages, packetsAtN, packets, delays, messageSeq):
+    """default function for randomly choosing node configurations for a simulation
+    run, based on the provided config and desired number of nodes.
+
+    We have lots of extra parameters that are only really necessary for MeshNode
+    constructor, for tying it in to simulation state stuff. Needs refactoring
     """
-    Class containing all the particular state of a MeshNode, references to necessary
+    # need to identically match RNG usage right now to pass the discrete sim
+    # test. If we want to change the reference test, do that in a smaller change.
+
+    nodes = []
+
+    # replicate default 'no prior config' setup:
+    i = 0
+    for n in node_configs:
+        if n is None:
+            # no specified node config, randomly generate one
+            # get node's position
+            x, y = find_random_position(conf, nodes)
+            z = conf.HM
+            position = Point(x, y, z)
+
+            # role
+            isRouter = conf.router
+            isRepeater = False
+            isClientMute = False
+
+            # other default values
+            hopLimit = conf.hopLimit
+            antennaGain = conf.GL
+
+            # map misc. booleans into single role
+            if isRouter:
+                role = MESHTASTIC_ROLE.ROUTER
+            else:
+                role = MESHTASTIC_ROLE.CLIENT
+
+            # make NodeConfig object to pass to MeshNode constructor
+            node_config = NodeConfig(i, position, role)
+            i += 1
+
+            # have node config, need to create node, add to list of nodes
+            node = MeshNode(conf, nodes, env, bc_pipe, period, messages, packetsAtN, packets, delays, node_config, messageSeq)
+            nodes.append(node)
+        else:
+            # convert dict from interactive GUI gen_scenario to NodeConfig objects, create nodes.
+            node_config_dict = node_configs[n]
+            position = Point(node_config_dict['x'], node_config_dict['y'], node_config_dict['z'])
+
+            # roles
+            isRouter = node_config_dict['isRouter']
+            isRepeater = node_config_dict['isRepeater']
+            isClientMute = node_config_dict['isClientMute']
+
+            # sanity check that only one role is set
+            if (isRouter and isRepeater) or \
+               (isRepeater and isClientMute) or \
+               (isClientMute and isRouter):
+               raise Exception(f"invalid combination of roles: {node_config_dict}")
+
+            if isRouter:
+                role = MESHTASTIC_ROLE.ROUTER
+            elif isRepeater:
+                role = MESHTASTIC_ROLE.REPEATER
+            elif isClientMute:
+                role = MESHTASTIC_ROLE.CLIENT_MUTE
+            else:
+                role = MESHTASTIC_ROLE.CLIENT
+
+            # make node config
+            node_config = NodeConfig(i, position, role, node_config_dict['antennaGain'], node_config_dict['hopLimit'], node_config_dict['neighborInfo'])
+            i += 1
+
+            node = MeshNode(conf, nodes, env, bc_pipe, period, messages, packetsAtN, packets, delays, node_config, messageSeq)
+            nodes.append(node)
+
+    return nodes
+
+# roles taken from the protobuf config meshtastic/config.proto in https://github.com/meshtastic/protobufs
+# deprecated roles are included for simulation utility
+class MESHTASTIC_ROLE(Enum):
+    CLIENT = 'CLIENT'
+    CLIENT_MUTE = 'CLIENT_MUTE'
+    ROUTER = 'ROUTER'
+    ROUTER_CLIENT = 'ROUTER_CLIENT'
+    REPEATER = 'REPEATER'
+    TRACKER = 'TRACKER'
+    SENSOR = 'SENSOR'
+    TAK = 'TAK'
+    CLIENT_HIDDEN = 'CLIENT_HIDDEN'
+    LOST_AND_FOUND = 'LOST_AND_FOUND'
+    TAK_TRACKER = 'TAK_TRACKER'
+    ROUTER_LATE = 'ROUTER_LATE'
+    CLIENT_BASE = 'CLIENT_BASE'
+
+class NodeConfig:
+    """Specific configuration for a node
+    """
+    def __init__(self, node_id: int, position: Point, role: MESHTASTIC_ROLE = MESHTASTIC_ROLE.CLIENT, antenna_gain: float = 0, hop_limit: int = 3, neighbor_info: bool = False):
+        self.node_id = node_id
+        self.position = position.copy() # make sure we keep our own point
+        self.role = role
+        self.antenna_gain = antenna_gain
+        self.hop_limit = hop_limit
+        self.neighbor_info = neighbor_info
+
+class MeshNode:
+    """Class containing all the particular state of a MeshNode, references to necessary
     external resources like the simpy env, and process functions for simulation
     """
-    def __init__(self, conf, nodes, env, bc_pipe, nodeid, period, messages, packetsAtN, packets, delays, nodeConfig, messageSeq):
+    def __init__(self, conf, nodes, env, bc_pipe, period, messages, packetsAtN, packets, delays, nodeConfig: NodeConfig, messageSeq):
         self.conf = conf
-        self.nodeid = nodeid
-        self.moveRng = random.Random(nodeid)
-        self.nodeRng = random.Random(nodeid)
+        self.nodeid = nodeConfig.node_id
+        self.moveRng = random.Random(self.nodeid)
+        self.nodeRng = random.Random(self.nodeid)
         self.rebroadcastRng = random.Random()
-        if nodeConfig is not None:
-            self.position = Point(nodeConfig['x'], nodeConfig['y'], nodeConfig['z'])
-            self.isRouter = nodeConfig['isRouter']
-            self.isRepeater = nodeConfig['isRepeater']
-            self.isClientMute = nodeConfig['isClientMute']
-            self.hopLimit = nodeConfig['hopLimit']
-            self.antennaGain = nodeConfig['antennaGain']
-        else:
-            x, y = find_random_position(self.conf, nodes)
-            z = self.conf.HM
-            self.position = Point(x, y, z)
-            self.isRouter = self.conf.router
-            self.isRepeater = False
-            self.isClientMute = False
-            self.hopLimit = self.conf.hopLimit
-            self.antennaGain = self.conf.GL
+
+        # require the user to specify a node configuration now, including position
+        self.position = nodeConfig.position.copy() # make sure we have our own point
+        self.role = nodeConfig.role
+        self.hopLimit = nodeConfig.hop_limit
+        self.antennaGain = nodeConfig.antenna_gain
+
         self.messageSeq = messageSeq
         self.env = env
         self.period = period
@@ -69,7 +166,7 @@ class MeshNode:
         self.prevTxAirUtilization = 0.0   # how much total tx air-time had been used at last sample
 
         env.process(self.track_channel_utilization(env))
-        if not self.isRepeater:  # repeaters don't generate messages themselves
+        if not self.is_repeater:  # repeaters don't generate messages themselves
             env.process(self.generate_message())
         env.process(self.receive(self.bc_pipe.get_output_conn()))
         self.transmitter = simpy.Resource(env, 1)
@@ -89,6 +186,18 @@ class MeshNode:
             self.movementStepSize = self.moveRng.choice(possibleSpeeds)
 
             env.process(self.move_node(env))
+
+    @property
+    def is_router(self):
+        return self.role == MESHTASTIC_ROLE.ROUTER
+
+    @property
+    def is_repeater(self):
+        return self.role == MESHTASTIC_ROLE.REPEATER
+
+    @property
+    def is_client_mute(self):
+        return self.role == MESHTASTIC_ROLE.CLIENT_MUTE
 
     def track_channel_utilization(self, env):
         """
@@ -191,7 +300,7 @@ class MeshNode:
     def perhaps_cancel_dupe(self, packet):
         # Cancel if we've already seen this sequence number
         if packet.seq in self.timesReceived:
-            return self.timesReceived[packet.seq] > 2 if self.isRouter or self.isRepeater else self.timesReceived[packet.seq] > 1
+            return self.timesReceived[packet.seq] > 2 if self.is_router or self.is_repeater else self.timesReceived[packet.seq] > 1
         return False
 
 
@@ -339,7 +448,7 @@ class MeshNode:
                 elif not p.destId == self.nodeid and not ackReceived and not realAckReceived and p.hopLimit > 0:
                     # FloodingRouter: rebroadcast received packet
                     if self.conf.SELECTED_ROUTER_TYPE == self.conf.ROUTER_TYPE.MANAGED_FLOOD:
-                        if not self.isClientMute:
+                        if not self.is_client_mute:
                             logger.debug(f"{self.env.now:.3f} Node {self.nodeid} rebroadcasts received packet {p.seq}")
                             pNew = MeshPacket(self.conf, self.nodes, p.origTxNodeId, p.destId, self.nodeid, p.packetLen, p.seq, p.genTime, p.wantAck, False, None, self.env.now)
                             pNew.hopLimit = p.hopLimit - 1

@@ -29,7 +29,7 @@ def get_tx_delay_msec_weighted(node, rssi):  # from RadioInterface::getTxDelayMs
         snr = SNR_MAX
 
     CWsize = int((snr - SNR_MIN) * (CWmax - CWmin) / (SNR_MAX - SNR_MIN) + CWmin)
-    if node.isRouter:
+    if node.is_router:
         CW = random.randint(0, 2 * CWsize - 1)
     else:
         CW = random.randint(0, 2 ** CWsize - 1)

@@ -18,7 +18,7 @@ from lib.config import Config
 from lib.common import find_random_position, setup_asymmetric_links
 from lib.discrete_event import BroadcastPipe, sim_report
 from lib.gui import Graph, run_graph_updates
-from lib.node import MeshNode
+from lib.node import MeshNode, NodeConfig
 from lib.point import Point
 
 # TODO - There should really be two separate concepts here, a STATE and a CONFIG
@@ -250,20 +250,11 @@ for rt_i, routerType in enumerate(routerTypes):
             for nodeId in range(routerTypeConf.NR_NODES):
                 x, y = coords[nodeId]
 
-                # We create a nodeConfig dict so that MeshNode will use that
-                nodeConfig = {
-                    'x': x,
-                    'y': y,
-                    'z': routerTypeConf.HM,
-                    'isRouter': False,
-                    'isRepeater': False,
-                    'isClientMute': False,
-                    'hopLimit': routerTypeConf.hopLimit,
-                    'antennaGain': routerTypeConf.GL
-                }
+                # We create a NodeConfig object so that MeshNode will use that
+                nodeConfig = NodeConfig(nodeId, Point(x, y, routerTypeConf.HM), antenna_gain=routerTypeConf.GL, hop_limit=routerTypeConf.hopLimit)
 
                 node = MeshNode(
-                    routerTypeConf, nodes, env, bc_pipe, nodeId, routerTypeConf.PERIOD,
+                    routerTypeConf, nodes, env, bc_pipe, routerTypeConf.PERIOD,
                     messages, packetsAtN, packets, delays, nodeConfig,
                     messageSeq
                 )
