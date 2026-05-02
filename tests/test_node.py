@@ -1,6 +1,18 @@
 import unittest
 
-from lib.node import MESHTASTIC_ROLE, node_configs_from_yaml, origin_from_yaml, packet_is_rx_candidate
+import simpy
+
+from lib.config import Config
+from lib.discrete_event_sim_components import SimulationDataTracking, SimulationState
+from lib.node import (
+    MESHTASTIC_ROLE,
+    MeshNode,
+    NodeConfig,
+    node_configs_from_yaml,
+    origin_from_yaml,
+    packet_is_rx_candidate,
+)
+from lib.point import Point
 
 
 def sample_node(x):
@@ -108,6 +120,25 @@ class TestPacketRxCandidate(unittest.TestCase):
 
         self.assertTrue(packet_is_rx_candidate(packet, 0, capture_model_enabled=True))
         self.assertFalse(packet_is_rx_candidate(packet, 1, capture_model_enabled=True))
+
+
+class TestMeshNodeRandomness(unittest.TestCase):
+    def make_node(self, seed):
+        conf = Config()
+        conf.SEED = seed
+        conf.NR_NODES = 1
+        env = simpy.Environment()
+        node_config = NodeConfig(7, Point(0, 0, 1.5), conf.PERIOD)
+
+        return MeshNode(conf, SimulationState(conf, env), SimulationDataTracking(), node_config)
+
+    def test_rebroadcast_jitter_rng_is_seed_reproducible(self):
+        first = self.make_node(seed=44).rebroadcastRng.random()
+        same_seed = self.make_node(seed=44).rebroadcastRng.random()
+        different_seed = self.make_node(seed=45).rebroadcastRng.random()
+
+        self.assertEqual(first, same_seed)
+        self.assertNotEqual(first, different_seed)
 
 
 if __name__ == "__main__":

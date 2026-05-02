@@ -17,9 +17,9 @@ import matplotlib.pyplot as plt
 from matplotlib.widgets import TextBox
 
 from lib.config import Config
-import lib.phy as phy
 from lib.common import find_random_position
 from lib.gui import gen_scenario, Graph
+from lib.link_model import calculate_link_budget
 from lib.point import Point
 
 logger = logging.getLogger(__name__)
@@ -237,24 +237,24 @@ class InteractiveGraph(Graph):
                     if p.packet["from"] == tx.hwId:
                         if "requestId" in p.packet["decoded"]:
                             if p.packet["priority"] == "ACK":
-                                msgType = "Real\/ACK"
+                                msgType = "Real/ACK"
                             else:
                                 msgType = "Response"
                         else:
                             msgType = "Original message"
                     elif "requestId" in p.packet["decoded"]:
                         if p.packet["decoded"]["simulator"]["portnum"] == "ROUTING_APP":
-                            msgType = "Forwarding\/real\/ACK"
+                            msgType = "Forwarding/real/ACK"
                         else:
-                            msgType = "Forwarding\/response"
+                            msgType = "Forwarding/response"
                     else:
                         if int(p.packet['from']) == rx.hwId:
-                            msgType = "Implicit\/ACK"
+                            msgType = "Implicit/ACK"
                         else:
                             if to == "All":
                                 msgType = "Rebroadcast"
                             else:
-                                msgType = "Forwarding\/message"
+                                msgType = "Forwarding/message"
 
                     hopLimit = p.packet.get("hopLimit")
 
@@ -360,7 +360,7 @@ class InteractiveSim:
         if args.from_file:
             foundNodes = True
             with open(os.path.join("out", "nodeConfig.yaml"), 'r') as file:
-                config = yaml.load(file, Loader=yaml.FullLoader)
+                config = yaml.safe_load(file)
             conf.NR_NODES = len(config.keys())
         elif args.nrNodes > 0:  # nrNodes was specified
             conf.NR_NODES = args.nrNodes
@@ -423,7 +423,7 @@ class InteractiveSim:
                 # Those processes exit, but this one doesn't (until killed)
                 self.container = dockerClient.containers.run(
                     DEVICE_SIM_DOCKER_IMAGE,
-                    command=f"sh -cx 'while true; do sleep 1; done'",
+                    command="sh -cx 'while true; do sleep 1; done'",
                     ports=dict(zip((f'{n.TCPPort}/tcp' for n in self.nodes), (n.TCPPort for n in self.nodes))),
                     name="Meshtastic", detach=True, auto_remove=True, user="root",
                     volumes={"Meshtasticator": {'bind': '/home/', 'mode': 'rw'}}
@@ -457,7 +457,7 @@ class InteractiveSim:
                 # executable
                 call += [os.path.join(args.program, 'program')]
                 # node parameters
-                call += [f"-s ",
+                call += ["-s ",
                          f"-d {os.path.expanduser('~')}/.portduino/node{n.nodeid}",
                          f"-h {n.hwId}",
                          f"-p {n.TCPPort}"]
@@ -734,14 +734,15 @@ class InteractiveSim:
         rssis = []
         snrs = []
         for rx in receivers:
-            dist_3d = tx.position.euclidean_distance(rx.position)
-            pathLoss = phy.estimate_path_loss(conf, dist_3d, conf.FREQ, tx.position.z, rx.position.z)
-            RSSI = conf.PTX + tx.antennaGain - pathLoss
-            SNR = RSSI-conf.NOISE_LEVEL
-            if RSSI >= conf.current_preset["sensitivity"]:
+            # Use the same link-budget path as the discrete-event simulator so
+            # terrain, clutter, endpoint antenna gains, and fitted calibration
+            # do not silently disappear in interactive runs.
+            offset_db = self.conf.LINK_OFFSET.get((tx.nodeid, rx.nodeid), 0.0)
+            budget = calculate_link_budget(self.conf, tx, rx, offset_db)
+            if budget.rssi_dbm >= self.conf.current_preset["sensitivity"]:
                 rxs.append(rx)
-                rssis.append(RSSI)
-                snrs.append(SNR)
+                rssis.append(budget.rssi_dbm)
+                snrs.append(budget.snr_db)
         return rxs, rssis, snrs
 
     def close_nodes(self):

@@ -424,8 +424,12 @@ def run_simulation(conf, node_config):
     print('Number of messages created:', messageSeq)
     print('Number of packets sent:', sent, 'to', potentialReceivers, 'potential receivers')
     print("Number of collisions:", nrCollisions)
+    if conf.CAPTURE_COLLISION_MODEL_ENABLED:
+        print("Collision reasons:", results["collisionReasons"])
     print("Number of packets sensed:", nrSensed)
     print("Number of packets received:", nrReceived)
+    if conf.PHY_LOSS_MODEL_ENABLED:
+        print("Number of packets lost by PHY model:", results["nrPhyLoss"])
     print('Delay average (ms):', round(meanDelay, 2))
     print('Average Tx air utilization:', round(txAirUtilizationRate * 100, 2), '%')
     print("Percentage of packets that collided:", round(collisionRate*100, 2))

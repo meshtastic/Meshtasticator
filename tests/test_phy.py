@@ -1,6 +1,8 @@
 import unittest
 
 import lib.phy
+from lib.config import Config
+
 
 class TestPhy(unittest.TestCase):
 
@@ -27,6 +29,15 @@ class TestPhy(unittest.TestCase):
         res = lib.phy.rootFinder(poly1, 3, tol=tolerance)
         diff = abs(res - 2.5)
         self.assertLess(diff, tolerance, message)
+
+    def test_path_loss_distance_floor_keeps_near_field_calibrated(self):
+        conf = Config()
+        conf.PATH_LOSS_DISTANCE_FLOOR_M = 780.0
+
+        below_floor = lib.phy.estimate_path_loss(conf, 10.0, conf.FREQ)
+        at_floor = lib.phy.estimate_path_loss(conf, 780.0, conf.FREQ)
+
+        self.assertAlmostEqual(below_floor, at_floor)
 
 
 if __name__ == '__main__':

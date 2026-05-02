@@ -9,16 +9,15 @@ except ImportError:
     print('Tkinter is needed. Install python3-tk with your package manager.')
     exit(1)
 
-import simpy
 import numpy as np
 import random
 import matplotlib.pyplot as plt
 
 from lib.config import Config
-from lib.common import find_random_position, setup_asymmetric_links
-from lib.discrete_event import BroadcastPipe, sim_report
+from lib.common import find_random_position
+from lib.discrete_event import sim_report
 from lib.discrete_event_sim import DiscreteEventSim
-from lib.gui import Graph, run_graph_updates
+from lib.gui import Graph
 from lib.node import NodeConfig
 from lib.point import Point
 

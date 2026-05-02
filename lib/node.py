@@ -171,7 +171,10 @@ class MeshNode:
         # set up internal RNGs
         self.moveRng = random.Random(self.nodeid)
         self.nodeRng = random.Random(self.nodeid)
-        self.rebroadcastRng = random.Random()
+        # Rebroadcast jitter changes collision timing. Tie it to the configured
+        # simulation seed so static-vs-DCR/DTP comparisons are reproducible for
+        # the same scenario instead of drifting with system entropy.
+        self.rebroadcastRng = random.Random(f"{self.conf.SEED}:{self.nodeid}:rebroadcast")
 
         # require the user to specify a node configuration now, including position
         self.position = nodeConfig.position.copy() # make sure we have our own point
