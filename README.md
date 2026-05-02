@@ -24,7 +24,7 @@ Run the packaged Batumi/Georgia-area radio scenario headlessly:
 Run the radio-physics comparison workflow in one command:
 
 ```bash
-python3 tools/radio_policy_compare.py --policies static,dcr --simtime-seconds 60 --period-seconds 5
+python3 tools/radio_policy_compare.py --policies static,dcr,dtp --simtime-seconds 60 --period-seconds 5
 ```
 
 For CI-style runs, write JSON/Markdown artifacts:
@@ -38,7 +38,7 @@ python3 tools/radio_policy_compare.py \
 ```
 
 Threshold flags such as `--max-reach-drop-pp` are accepted only when a later
-policy such as `dcr` is compared against the `static` baseline.
+policy such as `dcr` or `dtp` is compared against the `static` baseline.
 
 For manual radio-physics experiments, keep the same scenario and traffic load
 while enabling packet loss and capture-aware collisions:

@@ -64,6 +64,20 @@ class Config:
         self.DCR_CONGESTED_UTIL_PERCENT = 17.5
         self.DCR_BUSY_QUEUE_DEPTH = 3
         self.DCR_CONGESTED_QUEUE_DEPTH = 6
+
+        #################################################
+        ####### DYNAMIC TX POWER ########################
+        #################################################
+        # Disabled by default. DTP is deliberately a power-reduction policy,
+        # not an alternate way to exceed region limits. PTX remains the maximum;
+        # DTP only lowers individual relay/control packets to shrink their
+        # interference radius in dense capture-collision experiments.
+        self.DTP_ENABLED = False
+        self.DTP_MAX_POWER_DROP_DB = 12
+        self.DTP_POWER_STEP_DB = 3
+        self.DTP_MIN_TX_POWER_DBM = None
+        self.DTP_STRONG_LINK_MARGIN_DB = 20.0
+        self.DTP_VERY_STRONG_LINK_MARGIN_DB = 24.0
         # from firmware RegionInfo regions[] in src/mesh/RadioInterface.cpp
         self.regions = {
             "US": {
