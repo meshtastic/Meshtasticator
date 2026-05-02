@@ -76,6 +76,11 @@ def get_cli_defaults(conf):
                 "CLUTTER_PROFILE_SAMPLES": conf.CLUTTER_PROFILE_SAMPLES,
                 "NODE_Z_REFERENCE": conf.NODE_Z_REFERENCE,
                 "RADIO_CALIBRATION": snapshot_radio_calibration(conf),
+                "DTP_MAX_POWER_DROP_DB": conf.DTP_MAX_POWER_DROP_DB,
+                "DTP_POWER_STEP_DB": conf.DTP_POWER_STEP_DB,
+                "DTP_MIN_TX_POWER_DBM": conf.DTP_MIN_TX_POWER_DBM,
+                "DTP_STRONG_LINK_MARGIN_DB": conf.DTP_STRONG_LINK_MARGIN_DB,
+                "DTP_VERY_STRONG_LINK_MARGIN_DB": conf.DTP_VERY_STRONG_LINK_MARGIN_DB,
             },
         )
     return getattr(conf, CLI_DEFAULT_ATTR)
@@ -284,6 +289,34 @@ def parse_params(conf, args=None) -> [NodeConfig]:
         "--dcr", action="store_true", help="Enable the Dynamic Coding Rate experiment"
     )
     parser.add_argument(
+        "--dtp", action="store_true", help="Enable the Dynamic TX Power experiment"
+    )
+    parser.add_argument(
+        "--dtp-max-drop-db",
+        type=int,
+        help="maximum per-packet TX power reduction for --dtp",
+    )
+    parser.add_argument(
+        "--dtp-power-step-db",
+        type=int,
+        help="TX power quantization step for --dtp reductions",
+    )
+    parser.add_argument(
+        "--dtp-min-power-dbm",
+        type=int,
+        help="minimum TX power that --dtp may select",
+    )
+    parser.add_argument(
+        "--dtp-strong-margin-db",
+        type=float,
+        help="prior-hop sensitivity margin that lets --dtp reduce relay power",
+    )
+    parser.add_argument(
+        "--dtp-very-strong-margin-db",
+        type=float,
+        help="prior-hop sensitivity margin that lets --dtp reduce ACK power more",
+    )
+    parser.add_argument(
         "--terrain-srtm",
         action="store_true",
         help="Build terrain directly from cached/downloaded SRTM tiles for the scenario bbox",
@@ -447,6 +480,33 @@ def parse_params(conf, args=None) -> [NodeConfig]:
         parser.error("--terrain-srtm-step-meters must be a positive finite number")
     if parsed_arguments.clutter_profile_samples is not None and parsed_arguments.clutter_profile_samples < 1:
         parser.error("--clutter-profile-samples must be at least 1")
+    if parsed_arguments.dtp_max_drop_db is not None and parsed_arguments.dtp_max_drop_db < 0:
+        parser.error("--dtp-max-drop-db must be at least 0")
+    if parsed_arguments.dtp_power_step_db is not None and parsed_arguments.dtp_power_step_db < 1:
+        parser.error("--dtp-power-step-db must be at least 1")
+    if (
+        parsed_arguments.dtp_strong_margin_db is not None
+        and (not math.isfinite(parsed_arguments.dtp_strong_margin_db) or parsed_arguments.dtp_strong_margin_db < 0)
+    ):
+        parser.error("--dtp-strong-margin-db must be a non-negative finite number")
+    if (
+        parsed_arguments.dtp_very_strong_margin_db is not None
+        and (not math.isfinite(parsed_arguments.dtp_very_strong_margin_db) or parsed_arguments.dtp_very_strong_margin_db < 0)
+    ):
+        parser.error("--dtp-very-strong-margin-db must be a non-negative finite number")
+
+    dtp_strong_margin = (
+        parsed_arguments.dtp_strong_margin_db
+        if parsed_arguments.dtp_strong_margin_db is not None
+        else cli_defaults["DTP_STRONG_LINK_MARGIN_DB"]
+    )
+    dtp_very_strong_margin = (
+        parsed_arguments.dtp_very_strong_margin_db
+        if parsed_arguments.dtp_very_strong_margin_db is not None
+        else cli_defaults["DTP_VERY_STRONG_LINK_MARGIN_DB"]
+    )
+    if dtp_very_strong_margin < dtp_strong_margin:
+        parser.error("--dtp-very-strong-margin-db must be >= --dtp-strong-margin-db")
 
     if parsed_arguments.no_gui:
         # Headless CI and smoke runs should not pay Tk startup, per-node
@@ -665,6 +725,24 @@ def parse_params(conf, args=None) -> [NodeConfig]:
     conf.NR_NODES = nr_nodes
     conf.ENABLE_CONNECTIVITY_MAP = connectivity_map_enabled
     conf.DCR_ENABLED = parsed_arguments.dcr
+    conf.DTP_ENABLED = parsed_arguments.dtp
+    conf.DTP_MAX_POWER_DROP_DB = (
+        parsed_arguments.dtp_max_drop_db
+        if parsed_arguments.dtp_max_drop_db is not None
+        else cli_defaults["DTP_MAX_POWER_DROP_DB"]
+    )
+    conf.DTP_POWER_STEP_DB = (
+        parsed_arguments.dtp_power_step_db
+        if parsed_arguments.dtp_power_step_db is not None
+        else cli_defaults["DTP_POWER_STEP_DB"]
+    )
+    conf.DTP_MIN_TX_POWER_DBM = (
+        parsed_arguments.dtp_min_power_dbm
+        if parsed_arguments.dtp_min_power_dbm is not None
+        else cli_defaults["DTP_MIN_TX_POWER_DBM"]
+    )
+    conf.DTP_STRONG_LINK_MARGIN_DB = dtp_strong_margin
+    conf.DTP_VERY_STRONG_LINK_MARGIN_DB = dtp_very_strong_margin
     set_geo_origin(conf, scenario_origin)
     conf.TERRAIN_ENABLED = terrain_enabled
     conf.TERRAIN_GRID = terrain_grid
@@ -709,6 +787,16 @@ def parse_params(conf, args=None) -> [NodeConfig]:
             f"{SRTM_DATA_ATTRIBUTION} ({SRTM_DATA_ATTRIBUTION_URL})",
         )
     print("Dynamic Coding Rate:", "enabled" if conf.DCR_ENABLED else "disabled")
+    print("Dynamic TX Power:", "enabled" if conf.DTP_ENABLED else "disabled")
+    if conf.DTP_ENABLED:
+        print(
+            "DTP limits:",
+            f"max_drop={conf.DTP_MAX_POWER_DROP_DB}dB",
+            f"step={conf.DTP_POWER_STEP_DB}dB",
+            f"min_power={conf.DTP_MIN_TX_POWER_DBM if conf.DTP_MIN_TX_POWER_DBM is not None else 'none'}",
+            f"strong_margin={conf.DTP_STRONG_LINK_MARGIN_DB:g}dB",
+            f"very_strong_margin={conf.DTP_VERY_STRONG_LINK_MARGIN_DB:g}dB",
+        )
     print("PHY loss model:", "enabled" if conf.PHY_LOSS_MODEL_ENABLED else "disabled")
     print("Capture collision model:", "enabled" if conf.CAPTURE_COLLISION_MODEL_ENABLED else "disabled")
     print("Terrain model:", "enabled" if conf.TERRAIN_ENABLED else "disabled")
@@ -783,6 +871,12 @@ def run_simulation(conf, node_config):
     if conf.DCR_ENABLED:
         print("DCR TX packets by CR:", results["dcrTxByCr"])
         print("DCR airtime by CR (ms):", {cr: round(ms, 2) for cr, ms in results["dcrAirtimeByCr"].items()})
+
+    if conf.DTP_ENABLED:
+        print("DTP TX packets by power:", results["dtpTxByPower"])
+        print("DTP TX packets by CR@power:", results["dtpTxByCrPower"])
+        print("DTP mean CAD-detected receivers per TX:", round(results["dtpMeanDetectedByTx"], 2))
+        print("DTP mean decodable receivers per TX:", round(results["dtpMeanSensedByTx"], 2))
 
     if conf.TERRAIN_ENABLED:
         print("Mean terrain obstruction loss (dB):", round(results["meanTerrainLossDb"], 2))

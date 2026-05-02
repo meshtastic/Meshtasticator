@@ -13,8 +13,8 @@ class TestRadioPolicyCompare(unittest.TestCase):
         with self.assertRaises(argparse.ArgumentTypeError):
             radio_policy_compare.parse_policy_names("static,nope")
 
-    def test_parse_policy_names_accepts_dcr_policy(self):
-        self.assertEqual(radio_policy_compare.parse_policy_names("static,dcr"), ["static", "dcr"])
+    def test_parse_policy_names_accepts_current_policy_names(self):
+        self.assertEqual(radio_policy_compare.parse_policy_names("static,dcr,dtp"), ["static", "dcr", "dtp"])
 
     def test_parse_args_rejects_thresholds_without_candidate_policy(self):
         with self.assertRaises(SystemExit):
@@ -54,6 +54,17 @@ class TestRadioPolicyCompare(unittest.TestCase):
         lora_args = radio_policy_compare.build_lora_args(args, "dcr")
 
         self.assertIn("--dcr", lora_args)
+
+    def test_build_lora_args_adds_dtp_policy_flag(self):
+        args = radio_policy_compare.parse_args([
+            "--policies",
+            "dtp",
+        ])
+
+        lora_args = radio_policy_compare.build_lora_args(args, "dtp")
+
+        self.assertIn("--dtp", lora_args)
+        self.assertNotIn("--dcr", lora_args)
 
     def test_summarize_results_formats_table_and_deltas(self):
         static = radio_policy_compare.summarize_results(
