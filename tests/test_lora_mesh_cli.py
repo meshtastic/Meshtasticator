@@ -77,10 +77,12 @@ class TestLoraMeshCli(unittest.TestCase):
         self.assertFalse(conf.GUI_ENABLED)
         self.assertFalse(conf.PLOT)
         self.assertFalse(conf.DCR_ENABLED)
+        self.assertFalse(conf.DTP_ENABLED)
         self.assertEqual(conf.SIMTIME, 1000)
         self.assertEqual(conf.PERIOD, 500)
         self.assertIn("Number of nodes: 2", output)
         self.assertIn("Dynamic Coding Rate: disabled", output)
+        self.assertIn("Dynamic TX Power: disabled", output)
 
     def test_parse_params_enables_dcr(self):
         conf = Config()
@@ -92,6 +94,55 @@ class TestLoraMeshCli(unittest.TestCase):
 
         self.assertTrue(conf.DCR_ENABLED)
         self.assertIn("Dynamic Coding Rate: enabled", output)
+
+    def test_parse_params_enables_dtp_with_limits(self):
+        conf = Config()
+
+        _, output = self.parse_quietly(
+            conf,
+            [
+                "2",
+                "--no-gui",
+                "--dtp",
+                "--dtp-max-drop-db",
+                "9",
+                "--dtp-power-step-db",
+                "3",
+                "--dtp-min-power-dbm",
+                "14",
+                "--dtp-strong-margin-db",
+                "18",
+                "--dtp-very-strong-margin-db",
+                "24",
+            ],
+        )
+
+        self.assertTrue(conf.DTP_ENABLED)
+        self.assertEqual(conf.DTP_MAX_POWER_DROP_DB, 9)
+        self.assertEqual(conf.DTP_POWER_STEP_DB, 3)
+        self.assertEqual(conf.DTP_MIN_TX_POWER_DBM, 14)
+        self.assertEqual(conf.DTP_STRONG_LINK_MARGIN_DB, 18)
+        self.assertEqual(conf.DTP_VERY_STRONG_LINK_MARGIN_DB, 24)
+        self.assertIn("Dynamic TX Power: enabled", output)
+        self.assertIn("DTP limits:", output)
+
+    def test_parse_params_rejects_inverted_dtp_margins(self):
+        conf = Config()
+
+        stderr = self.assert_parser_rejects(
+            conf,
+            [
+                "2",
+                "--no-gui",
+                "--dtp",
+                "--dtp-strong-margin-db",
+                "30",
+                "--dtp-very-strong-margin-db",
+                "20",
+            ],
+        )
+
+        self.assertIn("--dtp-very-strong-margin-db", stderr)
 
     def test_parse_params_reuses_initial_defaults_after_override_run(self):
         conf = Config()
