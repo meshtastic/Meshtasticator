@@ -121,6 +121,14 @@ class SimulationResults:
             self.results["usefulness"] = np.nan
 
         self.results["delayDropped"] = sum(n.droppedByDelay for n in nodes)
+        self.results["dcrTxByCr"] = {
+            cr: sum(getattr(n, "dcrTxByCr", {}).get(cr, 0) for n in nodes)
+            for cr in (5, 6, 7, 8)
+        }
+        self.results["dcrAirtimeByCr"] = {
+            cr: sum(getattr(n, "dcrAirtimeByCr", {}).get(cr, 0.0) for n in nodes)
+            for cr in (5, 6, 7, 8)
+        }
 
         if conf.MODEL_ASYMMETRIC_LINKS and self.results["totalPairs"] != 0:
             asymmetricLinkRate = self.results["asymmetricLinks"] / self.results["totalPairs"]

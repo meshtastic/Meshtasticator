@@ -8,6 +8,7 @@ import simpy
 
 from lib.common import find_random_position
 from lib.config import Config
+from lib.dcr import choose_dynamic_coding_rate
 from lib.discrete_event_sim_components import SimulationState, SimulationDataTracking
 from lib.geo import valid_lat_lon
 from lib.mac import set_transmit_delay, get_retransmission_msec
@@ -203,6 +204,8 @@ class MeshNode:
         self.usefulPackets = 0
         self.txAirUtilization = 0
         self.airUtilization = 0
+        self.dcrTxByCr = {5: 0, 6: 0, 7: 0, 8: 0}
+        self.dcrAirtimeByCr = {5: 0.0, 6: 0.0, 7: 0.0, 8: 0.0}
         self.droppedByDelay = 0
         self.rebroadcastPackets = 0
         self.isMoving = False
@@ -419,6 +422,15 @@ class MeshNode:
             # check if you received an ACK for this message in the meantime
             self.was_seen_recently(packet, ownTransmit=True)
             if not self.perhaps_cancel_dupe(packet):  # if you did not receive an ACK for this message in the meantime
+                # Firmware DCR runs very late too: after queue/LBT waiting, but
+                # before airtime accounting and packet start/end timestamps.
+                decision = choose_dynamic_coding_rate(self, packet)
+                if decision.cr != packet.cr:
+                    packet.set_coding_rate(decision.cr)
+                logger.debug(
+                    f"{self.env.now:.3f} Node {self.nodeid} DCR selected CR 4/{packet.cr} for packet {packet.seq}: {decision.reason}"
+                )
+
                 logger.debug(f"{self.env.now:.3f} Node {self.nodeid} started low level send {packet.seq} hopLimit {packet.hopLimit} original Tx {packet.origTxNodeId}")
                 self.nrPacketsSent += 1
                 packet.startTime = self.env.now
@@ -434,6 +446,8 @@ class MeshNode:
                             self.packetsAtN[rx_node.nodeid].append(packet)
                 self.txAirUtilization += packet.timeOnAir
                 self.airUtilization += packet.timeOnAir
+                self.dcrTxByCr[packet.cr] = self.dcrTxByCr.get(packet.cr, 0) + 1
+                self.dcrAirtimeByCr[packet.cr] = self.dcrAirtimeByCr.get(packet.cr, 0.0) + packet.timeOnAir
                 self.bc_pipe.put(packet)
                 self.isTransmitting = True
                 yield self.env.timeout(packet.timeOnAir)
