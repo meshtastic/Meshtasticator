@@ -260,6 +260,16 @@ def parse_params(conf, args=None) -> [NodeConfig]:
         help="disable land-cover clutter even when a grid is available",
     )
     parser.add_argument(
+        "--phy-loss-model",
+        action="store_true",
+        help="enable empirical SNR-to-payload-loss model",
+    )
+    parser.add_argument(
+        "--capture-collision-model",
+        action="store_true",
+        help="enable capture-aware overlap/collision model",
+    )
+    parser.add_argument(
         "--map-bbox",
         type=str,
         help="Position import bounding box as min_lat,min_lon,max_lat,max_lon",
@@ -554,6 +564,8 @@ def parse_params(conf, args=None) -> [NodeConfig]:
     conf.CLUTTER_GRID_FILE = parsed_arguments.clutter_grid
     if parsed_arguments.clutter_profile_samples is not None:
         conf.CLUTTER_PROFILE_SAMPLES = parsed_arguments.clutter_profile_samples
+    conf.PHY_LOSS_MODEL_ENABLED = parsed_arguments.phy_loss_model
+    conf.CAPTURE_COLLISION_MODEL_ENABLED = parsed_arguments.capture_collision_model
 
     if parsed_arguments.verbose:
         # Set this logger and lib.* to DEBUG only after the command line has

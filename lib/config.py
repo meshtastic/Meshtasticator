@@ -38,6 +38,9 @@ class Config:
         self.SIMTIME = 30 * self.ONE_MIN_INTERVAL  # duration of one simulation in ms
         self.INTERFERENCE_LEVEL = 0.05  # chance that at a given moment there is already a LoRa packet being sent on your channel, outside of the Meshtastic traffic. Given in a ratio from 0 to 1.
         self.COLLISION_DUE_TO_INTERFERENCE = False
+        self.CAPTURE_COLLISION_MODEL_ENABLED = False
+        self.COLLISION_CAPTURE_THRESHOLD_DB = 6.0
+        self.COLLISION_PAYLOAD_OVERLAP_LOSS_FRACTION = 0.15
         self.DMs = False  # Set True for sending DMs (with random destination), False for broadcasts
         # from firmware RegionInfo regions[] in src/mesh/RadioInterface.cpp
         self.regions = {
@@ -398,6 +401,16 @@ class Config:
         self.GAMMA = 2.08  # PHY parameter
         self.D0 = 40.0  # PHY parameter
         self.LPLD0 = 127.41  # PHY parameter
+        # Optional scenario-level calibration knobs. Defaults preserve the old
+        # simulator behavior; field presets can tighten these to match
+        # aggregate receive observations without changing generic simulations.
+        self.PATH_LOSS_DISTANCE_FLOOR_M = 0.001
+        self.REPORTED_SNR_MIN_DB = None
+        self.REPORTED_SNR_MAX_DB = None
+        self.LINK_CALIBRATION_MODEL_ENABLED = False
+        self.LINK_CALIBRATION_COEFFICIENTS = {}
+        self.LINK_CALIBRATION_SNR_MIN_DB = None
+        self.LINK_CALIBRATION_SNR_MAX_DB = None
         self.NPREAM = 16   # number of preamble symbols from RadioInterface.h
         ### End of PHY parameters ###
 
@@ -443,6 +456,26 @@ class Config:
         self.CLUTTER_COASTAL_PATH_LOSS_FACTOR = 0.25
         self.CLUTTER_COASTAL_SAMPLE_FRACTION = 0.55
         self.CLUTTER_MAX_LOSS_DB = 25.0
+
+        #################################################
+        ####### EMPIRICAL PAYLOAD LOSS MODEL ############
+        #################################################
+        # Disabled by default. When enabled, RSSI/sensitivity still decides
+        # whether a packet can be heard; this model only adds a smooth
+        # CR-dependent payload-success probability after that gate.
+        self.PHY_LOSS_MODEL_ENABLED = False
+        self.PHY_LOSS_MODEL_NAME = "snr_payload_v1"
+        self.PHY_LOSS_SNR_P50_BY_CR = {
+            5: -17.0,
+            6: -17.8,
+            7: -18.6,
+            8: -19.4,
+        }
+        self.PHY_LOSS_SNR_TRANSITION_DB = 1.4
+        self.PHY_LOSS_REFERENCE_PACKET_BYTES = 40
+        self.PHY_LOSS_LONG_PACKET_PENALTY_DB_PER_100B = 0.8
+        self.PHY_LOSS_MIN_SUCCESS_PROB = 0.02
+        self.PHY_LOSS_MAX_SUCCESS_PROB = 0.995
 
         # Misc
         self.SEED = 44  # random seed to use

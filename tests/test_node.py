@@ -5,7 +5,14 @@ import simpy
 
 from lib.config import Config
 from lib.discrete_event_sim_components import SimulationDataTracking, SimulationState
-from lib.node import MESHTASTIC_ROLE, MeshNode, NodeConfig, node_configs_from_yaml, origin_from_yaml
+from lib.node import (
+    MESHTASTIC_ROLE,
+    MeshNode,
+    NodeConfig,
+    node_configs_from_yaml,
+    origin_from_yaml,
+    packet_is_rx_candidate,
+)
 from lib.point import Point
 from lib.terrain import NODE_Z_REFERENCE_SEA_LEVEL, TerrainGrid, apply_terrain_altitude
 
@@ -148,6 +155,26 @@ class TestMeshNodeTerrain(unittest.TestCase):
         node.position.update_xy(100, 0)
         apply_terrain_altitude(conf.TERRAIN_GRID, node)
         self.assertEqual(node.position.z, 150)
+
+
+class TestPacketRxCandidate(unittest.TestCase):
+    def test_legacy_collision_model_tracks_only_decodable_packets(self):
+        packet = type("Packet", (), {
+            "sensedByN": [False, True],
+            "detectedByN": [True, True],
+        })()
+
+        self.assertFalse(packet_is_rx_candidate(packet, 0, capture_model_enabled=False))
+        self.assertTrue(packet_is_rx_candidate(packet, 1, capture_model_enabled=False))
+
+    def test_capture_model_tracks_cad_detected_interference(self):
+        packet = type("Packet", (), {
+            "sensedByN": [False, True],
+            "detectedByN": [True, False],
+        })()
+
+        self.assertTrue(packet_is_rx_candidate(packet, 0, capture_model_enabled=True))
+        self.assertFalse(packet_is_rx_candidate(packet, 1, capture_model_enabled=True))
 
 
 if __name__ == "__main__":

@@ -88,6 +88,16 @@ building-level ray tracer:
 OpenStreetMap building, landuse, natural, and water polygons. The simulator
 never fetches OpenStreetMap data implicitly.
 
+Two optional RF models can make dense or weak-link runs less binary:
+
+```python3 loraMesh.py 20 --no-gui --phy-loss-model --capture-collision-model```
+
+`--phy-loss-model` keeps RSSI/sensitivity as the hearability gate, then applies
+a smooth SNR-to-payload-success curve that depends on packet size and LoRa
+coding rate. `--capture-collision-model` keeps CAD-detectable but undecodable
+packets on the RF timeline as interference energy, and uses capture/preamble
+overlap rules instead of treating every overlap as identical.
+
 If you placed the nodes yourself, after a simulation the number of nodes, their coordinates and configuration are automatically saved and you can rerun the scenario with:
 
  ```python3 loraMesh.py --from-file```
