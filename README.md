@@ -1,6 +1,61 @@
 # Meshtasticator
 Discrete-event and interactive simulator for [Meshtastic](https://meshtastic.org/). 
 
+## Quick start
+
+Install the Python dependencies, then ask the CLI what runnable scenarios it
+already knows about:
+
+```bash
+python3 -m venv .venv
+. .venv/bin/activate
+pip install -r requirements.txt
+
+./loraMesh.py --list-presets
+./loraMesh.py --list-modem-presets
+```
+
+Run the packaged Batumi/Georgia-area radio scenario headlessly:
+
+```bash
+./loraMesh.py --preset batumi --no-gui --simtime-seconds 60 --period-seconds 5
+```
+
+Compare the static, Dynamic Coding Rate, and Dynamic Coding Rate + Dynamic TX
+Power policies in one command:
+
+```bash
+python3 tools/radio_policy_compare.py --simtime-seconds 60 --period-seconds 5
+```
+
+For CI-style runs, write JSON/Markdown artifacts and make regressions fail the
+job:
+
+```bash
+python3 tools/radio_policy_compare.py \
+  --simtime-seconds 120 \
+  --period-seconds 5 \
+  --json-output out/radio_policy_compare.json \
+  --markdown-output out/radio_policy_compare.md \
+  --max-reach-drop-pp 1.0 \
+  --max-tx-air-increase-pp 1.0
+```
+
+For manual Dynamic Coding Rate or Dynamic TX Power experiments, keep the same
+scenario and traffic load while enabling packet loss and capture-aware
+collisions:
+
+```bash
+./loraMesh.py --preset batumi --no-gui --simtime-seconds 60 --period-seconds 5 \
+  --phy-loss-model --capture-collision-model --dcr
+
+./loraMesh.py --preset batumi --no-gui --simtime-seconds 60 --period-seconds 5 \
+  --phy-loss-model --capture-collision-model --dcr --dtp
+```
+
+See [Radio Physics Quickstart](docs/radio_physics_quickstart.md) for what the
+flags mean and which result fields to compare.
+
 ## Discrete-event simulator
 The discrete-event simulator mimics the radio section of the device software in order to understand its working. It can also be used to assess the performance of your scenario, or the scalability of the protocol. 
 
