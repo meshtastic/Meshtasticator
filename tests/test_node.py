@@ -1,6 +1,6 @@
 import unittest
 
-from lib.node import MESHTASTIC_ROLE, node_configs_from_yaml, origin_from_yaml
+from lib.node import MESHTASTIC_ROLE, node_configs_from_yaml, origin_from_yaml, packet_is_rx_candidate
 
 
 def sample_node(x):
@@ -88,6 +88,26 @@ class TestNodeConfigYaml(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "latitude/longitude"):
             origin_from_yaml(raw)
+
+
+class TestPacketRxCandidate(unittest.TestCase):
+    def test_legacy_collision_model_tracks_only_decodable_packets(self):
+        packet = type("Packet", (), {
+            "sensedByN": [False, True],
+            "detectedByN": [True, True],
+        })()
+
+        self.assertFalse(packet_is_rx_candidate(packet, 0, capture_model_enabled=False))
+        self.assertTrue(packet_is_rx_candidate(packet, 1, capture_model_enabled=False))
+
+    def test_capture_model_tracks_cad_detected_interference(self):
+        packet = type("Packet", (), {
+            "sensedByN": [False, True],
+            "detectedByN": [True, False],
+        })()
+
+        self.assertTrue(packet_is_rx_candidate(packet, 0, capture_model_enabled=True))
+        self.assertFalse(packet_is_rx_candidate(packet, 1, capture_model_enabled=True))
 
 
 if __name__ == "__main__":

@@ -1,5 +1,8 @@
-from lib.common import node_antenna_height
-from lib.phy import airtime, estimate_path_loss
+import random
+
+from lib.phy import airtime
+from lib.link_model import calculate_link_budget
+from lib.radio_loss import payload_is_lost
 
 NODENUM_BROADCAST = 0xFFFFFFFF
 
@@ -32,14 +35,23 @@ class MeshPacket:
         self.requestId = requestId
         self.genTime = genTime
         self.now = now
-        self.txpow = self.conf.PTX
+        self.nodes = nodes
+        self.baseTxPower = int(self.conf.PTX)
+        self.txpow = self.baseTxPower
+        self.priorHopRssi = None
+        self.priorHopSnr = None
         self.LplAtN = [0 for _ in range(self.conf.NR_NODES)]
+        self.terrainLossAtN = [0 for _ in range(self.conf.NR_NODES)]
+        self.clutterLossAtN = [0 for _ in range(self.conf.NR_NODES)]
         self.rssiAtN = [0 for _ in range(self.conf.NR_NODES)]
         self.sensedByN = [False for _ in range(self.conf.NR_NODES)]
         self.detectedByN = [False for _ in range(self.conf.NR_NODES)]
         self.collidedAtN = [False for _ in range(self.conf.NR_NODES)]
+        self.collisionReasonAtN = [None for _ in range(self.conf.NR_NODES)]
         self.receivedAtN = [False for _ in range(self.conf.NR_NODES)]
+        self.phyLostAtN = [False for _ in range(self.conf.NR_NODES)]
         self.onAirToN = [True for _ in range(self.conf.NR_NODES)]
+        self.phyLossDrawAtN = [0.0 for _ in range(self.conf.NR_NODES)]
 
         # configuration values
         self.sf = self.conf.current_preset["sf"]
@@ -47,28 +59,93 @@ class MeshPacket:
         self.bw = self.conf.current_preset["bw"]
         self.freq = self.conf.FREQ
         self.tx_node = next(n for n in nodes if n.nodeid == self.txNodeId)
-        # calculate reception at all other nodes
-        for rx_node in nodes:
-            if rx_node.nodeid == self.txNodeId:
-                continue
-            dist_3d = self.tx_node.position.euclidean_distance(rx_node.position)
-            offset = self.conf.LINK_OFFSET[(self.txNodeId, rx_node.nodeid)]
-            self.LplAtN[rx_node.nodeid] = estimate_path_loss(self.conf, dist_3d, self.freq, node_antenna_height(self.tx_node), node_antenna_height(rx_node)) + offset
-            self.rssiAtN[rx_node.nodeid] = self.txpow + self.tx_node.antennaGain + rx_node.antennaGain - self.LplAtN[rx_node.nodeid]
-            if self.rssiAtN[rx_node.nodeid] >= self.conf.current_preset["sensitivity"]:
-                self.sensedByN[rx_node.nodeid] = True
-            if self.rssiAtN[rx_node.nodeid] >= self.conf.current_preset["cad_threshold"]:
-                self.detectedByN[rx_node.nodeid] = True
+
+        if self.conf.PHY_LOSS_MODEL_ENABLED:
+            for rx_node in nodes:
+                if rx_node.nodeid != self.txNodeId:
+                    self.phyLossDrawAtN[rx_node.nodeid] = random.random()
 
         self.packetLen = plen
         self.timeOnAir = airtime(self.conf, self.sf, self.cr, self.packetLen, self.bw)
         self.startTime = 0
         self.endTime = 0
+        self.refresh_link_budgets()
 
         # Routing
         self.retransmissions = self.conf.maxRetransmission
         self.ackReceived = False
         self.hopLimit = self.tx_node.hopLimit
+
+    def refresh_link_budgets(self):
+        """Recompute receiver-side RF state for the current TX power.
+
+        Per-packet power changes only alter transmitter output level. Terrain,
+        clutter, and pair calibration remain the same path; RSSI, CAD
+        detection, sensitivity, and empirical PHY loss must be recalculated
+        before collision handling.
+        """
+        for rx_node in self.nodes:
+            if rx_node.nodeid == self.txNodeId:
+                continue
+            budget = calculate_link_budget(
+                self.conf,
+                self.tx_node,
+                rx_node,
+                self.conf.LINK_OFFSET[(self.txNodeId, rx_node.nodeid)],
+                tx_power_dbm=self.txpow,
+            )
+            self.terrainLossAtN[rx_node.nodeid] = budget.terrain_loss_db
+            self.clutterLossAtN[rx_node.nodeid] = budget.clutter_loss_db
+            self.LplAtN[rx_node.nodeid] = budget.calibrated_path_loss_db
+            self.rssiAtN[rx_node.nodeid] = budget.rssi_dbm
+            self.detectedByN[rx_node.nodeid] = self.rssiAtN[rx_node.nodeid] >= self.conf.current_preset["cad_threshold"]
+        self.refresh_phy_reception()
+
+    def airtime_for_cr(self, cr):
+        """Predict airtime if this packet is transmitted with a different CR."""
+        return airtime(self.conf, self.sf, cr, self.packetLen, self.bw)
+
+    def set_coding_rate(self, cr):
+        """Change only physical CR and recompute airtime.
+
+        LoRa explicit-header packets carry CR in the PHY header, so changing the
+        selected CR does not alter Meshtastic payload bytes in this experiment.
+        """
+        self.cr = cr
+        self.timeOnAir = self.airtime_for_cr(cr)
+        self.refresh_phy_reception()
+
+    def set_tx_power(self, tx_power_dbm):
+        """Change temporary TX power and recompute RF visibility.
+
+        The configured region power remains the packet's baseTxPower. This
+        method only models a per-transmission reduction.
+        """
+        self.txpow = int(tx_power_dbm)
+        self.refresh_link_budgets()
+
+    def refresh_phy_reception(self):
+        """Recompute payload-loss state after the selected CR changes.
+
+        Reception remains gated by the configured modem sensitivity. Stronger
+        coding rates improve payload decode probability near that edge, but they
+        do not resurrect packets whose preamble/header would not be heard.
+        """
+        for rx_node_id, rssi in enumerate(self.rssiAtN):
+            if rx_node_id == self.txNodeId:
+                continue
+
+            self.sensedByN[rx_node_id] = rssi >= self.conf.current_preset["sensitivity"]
+            self.phyLostAtN[rx_node_id] = False
+
+            if self.sensedByN[rx_node_id]:
+                self.phyLostAtN[rx_node_id] = payload_is_lost(
+                    self.conf,
+                    rssi,
+                    self.cr,
+                    self.packetLen,
+                    self.phyLossDrawAtN[rx_node_id],
+                )
 
 
 class MeshMessage:

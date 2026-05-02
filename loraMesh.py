@@ -99,6 +99,8 @@ def parse_params(conf, args=None) -> [NodeConfig]:
     parser.add_argument('--clutter-grid', type=str, help='CSV land-cover clutter grid for optional building/urban excess loss')
     parser.add_argument('--clutter-profile-samples', type=int, help='number of clutter samples along each TX/RX path')
     parser.add_argument('--no-clutter', action='store_true', help='disable land-cover clutter even when a grid is available')
+    parser.add_argument('--phy-loss-model', action='store_true', help='enable empirical SNR-to-payload-loss model')
+    parser.add_argument('--capture-collision-model', action='store_true', help='enable capture-aware overlap/collision model')
     parser.add_argument('--map-bbox', type=str, help='Map import bounding box as min_lat,min_lon,max_lat,max_lon')
     parser.add_argument('--map-limit', type=int, help='Maximum number of positioned map nodes to import after bbox filtering')
     parser.add_argument('--map-antenna-height', type=float, default=1.5, help='Antenna height in meters for map-imported nodes')
@@ -253,6 +255,8 @@ def parse_params(conf, args=None) -> [NodeConfig]:
     conf.CLUTTER_GRID_FILE = parsed_arguments.clutter_grid
     if parsed_arguments.clutter_profile_samples is not None:
         conf.CLUTTER_PROFILE_SAMPLES = parsed_arguments.clutter_profile_samples
+    conf.PHY_LOSS_MODEL_ENABLED = parsed_arguments.phy_loss_model
+    conf.CAPTURE_COLLISION_MODEL_ENABLED = parsed_arguments.capture_collision_model
 
     if parsed_arguments.verbose:
         # Set this logger and lib.* to DEBUG only after the command line has
