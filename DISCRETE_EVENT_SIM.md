@@ -98,6 +98,20 @@ coding rate. `--capture-collision-model` keeps CAD-detectable but undecodable
 packets on the RF timeline as interference energy, and uses capture/preamble
 overlap rules instead of treating every overlap as identical.
 
+Packaged real-mesh presets can be listed and loaded directly:
+
+```python3 loraMesh.py --list-presets```
+
+The `batumi` preset includes sanitized Batumi/Georgia-area node geometry, a
+matching terrain grid, an OpenStreetMap-derived land-cover clutter grid, and an
+aggregate radio calibration over generated path features. Terrain, clutter, and
+the fitted link-calibration model are enabled automatically for the preset
+unless you pass different `--terrain-grid` or `--clutter-grid` inputs; use
+`--no-clutter` for old-style comparison runs. The calibration report is in
+`docs/batumi_radio_calibration.md`.
+
+```python3 loraMesh.py --preset batumi --no-gui --simtime-seconds 5 --period-seconds 2 --phy-loss-model --capture-collision-model```
+
 If you placed the nodes yourself, after a simulation the number of nodes, their coordinates and configuration are automatically saved and you can rerun the scenario with:
 
  ```python3 loraMesh.py --from-file```
@@ -118,14 +132,16 @@ Here we list some of the configurations, which you can change to model your scen
 The LoRa modem ([see Meshtastic radio settings](https://meshtastic.org/docs/overview/radio-settings#predefined-channels)) that is used, as defined below:
 |Modem  | Name | Bandwidth (kHz) | Coding rate | Spreading Factor | Data rate (kbps)
 |--|--|--|--|--|--|
-| 0 |Short Fast|250|4/8|7|6.8
-| 1 |Short Slow|250|4/8|8|3.9
-| 2 |Mid Fast|250|4/8|9|2.2
-| 3 |Mid Slow|250|4/8|10|1.2
-| 4 |Long Fast|250|4/8|11|0.67
-| 5 |Long Moderate|125|4/8|11|0.335
-| 6 |Long Slow|125|4/8|12|0.18
-| 7 |Very Long Slow|62.5|4/8|12|0.09
+| 0 | Short Turbo | 500 | 4/5 | 7 | 21.9 |
+| 1 | Short Fast | 250 | 4/5 | 7 | 10.9 |
+| 2 | Short Slow | 250 | 4/5 | 8 | 6.25 |
+| 3 | Medium Fast | 250 | 4/5 | 9 | 3.52 |
+| 4 | Medium Slow | 250 | 4/5 | 10 | 1.95 |
+| 5 | Long Turbo | 500 | 4/8 | 11 | 1.34 |
+| 6 | Long Fast | 250 | 4/5 | 11 | 1.07 |
+| 7 | Long Moderate | 125 | 4/8 | 11 | 0.336 |
+| 8 | Long Slow | 125 | 4/8 | 12 | 0.183 |
+| 9 | Very Long Slow | 62.5 | 4/8 | 12 | 0.0916 |
 
 ### Period
 Mean period (in ms) with which the nodes generate a new message following an exponential distribution. E.g. if you set it to 300s, each node will generate a message on average once every five minutes.

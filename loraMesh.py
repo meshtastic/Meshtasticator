@@ -22,6 +22,16 @@ from lib.node import (
     node_configs_from_yaml,
     origin_from_yaml,
 )
+from lib.presets import (
+    apply_preset_radio_calibration,
+    available_presets,
+    load_preset_raw,
+    load_preset_terrain_grid,
+    load_preset_node_configs,
+    preset_clutter_grid,
+    preset_origin,
+    preset_terrain_grid,
+)
 from lib.srtm import (
     DEFAULT_SRTM_URL_TEMPLATE,
     SRTM_DATA_ATTRIBUTION,
@@ -164,6 +174,45 @@ def srtm_tiles_for_node_config_links(conf, node_config, origin, margin_m=1000.0)
     return sorted(tile_names)
 
 
+def print_preset_list():
+    """Print packaged scenario presets in a copy-pasteable discovery format."""
+    print("Available scenario presets:")
+    for name in available_presets():
+        raw = load_preset_raw(name)
+        nodes = raw.get("nodes", {}) if isinstance(raw, dict) else {}
+        origin = raw.get("origin", {}) if isinstance(raw, dict) else {}
+        calibration = raw.get("radio_calibration", {}) if isinstance(raw, dict) else {}
+        observations = raw.get("calibration_observations", []) if isinstance(raw, dict) else []
+        terrain = preset_terrain_grid(name) is not None
+        clutter = preset_clutter_grid(name) is not None
+        calibration_enabled = bool(calibration.get("link_calibration_model"))
+        origin_text = "unknown"
+        if "lat" in origin and "lon" in origin:
+            origin_text = f"{origin['lat']:.5f},{origin['lon']:.5f}"
+
+        print(
+            f"  {name}: {len(nodes)} nodes, origin={origin_text}, "
+            f"terrain={'yes' if terrain else 'no'}, "
+            f"clutter={'yes' if clutter else 'no'}, "
+            f"link_calibration={'yes' if calibration_enabled else 'no'}, "
+            f"calibration_edges={len(observations)}"
+        )
+
+
+def print_modem_preset_list(conf):
+    """Print modem presets with the fields users need for comparable runs."""
+    print("Available modem presets:")
+    for name, preset in conf.MODEM_PRESETS.items():
+        default_marker = " (default)" if name == conf.MODEM_PRESET else ""
+        print(
+            f"  {name}{default_marker}: "
+            f"bw={preset['bw'] / 1000:g} kHz, "
+            f"sf={preset['sf']}, "
+            f"cr=4/{preset['cr']}, "
+            f"sensitivity={preset['sensitivity']:g} dBm"
+        )
+
+
 def parse_params(conf, args=None) -> [NodeConfig]:
     """parses command-line arguments, alters global simulation config, and returns
     a list of node configurations, or a list of None.
@@ -173,7 +222,14 @@ def parse_params(conf, args=None) -> [NodeConfig]:
     # loraMesh.py [nr_nodes [router_type]] | [--from-file [file_name]]
     # we'll replicate the intent with argparse, but more strictly, so flags like '--never--from-file' will no longer be accepted
     parser = argparse.ArgumentParser(
-        description="run a single interactive or discrete Meshtastic network simulation"
+        description="run a single interactive or discrete Meshtastic network simulation",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""examples:
+  loraMesh.py --list-presets
+  loraMesh.py --preset batumi --no-gui --simtime-seconds 60 --period-seconds 5
+  loraMesh.py --preset batumi --no-gui --simtime-seconds 60 --period-seconds 5 --phy-loss-model --capture-collision-model
+  loraMesh.py --from-map 'https://meshtastic.liamcottle.net/api/v1/nodes' --map-bbox 41.50,41.50,41.82,41.86 --map-limit 100 --no-gui
+""",
     )
 
     # only allow one of --from-file optional, or nr_nodes positional exclusively
@@ -204,6 +260,11 @@ def parse_params(conf, args=None) -> [NodeConfig]:
         "--from-nodedb",
         action="store_true",
         help="Fetch positioned nodes from a local Meshtastic device NodeDB.",
+    )
+    group.add_argument(
+        "--preset",
+        choices=available_presets(),
+        help="Load a packaged real-mesh scenario preset.",
     )
 
     # the earlier behavior of specifying `router_type` as an optional positional arg with `nr_nodes` is difficult to exactly
@@ -313,10 +374,27 @@ def parse_params(conf, args=None) -> [NodeConfig]:
         help="disable the connectivity map optimization. May be faster for some scenarios with many moving nodes and/or a densely connected network.",
     )
     parser.add_argument(
+        "--list-presets",
+        action="store_true",
+        help="List packaged real-mesh scenario presets and exit",
+    )
+    parser.add_argument(
+        "--list-modem-presets",
+        action="store_true",
+        help="List Meshtastic modem presets and exit",
+    )
+    parser.add_argument(
         "-v", "--verbose", action="store_true", help="enable verbose/debug output"
     )
 
     parsed_arguments = parser.parse_args(args)
+
+    if parsed_arguments.list_presets:
+        print_preset_list()
+    if parsed_arguments.list_modem_presets:
+        print_modem_preset_list(conf)
+    if parsed_arguments.list_presets or parsed_arguments.list_modem_presets:
+        raise SystemExit(0)
 
     cli_defaults = get_cli_defaults(conf)
     simtime = cli_defaults["SIMTIME"]
@@ -376,9 +454,10 @@ def parse_params(conf, args=None) -> [NodeConfig]:
         parsed_arguments.from_file is not None
         or parsed_arguments.from_map is not None
         or parsed_arguments.from_nodedb
+        or parsed_arguments.preset is not None
     ) and parsed_arguments.router_type is not None:
         parser.error(
-            "Incompatible argument selection. --from-file/--from-map/--from-nodedb and --router-type can not be used together"
+            "Incompatible argument selection. --from-file/--from-map/--from-nodedb/--preset and --router-type can not be used together"
         )
     if not parsed_arguments.from_nodedb and (
         parsed_arguments.nodedb_host is not None
@@ -406,6 +485,9 @@ def parse_params(conf, args=None) -> [NodeConfig]:
     node_z_reference = cli_defaults["NODE_Z_REFERENCE"]
     if parsed_arguments.terrain_profile_samples is not None:
         terrain_profile_samples = parsed_arguments.terrain_profile_samples
+    bundled_terrain_grid = None
+    bundled_clutter_grid = None
+    selected_preset = None
     if parsed_arguments.from_file is not None:
         try:
             if parsed_arguments.map_bbox is not None:
@@ -418,6 +500,17 @@ def parse_params(conf, args=None) -> [NodeConfig]:
             scenario_origin = origin_from_yaml(raw_config)
         except (OSError, ValueError, yaml.YAMLError) as err:
             parser.error(f"could not load --from-file YAML: {err}")
+        nr_nodes = len(config)
+        bounds_follow_node_config = True
+    elif parsed_arguments.preset is not None:
+        selected_preset = parsed_arguments.preset
+        config = load_preset_node_configs(parsed_arguments.preset, period)
+        scenario_origin = preset_origin(parsed_arguments.preset)
+        # Packaged scenarios can carry terrain/clutter grids matched to the
+        # node geometry. Use them by default, while still letting explicit CLI
+        # files override them for A/B comparison runs.
+        bundled_terrain_grid = preset_terrain_grid(parsed_arguments.preset)
+        bundled_clutter_grid = preset_clutter_grid(parsed_arguments.preset)
         nr_nodes = len(config)
         bounds_follow_node_config = True
     elif parsed_arguments.from_map is not None:
@@ -496,7 +589,7 @@ def parse_params(conf, args=None) -> [NodeConfig]:
                 "--terrain-srtm requires --from-map --map-bbox or a scenario file with origin metadata"
             )
         if not gui_enabled:
-            parser.error("--no-gui requires nr_nodes or --from-file")
+            parser.error("--no-gui requires nr_nodes, --from-file, --from-map, or --preset")
         from lib.gui import gen_scenario
 
         config_dict = gen_scenario(conf)
@@ -539,15 +632,27 @@ def parse_params(conf, args=None) -> [NodeConfig]:
             node_z_reference = NODE_Z_REFERENCE_SEA_LEVEL
         except (OSError, ValueError) as err:
             parser.error(f"could not load SRTM terrain: {err}")
+    elif bundled_terrain_grid is not None:
+        try:
+            terrain_grid = load_preset_terrain_grid(parsed_arguments.preset)
+            apply_terrain_altitudes(terrain_grid, config)
+            terrain_enabled = True
+            node_z_reference = NODE_Z_REFERENCE_SEA_LEVEL
+        except (OSError, ValueError) as err:
+            parser.error(f"could not load preset terrain: {err}")
 
     if not seeded_for_scenario:
-        # Loaded and interactive scenarios do not need random state for node
-        # placement, but the later MAC/PHY simulation does. Seed only after all
-        # parser rejections so failed inputs leave caller RNG state alone.
+        # File, map, preset, and interactive scenarios do not need random state
+        # for node placement, but the later MAC/PHY simulation does. Seed only
+        # after successful scenario loading so rejected inputs leave caller RNG
+        # state alone.
         random.seed(conf.SEED)
 
     if bounds_follow_node_config:
         fit_simulation_bounds_to_node_config(conf, config)
+
+    if selected_preset is not None:
+        apply_preset_radio_calibration(conf, selected_preset)
 
     conf.SIMTIME = simtime
     conf.PERIOD = period
@@ -560,8 +665,15 @@ def parse_params(conf, args=None) -> [NodeConfig]:
     conf.TERRAIN_GRID = terrain_grid
     conf.TERRAIN_PROFILE_SAMPLES = terrain_profile_samples
     conf.NODE_Z_REFERENCE = node_z_reference
-    conf.CLUTTER_ENABLED = parsed_arguments.clutter_grid is not None and not parsed_arguments.no_clutter
-    conf.CLUTTER_GRID_FILE = parsed_arguments.clutter_grid
+    if parsed_arguments.clutter_grid:
+        conf.CLUTTER_ENABLED = True
+        conf.CLUTTER_GRID_FILE = parsed_arguments.clutter_grid
+    elif bundled_clutter_grid is not None and not parsed_arguments.no_clutter:
+        conf.CLUTTER_ENABLED = True
+        conf.CLUTTER_GRID_FILE = str(bundled_clutter_grid)
+    else:
+        conf.CLUTTER_ENABLED = False
+        conf.CLUTTER_GRID_FILE = None
     if parsed_arguments.clutter_profile_samples is not None:
         conf.CLUTTER_PROFILE_SAMPLES = parsed_arguments.clutter_profile_samples
     conf.PHY_LOSS_MODEL_ENABLED = parsed_arguments.phy_loss_model
@@ -586,6 +698,11 @@ def parse_params(conf, args=None) -> [NodeConfig]:
             "Terrain data attribution:",
             f"{SRTM_DATA_ATTRIBUTION} ({SRTM_DATA_ATTRIBUTION_URL})",
         )
+    print("PHY loss model:", "enabled" if conf.PHY_LOSS_MODEL_ENABLED else "disabled")
+    print("Capture collision model:", "enabled" if conf.CAPTURE_COLLISION_MODEL_ENABLED else "disabled")
+    print("Terrain model:", "enabled" if conf.TERRAIN_ENABLED else "disabled")
+    print("Clutter model:", conf.CLUTTER_GRID_FILE if conf.CLUTTER_ENABLED else "disabled")
+    print("Link calibration model:", "enabled" if conf.LINK_CALIBRATION_MODEL_ENABLED else "disabled")
     return config
 
 
@@ -651,6 +768,13 @@ def run_simulation(conf, node_config):
         round(usefulness * 100, 2),
     )
     print("Number of packets dropped by delay/hop limit:", delayDropped)
+
+    if conf.TERRAIN_ENABLED:
+        print("Mean terrain obstruction loss (dB):", round(results["meanTerrainLossDb"], 2))
+        print("Max terrain obstruction loss (dB):", round(results["maxTerrainLossDb"], 2))
+    if conf.CLUTTER_ENABLED:
+        print("Mean clutter loss (dB):", round(results["meanClutterLossDb"], 2))
+        print("Max clutter loss (dB):", round(results["maxClutterLossDb"], 2))
 
     if conf.MODEL_ASYMMETRIC_LINKS:
         noLinkRate = results["noLinkRate"]

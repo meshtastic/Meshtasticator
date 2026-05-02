@@ -1,0 +1,1258 @@
+origin:
+  lat: 41.6442879
+  lon: 41.61536
+radio_calibration:
+  # Tuned against Batumi/Georgia-area neighbor SNR history. These are simulator
+  # calibration knobs, not claims about physical antenna separation.
+  noise_level: -110.5
+  path_loss_distance_floor_m: 780.0
+  reported_snr_min_db: -21.25
+  reported_snr_max_db: 8.25
+  link_calibration_model:
+    # Ridge fit over raw path-loss SNR, terrain, clutter, and vantage features.
+    # Observed links train/evaluate these coefficients; runtime does not look
+    # up individual node pairs.
+    training_positive_count: 296
+    training_background_weight: 0.02
+    training_background_target_snr: -22.0
+    ridge_lambda: 50.0
+    snr_min_db: -35.0
+    snr_max_db: 8.25
+    coefficients:
+      intercept: -4.718165
+      raw_snr_clip: 0.279435
+      log_distance_km: -4.684251
+      log_distance_km_sq: -2.241399
+      terrain_loss_db: -0.666327
+      clutter_loss_db: -0.141584
+      terrain_high_vantage_loss_db: 0.307599
+      clutter_urban_loss_db: 0.409982
+      max_ground_elevation_100m: 2.159190
+      min_ground_elevation_100m: 4.241387
+      ground_delta_100m: 2.213846
+      high_vantage: 3.197868
+      urban_fraction: 2.944392
+      open_fraction: -2.944392
+      water_fraction: 0.0
+      forest_fraction: 0.0
+      endpoint_urban_count: -1.642182
+calibration_observations:
+  # Directed observed-neighbor links from the aggregate calibration window.
+  # Node indexes are local to this sanitized preset; source IDs and names are intentionally omitted.
+  - {from: 0, to: 6, snr: -4}
+  - {from: 0, to: 10, snr: -19.75}
+  - {from: 0, to: 13, snr: -3.5}
+  - {from: 0, to: 15, snr: -0.75}
+  - {from: 0, to: 21, snr: -4.75}
+  - {from: 0, to: 26, snr: -14.25}
+  - {from: 0, to: 27, snr: -17.25}
+  - {from: 0, to: 30, snr: -5.25}
+  - {from: 1, to: 6, snr: -8}
+  - {from: 1, to: 8, snr: -12.5}
+  - {from: 1, to: 10, snr: -10.75}
+  - {from: 1, to: 13, snr: -14.5}
+  - {from: 1, to: 15, snr: 5}
+  - {from: 1, to: 21, snr: -5}
+  - {from: 1, to: 26, snr: -17.75}
+  - {from: 1, to: 27, snr: -19}
+  - {from: 1, to: 30, snr: -18.75}
+  - {from: 2, to: 6, snr: -4.5}
+  - {from: 2, to: 15, snr: -14.5}
+  - {from: 2, to: 21, snr: -19.5}
+  - {from: 2, to: 26, snr: -18.75}
+  - {from: 2, to: 27, snr: 5}
+  - {from: 3, to: 6, snr: -4.5}
+  - {from: 3, to: 10, snr: -18.25}
+  - {from: 3, to: 13, snr: -19}
+  - {from: 3, to: 21, snr: -4.5}
+  - {from: 3, to: 24, snr: 6.25}
+  - {from: 3, to: 26, snr: -4.75}
+  - {from: 3, to: 27, snr: 2.25}
+  - {from: 3, to: 30, snr: -0.25}
+  - {from: 4, to: 10, snr: -18.75}
+  - {from: 4, to: 13, snr: -0.5}
+  - {from: 4, to: 15, snr: -9.75}
+  - {from: 4, to: 21, snr: -5.5}
+  - {from: 4, to: 26, snr: -13}
+  - {from: 5, to: 6, snr: -4}
+  - {from: 5, to: 10, snr: -18.25}
+  - {from: 5, to: 13, snr: -19.25}
+  - {from: 5, to: 15, snr: -11.75}
+  - {from: 5, to: 21, snr: -5}
+  - {from: 5, to: 26, snr: -0.75}
+  - {from: 5, to: 27, snr: -13}
+  - {from: 5, to: 30, snr: -19.5}
+  - {from: 6, to: 10, snr: -17.5}
+  - {from: 6, to: 13, snr: -9.75}
+  - {from: 6, to: 15, snr: -5.75}
+  - {from: 6, to: 21, snr: -4.25}
+  - {from: 6, to: 26, snr: -12.75}
+  - {from: 6, to: 27, snr: -1.75}
+  - {from: 6, to: 30, snr: -16}
+  - {from: 8, to: 6, snr: -3.75}
+  - {from: 8, to: 10, snr: 6}
+  - {from: 8, to: 13, snr: -14.75}
+  - {from: 8, to: 15, snr: -17.5}
+  - {from: 8, to: 21, snr: -3.75}
+  - {from: 8, to: 24, snr: -3.5}
+  - {from: 8, to: 26, snr: -19}
+  - {from: 8, to: 27, snr: -18}
+  - {from: 8, to: 30, snr: -9.5}
+  - {from: 9, to: 6, snr: -13}
+  - {from: 9, to: 10, snr: -19}
+  - {from: 9, to: 13, snr: -17.5}
+  - {from: 9, to: 21, snr: -4.5}
+  - {from: 9, to: 26, snr: -1.25}
+  - {from: 9, to: 27, snr: -18.75}
+  - {from: 10, to: 6, snr: -3.5}
+  - {from: 10, to: 13, snr: -14}
+  - {from: 10, to: 15, snr: -17.25}
+  - {from: 10, to: 21, snr: -11}
+  - {from: 10, to: 26, snr: -16.5}
+  - {from: 10, to: 27, snr: -11.5}
+  - {from: 10, to: 30, snr: -16.25}
+  - {from: 11, to: 6, snr: -17.25}
+  - {from: 11, to: 10, snr: -17.5}
+  - {from: 11, to: 13, snr: -18.5}
+  - {from: 11, to: 15, snr: -14.25}
+  - {from: 11, to: 21, snr: -4.25}
+  - {from: 11, to: 24, snr: 6.5}
+  - {from: 11, to: 26, snr: 0.75}
+  - {from: 11, to: 27, snr: 6.25}
+  - {from: 11, to: 30, snr: 6.25}
+  - {from: 12, to: 10, snr: -17.75}
+  - {from: 12, to: 13, snr: -18.75}
+  - {from: 12, to: 21, snr: -4}
+  - {from: 12, to: 24, snr: 0}
+  - {from: 12, to: 26, snr: -0.75}
+  - {from: 12, to: 27, snr: 1.25}
+  - {from: 12, to: 30, snr: 4}
+  - {from: 13, to: 6, snr: -4}
+  - {from: 13, to: 8, snr: -10.75}
+  - {from: 13, to: 10, snr: -6}
+  - {from: 13, to: 15, snr: 0}
+  - {from: 13, to: 21, snr: -13.5}
+  - {from: 13, to: 26, snr: 6}
+  - {from: 13, to: 27, snr: -9}
+  - {from: 13, to: 30, snr: 5.75}
+  - {from: 14, to: 6, snr: 2.75}
+  - {from: 14, to: 10, snr: -4.5}
+  - {from: 14, to: 13, snr: -7.25}
+  - {from: 14, to: 15, snr: -7}
+  - {from: 14, to: 21, snr: -17.75}
+  - {from: 14, to: 26, snr: -14.75}
+  - {from: 14, to: 27, snr: -19}
+  - {from: 14, to: 30, snr: -19.25}
+  - {from: 15, to: 6, snr: -11.75}
+  - {from: 15, to: 10, snr: -14.75}
+  - {from: 15, to: 13, snr: 0}
+  - {from: 15, to: 21, snr: -7.75}
+  - {from: 15, to: 26, snr: 5.5}
+  - {from: 15, to: 27, snr: -6}
+  - {from: 15, to: 30, snr: 5.5}
+  - {from: 16, to: 6, snr: -14.75}
+  - {from: 16, to: 10, snr: -17.75}
+  - {from: 16, to: 13, snr: -18.75}
+  - {from: 16, to: 21, snr: -4.75}
+  - {from: 16, to: 27, snr: -19.5}
+  - {from: 17, to: 13, snr: 5}
+  - {from: 17, to: 15, snr: 1.25}
+  - {from: 17, to: 21, snr: -4.25}
+  - {from: 17, to: 26, snr: -1.25}
+  - {from: 17, to: 27, snr: -17.5}
+  - {from: 17, to: 30, snr: -6.75}
+  - {from: 18, to: 6, snr: -14.75}
+  - {from: 18, to: 8, snr: 5.5}
+  - {from: 18, to: 10, snr: 3.75}
+  - {from: 18, to: 13, snr: -19}
+  - {from: 18, to: 15, snr: -18.5}
+  - {from: 18, to: 21, snr: -8.75}
+  - {from: 18, to: 24, snr: 0}
+  - {from: 18, to: 26, snr: -17.75}
+  - {from: 18, to: 27, snr: -15}
+  - {from: 18, to: 30, snr: -13.75}
+  - {from: 19, to: 6, snr: -16.25}
+  - {from: 19, to: 10, snr: -16.5}
+  - {from: 19, to: 13, snr: -18.25}
+  - {from: 19, to: 15, snr: -18.25}
+  - {from: 19, to: 21, snr: -3.75}
+  - {from: 19, to: 26, snr: -19}
+  - {from: 19, to: 27, snr: -18.25}
+  - {from: 20, to: 13, snr: -8.5}
+  - {from: 20, to: 15, snr: -4.25}
+  - {from: 20, to: 21, snr: -9.5}
+  - {from: 20, to: 26, snr: -8}
+  - {from: 20, to: 27, snr: -19.25}
+  - {from: 21, to: 6, snr: -5.75}
+  - {from: 21, to: 10, snr: -17.75}
+  - {from: 21, to: 13, snr: -16.5}
+  - {from: 21, to: 26, snr: -18.75}
+  - {from: 21, to: 27, snr: -18.5}
+  - {from: 21, to: 30, snr: -11.75}
+  - {from: 22, to: 6, snr: -18.75}
+  - {from: 22, to: 10, snr: -17.25}
+  - {from: 22, to: 13, snr: -19}
+  - {from: 22, to: 21, snr: -4.75}
+  - {from: 22, to: 26, snr: -0.25}
+  - {from: 22, to: 27, snr: -6}
+  - {from: 22, to: 30, snr: 0.25}
+  - {from: 23, to: 10, snr: -17.25}
+  - {from: 23, to: 13, snr: -6.5}
+  - {from: 23, to: 15, snr: -3.75}
+  - {from: 23, to: 21, snr: -20}
+  - {from: 23, to: 26, snr: -13.5}
+  - {from: 23, to: 27, snr: -17.75}
+  - {from: 23, to: 30, snr: -11.5}
+  - {from: 24, to: 10, snr: -17.75}
+  - {from: 24, to: 13, snr: -19.75}
+  - {from: 24, to: 21, snr: -3.75}
+  - {from: 24, to: 26, snr: -4.75}
+  - {from: 24, to: 27, snr: -12.5}
+  - {from: 25, to: 10, snr: -11.25}
+  - {from: 25, to: 13, snr: -18.25}
+  - {from: 25, to: 15, snr: -13}
+  - {from: 25, to: 21, snr: -3}
+  - {from: 25, to: 26, snr: -15}
+  - {from: 26, to: 6, snr: -13.75}
+  - {from: 26, to: 10, snr: -16.5}
+  - {from: 26, to: 13, snr: 6}
+  - {from: 26, to: 15, snr: 5.5}
+  - {from: 26, to: 21, snr: -10.5}
+  - {from: 26, to: 27, snr: 0.75}
+  - {from: 26, to: 30, snr: 6.75}
+  - {from: 27, to: 6, snr: -16.5}
+  - {from: 27, to: 10, snr: -18.5}
+  - {from: 27, to: 13, snr: -6.25}
+  - {from: 27, to: 15, snr: -6.25}
+  - {from: 27, to: 21, snr: -6.25}
+  - {from: 27, to: 26, snr: -13.5}
+  - {from: 27, to: 30, snr: 5.5}
+  - {from: 28, to: 6, snr: -18.25}
+  - {from: 28, to: 10, snr: -16.5}
+  - {from: 28, to: 13, snr: -3.25}
+  - {from: 28, to: 15, snr: -9}
+  - {from: 28, to: 21, snr: -6}
+  - {from: 28, to: 26, snr: -9}
+  - {from: 28, to: 27, snr: -18.25}
+  - {from: 28, to: 30, snr: -3.75}
+  - {from: 29, to: 21, snr: -6.25}
+  - {from: 30, to: 6, snr: -6.5}
+  - {from: 30, to: 10, snr: -7.25}
+  - {from: 30, to: 13, snr: 5.75}
+  - {from: 30, to: 15, snr: 5.25}
+  - {from: 30, to: 21, snr: -3.75}
+  - {from: 30, to: 26, snr: 6}
+  - {from: 30, to: 27, snr: 3}
+  - {from: 32, to: 6, snr: -9}
+  - {from: 32, to: 8, snr: -5.25}
+  - {from: 32, to: 10, snr: -15.75}
+  - {from: 32, to: 13, snr: 1.75}
+  - {from: 32, to: 15, snr: 4}
+  - {from: 32, to: 21, snr: -5}
+  - {from: 32, to: 26, snr: -7}
+  - {from: 32, to: 27, snr: -18.5}
+  - {from: 32, to: 30, snr: -3.75}
+  - {from: 33, to: 6, snr: -19}
+  - {from: 33, to: 13, snr: 6.5}
+  - {from: 33, to: 15, snr: 5.25}
+  - {from: 33, to: 21, snr: -4}
+  - {from: 33, to: 26, snr: 6.25}
+  - {from: 33, to: 30, snr: 6}
+  - {from: 34, to: 6, snr: -19}
+  - {from: 34, to: 10, snr: 6.25}
+  - {from: 34, to: 13, snr: -16.25}
+  - {from: 34, to: 15, snr: -13.75}
+  - {from: 34, to: 21, snr: -3.5}
+  - {from: 34, to: 26, snr: -15.5}
+  - {from: 34, to: 30, snr: 1.5}
+  - {from: 35, to: 6, snr: -13.5}
+  - {from: 35, to: 10, snr: -16.75}
+  - {from: 35, to: 13, snr: -10.5}
+  - {from: 35, to: 15, snr: -9.25}
+  - {from: 35, to: 21, snr: -18.75}
+  - {from: 35, to: 26, snr: -5}
+  - {from: 35, to: 27, snr: -17.25}
+  - {from: 37, to: 10, snr: -17.25}
+  - {from: 37, to: 13, snr: -18.75}
+  - {from: 37, to: 15, snr: -0.75}
+  - {from: 37, to: 21, snr: -13.25}
+  - {from: 37, to: 26, snr: -19.5}
+  - {from: 37, to: 27, snr: -3}
+  - {from: 37, to: 30, snr: -14}
+  - {from: 39, to: 6, snr: -11.25}
+  - {from: 39, to: 10, snr: -19}
+  - {from: 39, to: 13, snr: -10.25}
+  - {from: 39, to: 15, snr: -12.75}
+  - {from: 39, to: 21, snr: -2.5}
+  - {from: 39, to: 24, snr: 6.25}
+  - {from: 39, to: 26, snr: -17}
+  - {from: 39, to: 27, snr: -12}
+  - {from: 39, to: 30, snr: -13.5}
+  - {from: 40, to: 13, snr: -1.75}
+  - {from: 40, to: 15, snr: -7}
+  - {from: 40, to: 26, snr: -14}
+  - {from: 40, to: 27, snr: -19.75}
+  - {from: 41, to: 6, snr: -3}
+  - {from: 41, to: 10, snr: -15.75}
+  - {from: 41, to: 13, snr: -19.5}
+  - {from: 41, to: 21, snr: -6}
+  - {from: 41, to: 27, snr: -16.5}
+  - {from: 42, to: 6, snr: -13.75}
+  - {from: 42, to: 10, snr: -18.25}
+  - {from: 42, to: 13, snr: -19}
+  - {from: 42, to: 15, snr: -18.5}
+  - {from: 42, to: 21, snr: -5.5}
+  - {from: 42, to: 27, snr: -8.25}
+  - {from: 43, to: 6, snr: -6.25}
+  - {from: 43, to: 10, snr: -15.75}
+  - {from: 43, to: 21, snr: -3}
+  - {from: 44, to: 6, snr: -16.25}
+  - {from: 44, to: 10, snr: -18.25}
+  - {from: 44, to: 13, snr: -17.5}
+  - {from: 44, to: 21, snr: -4.5}
+  - {from: 44, to: 24, snr: 6}
+  - {from: 44, to: 27, snr: -19}
+  - {from: 46, to: 10, snr: -16.75}
+  - {from: 46, to: 13, snr: -17.25}
+  - {from: 46, to: 15, snr: -17.5}
+  - {from: 46, to: 21, snr: -6.25}
+  - {from: 46, to: 27, snr: -17.75}
+  - {from: 47, to: 6, snr: -8}
+  - {from: 47, to: 10, snr: -18.25}
+  - {from: 47, to: 15, snr: -3.5}
+  - {from: 47, to: 21, snr: -3.25}
+  - {from: 47, to: 27, snr: -19.5}
+  - {from: 48, to: 10, snr: -17.5}
+  - {from: 49, to: 6, snr: -0.5}
+  - {from: 49, to: 10, snr: -13}
+  - {from: 49, to: 13, snr: -13.5}
+  - {from: 49, to: 15, snr: -17}
+  - {from: 63, to: 8, snr: -18.25}
+  - {from: 65, to: 8, snr: -11.5}
+  - {from: 81, to: 8, snr: -20.75}
+  - {from: 91, to: 6, snr: -17}
+  - {from: 91, to: 10, snr: -19}
+  - {from: 91, to: 13, snr: -19.25}
+  - {from: 91, to: 21, snr: -5.5}
+  - {from: 91, to: 26, snr: -3.75}
+nodes:
+  0:
+    x: 1633.7
+    y: -1030.45
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  1:
+    x: 5612.18
+    y: 2150.74
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  2:
+    x: 9498.02
+    y: 3446.72
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  3:
+    x: -2112.63
+    y: -2753.34
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  4:
+    x: 3267.4
+    y: 1155.73
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  5:
+    x: -1089.13
+    y: -4674.09
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  6:
+    x: -2620.73
+    y: -8818.73
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  7:
+    x: 3267.4
+    y: 1155.73
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  8:
+    x: -220.2
+    y: -818.16
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  9:
+    x: -1089.13
+    y: -4674.09
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  10:
+    x: -204.21
+    y: -757.18
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  11:
+    x: -2051.65
+    y: -2564.13
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  12:
+    x: -2050.45
+    y: -2559.18
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: true
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  13:
+    x: -1089.13
+    y: 1155.73
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: true
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  14:
+    x: 3267.4
+    y: -4674.09
+    z: 1.5
+    isRouter: true
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  15:
+    x: -1089.13
+    y: 1155.73
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  16:
+    x: -1089.13
+    y: -4674.09
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  17:
+    x: 892.43
+    y: -20.89
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  18:
+    x: -915.7
+    y: -1484.22
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  19:
+    x: 1633.7
+    y: 427.0
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: true
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  20:
+    x: 1633.7
+    y: -1030.45
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: true
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  21:
+    x: 15213.83
+    y: 1565.64
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  22:
+    x: -1713.25
+    y: -2224.22
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  23:
+    x: -1089.13
+    y: 1155.73
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  24:
+    x: -2054.16
+    y: -2555.89
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  25:
+    x: -1089.13
+    y: 1155.73
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  26:
+    x: 714.74
+    y: -5539.45
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  27:
+    x: -1905.98
+    y: -2852.27
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  28:
+    x: 0.0
+    y: -301.73
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  29:
+    x: -1089.13
+    y: -4674.09
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  30:
+    x: 6602.87
+    y: 1429.0
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: true
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  31:
+    x: 0.0
+    y: -3216.64
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  32:
+    x: -1089.13
+    y: 1155.73
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  33:
+    x: 1050.59
+    y: -291.33
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: true
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  34:
+    x: -241.67
+    y: -813.71
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  35:
+    x: 3267.4
+    y: 1155.73
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: true
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  36:
+    x: -1089.13
+    y: 1155.73
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  37:
+    x: -1089.13
+    y: 1155.73
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  38:
+    x: 1633.7
+    y: 427.0
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  39:
+    x: -4392.75
+    y: -10883.31
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  40:
+    x: -1986.78
+    y: -2554.83
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  41:
+    x: -1089.13
+    y: -4674.09
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  42:
+    x: -1089.13
+    y: -4674.09
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: true
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  43:
+    x: -786.08
+    y: -1484.92
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  44:
+    x: -1089.13
+    y: -4674.09
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  45:
+    x: -1089.13
+    y: 1155.73
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  46:
+    x: 2178.27
+    y: -301.73
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: true
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  47:
+    x: 3267.4
+    y: 1155.73
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  48:
+    x: -786.08
+    y: -1484.92
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  49:
+    x: 272.28
+    y: -666.09
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  50:
+    x: -1089.13
+    y: 1155.73
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  51:
+    x: -4390.57
+    y: -10913.82
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  52:
+    x: 16337.0
+    y: 6985.54
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  53:
+    x: 7623.93
+    y: 6985.54
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  54:
+    x: 3267.4
+    y: 1155.73
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  55:
+    x: 3267.4
+    y: 1155.73
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  56:
+    x: 2722.83
+    y: 427.0
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  57:
+    x: -914.93
+    y: -1487.99
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  58:
+    x: -915.65
+    y: -1486.92
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  59:
+    x: 2230.19
+    y: 0.0
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  60:
+    x: -1089.13
+    y: 1155.73
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  61:
+    x: 1153.56
+    y: -355.72
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  62:
+    x: 3267.4
+    y: 1155.73
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  63:
+    x: 1157.2
+    y: -210.64
+    z: 1.5
+    isRouter: true
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  64:
+    x: 1157.78
+    y: 217.29
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  65:
+    x: 194.44
+    y: -40.91
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  66:
+    x: -1089.13
+    y: 1155.73
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  67:
+    x: 3267.4
+    y: 1155.73
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  68:
+    x: 3267.4
+    y: 1155.73
+    z: 1.5
+    isRouter: true
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  69:
+    x: 3267.4
+    y: 1155.73
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  70:
+    x: -3267.4
+    y: 4070.63
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  71:
+    x: 5445.67
+    y: 4070.63
+    z: 1.5
+    isRouter: true
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  72:
+    x: 674.06
+    y: -611.67
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  73:
+    x: -914.38
+    y: -1488.64
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: true
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  74:
+    x: -1089.13
+    y: 1155.73
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  75:
+    x: -1089.13
+    y: -4674.09
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  76:
+    x: -1089.13
+    y: 1155.73
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  77:
+    x: -1089.13
+    y: 1155.73
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  78:
+    x: 7623.93
+    y: 1155.73
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  79:
+    x: 11980.46
+    y: 12815.36
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  80:
+    x: 952.99
+    y: -483.91
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  81:
+    x: 1921.48
+    y: 534.98
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  82:
+    x: 3267.4
+    y: 1155.73
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  83:
+    x: 15222.87
+    y: 1519.16
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  84:
+    x: 10346.76
+    y: 12086.63
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  85:
+    x: 10891.33
+    y: 11357.91
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  86:
+    x: 3267.4
+    y: 1155.73
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  87:
+    x: 3267.4
+    y: 1155.73
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  88:
+    x: -276.63
+    y: -797.33
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  89:
+    x: -1089.13
+    y: -4674.09
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  90:
+    x: -1089.13
+    y: -4674.09
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: false
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false
+  91:
+    x: 357.6
+    y: 243.8
+    z: 1.5
+    isRouter: false
+    isRepeater: false
+    isClientMute: true
+    hopLimit: 3
+    antennaGain: 0
+    neighborInfo: false

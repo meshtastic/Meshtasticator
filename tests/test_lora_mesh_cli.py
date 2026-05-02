@@ -944,6 +944,80 @@ class TestLoraMeshCli(unittest.TestCase):
         self.assertEqual(conf.TERRAIN_PROFILE_SAMPLES, Config().TERRAIN_PROFILE_SAMPLES)
         self.assertEqual(conf.NODE_Z_REFERENCE, NODE_Z_REFERENCE_GROUND)
 
+    def test_parse_params_lists_presets_without_scenario_side_effects(self):
+        conf = Config()
+        random.seed(9123)
+        random_state = random.getstate()
+        stdout = io.StringIO()
+
+        with contextlib.redirect_stdout(stdout):
+            with self.assertRaises(SystemExit) as raised:
+                loraMesh.parse_params(conf, ["--list-presets"])
+
+        self.assertEqual(raised.exception.code, 0)
+        self.assertIsNone(conf.NR_NODES)
+        self.assertEqual(random.getstate(), random_state)
+        self.assertIn("Available scenario presets:", stdout.getvalue())
+        self.assertIn("batumi: 92 nodes", stdout.getvalue())
+        self.assertIn("terrain=yes", stdout.getvalue())
+        self.assertIn("clutter=yes", stdout.getvalue())
+        self.assertIn("link_calibration=yes", stdout.getvalue())
+
+    def test_parse_params_lists_modem_presets_without_scenario_side_effects(self):
+        conf = Config()
+        stdout = io.StringIO()
+
+        with contextlib.redirect_stdout(stdout):
+            with self.assertRaises(SystemExit) as raised:
+                loraMesh.parse_params(conf, ["--list-modem-presets"])
+
+        self.assertEqual(raised.exception.code, 0)
+        self.assertIsNone(conf.NR_NODES)
+        self.assertIn("Available modem presets:", stdout.getvalue())
+        self.assertIn("LONG_FAST (default):", stdout.getvalue())
+        self.assertIn("cr=4/5", stdout.getvalue())
+
+    def test_parse_params_help_includes_discovery_and_policy_examples(self):
+        stdout = io.StringIO()
+
+        with contextlib.redirect_stdout(stdout):
+            with self.assertRaises(SystemExit) as raised:
+                loraMesh.parse_params(Config(), ["--help"])
+
+        self.assertEqual(raised.exception.code, 0)
+        self.assertIn("loraMesh.py --list-presets", stdout.getvalue())
+        self.assertIn("--preset batumi --no-gui", stdout.getvalue())
+        self.assertIn("--phy-loss-model --capture-collision-model", stdout.getvalue())
+
+    def test_parse_params_loads_batumi_preset_with_bundled_grids(self):
+        conf = Config()
+
+        nodes, output = self.parse_quietly(
+            conf,
+            ["--preset", "batumi", "--no-gui", "--period-seconds", "2"],
+        )
+
+        self.assertEqual(len(nodes), 92)
+        self.assertEqual(conf.NR_NODES, 92)
+        self.assertEqual((conf.GEO_ORIGIN_LAT, conf.GEO_ORIGIN_LON), (41.6442879, 41.61536))
+        self.assertTrue(conf.TERRAIN_ENABLED)
+        self.assertTrue(conf.CLUTTER_ENABLED)
+        self.assertTrue(conf.LINK_CALIBRATION_MODEL_ENABLED)
+        self.assertIn("Terrain model:", output)
+        self.assertIn("Clutter model:", output)
+        self.assertIn("Link calibration model: enabled", output)
+
+    def test_parse_params_can_disable_bundled_preset_clutter(self):
+        conf = Config()
+
+        self.parse_quietly(
+            conf,
+            ["--preset", "batumi", "--no-gui", "--no-clutter"],
+        )
+
+        self.assertTrue(conf.TERRAIN_ENABLED)
+        self.assertFalse(conf.CLUTTER_ENABLED)
+
     def test_parse_params_rejects_before_applying_time_overrides(self):
         conf = Config()
         original_simtime = conf.SIMTIME
