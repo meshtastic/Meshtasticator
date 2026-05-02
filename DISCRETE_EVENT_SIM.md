@@ -122,6 +122,16 @@ quiet retries, ACKs, non-busy direct relays, and last-hop relays, then records
 `dcrTxByCr` and `dcrAirtimeByCr` in simulation results. This keeps idle airtime
 as a reserve instead of turning every quiet packet into CR 4/8.
 
+Dynamic TX Power is also opt-in:
+
+```python3 loraMesh.py 20 --no-gui --capture-collision-model --dtp```
+
+DTP keeps configured `PTX` as the maximum regional/base power and only applies
+temporary reductions just before transmission. Origin packets stay at max power;
+relay packets may shrink power when channel pressure is high or the prior hop
+was strong enough. Final retries and CR 4/8 rescue packets stay at full power so
+the interference-reduction knob does not fight the reliability knob.
+
 If you placed the nodes yourself, after a simulation the number of nodes, their coordinates and configuration are automatically saved and you can rerun the scenario with:
 
  ```python3 loraMesh.py --from-file```
@@ -157,6 +167,10 @@ The simulator stores coding rates as their LoRa denominators (`5` through
 `8`, meaning CR 4/5 through 4/8). This table shows the configured base CR; when
 `--dcr` is enabled, the simulator may select a different CR for each outgoing
 packet while leaving the preset's SF and bandwidth unchanged.
+
+DCR and DTP can be combined. DCR changes airtime and forward-error-correction
+strength; DTP changes how many receivers can CAD-detect, demodulate, or collide
+with the packet.
 
 ### Period
 Mean period (in ms) with which the nodes generate a new message following an exponential distribution. E.g. if you set it to 300s, each node will generate a message on average once every five minutes.

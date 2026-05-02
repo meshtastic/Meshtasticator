@@ -10,6 +10,7 @@ from lib.common import find_random_position
 from lib.config import Config
 from lib.dcr import choose_dynamic_coding_rate
 from lib.discrete_event_sim_components import SimulationState, SimulationDataTracking
+from lib.dtp import choose_dynamic_tx_power
 from lib.geo import valid_lat_lon
 from lib.link_model import calculate_link_budget
 from lib.mac import set_transmit_delay, get_retransmission_msec
@@ -268,6 +269,11 @@ class MeshNode:
         self.airUtilization = 0
         self.dcrTxByCr = {5: 0, 6: 0, 7: 0, 8: 0}
         self.dcrAirtimeByCr = {5: 0.0, 6: 0.0, 7: 0.0, 8: 0.0}
+        self.dtpTxByPower = {}
+        self.dtpTxByCrPower = {}
+        self.dtpDetectedByTx = 0
+        self.dtpSensedByTx = 0
+        self.dtpTxCount = 0
         self.droppedByDelay = 0
         self.rebroadcastPackets = 0
         self.isMoving = False
@@ -558,6 +564,13 @@ class MeshNode:
                     f"{self.env.now:.3f} Node {self.nodeid} DCR selected CR 4/{packet.cr} for packet {packet.seq}: {decision.reason}"
                 )
 
+                power_decision = choose_dynamic_tx_power(self, packet)
+                if power_decision.tx_power_dbm != packet.txpow:
+                    packet.set_tx_power(power_decision.tx_power_dbm)
+                logger.debug(
+                    f"{self.env.now:.3f} Node {self.nodeid} DTP selected {packet.txpow} dBm for packet {packet.seq}: {power_decision.reason}"
+                )
+
                 logger.debug(f"{self.env.now:.3f} Node {self.nodeid} started low level send {packet.unique_packet_seq} for msg {packet.seq} hopLimit {packet.hopLimit} original Tx {packet.origTxNodeId}")
                 self.nrPacketsSent += 1
                 packet.startTime = self.env.now
@@ -575,6 +588,12 @@ class MeshNode:
                 self.airUtilization += packet.timeOnAir
                 self.dcrTxByCr[packet.cr] = self.dcrTxByCr.get(packet.cr, 0) + 1
                 self.dcrAirtimeByCr[packet.cr] = self.dcrAirtimeByCr.get(packet.cr, 0.0) + packet.timeOnAir
+                self.dtpTxByPower[packet.txpow] = self.dtpTxByPower.get(packet.txpow, 0) + 1
+                cr_power_key = f"{packet.cr}@{packet.txpow}"
+                self.dtpTxByCrPower[cr_power_key] = self.dtpTxByCrPower.get(cr_power_key, 0) + 1
+                self.dtpDetectedByTx += sum(1 for detected in packet.detectedByN if detected)
+                self.dtpSensedByTx += sum(1 for sensed in packet.sensedByN if sensed)
+                self.dtpTxCount += 1
                 self.bc_pipe.put(packet) # queue for nodes to receive packet
                 self.isTransmitting = True
                 yield self.env.timeout(packet.timeOnAir)

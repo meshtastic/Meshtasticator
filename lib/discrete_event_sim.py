@@ -135,6 +135,20 @@ class SimulationResults:
             cr: sum(getattr(n, "dcrAirtimeByCr", {}).get(cr, 0.0) for n in nodes)
             for cr in (5, 6, 7, 8)
         }
+        dtp_tx_count = sum(getattr(n, "dtpTxCount", 0) for n in nodes)
+        self.results["dtpTxByPower"] = {}
+        self.results["dtpTxByCrPower"] = {}
+        for n in nodes:
+            for power, count in getattr(n, "dtpTxByPower", {}).items():
+                self.results["dtpTxByPower"][power] = self.results["dtpTxByPower"].get(power, 0) + count
+            for cr_power, count in getattr(n, "dtpTxByCrPower", {}).items():
+                self.results["dtpTxByCrPower"][cr_power] = self.results["dtpTxByCrPower"].get(cr_power, 0) + count
+        self.results["dtpMeanDetectedByTx"] = (
+            sum(getattr(n, "dtpDetectedByTx", 0) for n in nodes) / dtp_tx_count if dtp_tx_count else 0.0
+        )
+        self.results["dtpMeanSensedByTx"] = (
+            sum(getattr(n, "dtpSensedByTx", 0) for n in nodes) / dtp_tx_count if dtp_tx_count else 0.0
+        )
 
         if self.results["totalPairs"] != 0:
             noLinkRate = self.results["noLinks"] / self.results["totalPairs"]

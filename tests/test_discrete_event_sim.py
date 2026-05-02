@@ -76,6 +76,11 @@ class TestDiscreteEventSim(unittest.TestCase):
                 self.gpsEnabled = False
                 self.dcrTxByCr = {5: 0, 6: 0, 7: 0, 8: 0}
                 self.dcrAirtimeByCr = {5: 0.0, 6: 0.0, 7: 0.0, 8: 0.0}
+                self.dtpTxByPower = {}
+                self.dtpTxByCrPower = {}
+                self.dtpDetectedByTx = 0
+                self.dtpSensedByTx = 0
+                self.dtpTxCount = 0
 
         class MockPacket:
             def __init__(self, num_nodes: int):
@@ -131,6 +136,10 @@ class TestDiscreteEventSim(unittest.TestCase):
         self.assertEqual(sim_results['delayDropped'], 0, 'expected number of delayDropped')
         self.assertEqual(sim_results['dcrTxByCr'], {5: 0, 6: 0, 7: 0, 8: 0}, 'expected DCR histogram')
         self.assertEqual(sim_results['dcrAirtimeByCr'], {5: 0.0, 6: 0.0, 7: 0.0, 8: 0.0}, 'expected DCR airtime histogram')
+        self.assertEqual(sim_results['dtpTxByPower'], {}, 'expected DTP power histogram')
+        self.assertEqual(sim_results['dtpTxByCrPower'], {}, 'expected DTP CR/power histogram')
+        self.assertEqual(sim_results['dtpMeanDetectedByTx'], 0.0, 'expected DTP detected mean')
+        self.assertEqual(sim_results['dtpMeanSensedByTx'], 0.0, 'expected DTP sensed mean')
 
         # keys exist, not currently checking values
         self.assertIsNotNone(sim_results['txAirUtilizationRate'], 'txAirUtilizationRate is created')
