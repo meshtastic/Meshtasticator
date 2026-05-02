@@ -27,6 +27,7 @@ import loraMesh  # noqa: E402
 POLICY_FLAGS = {
     "static": ("static CR with packet loss/capture physics", []),
     "dcr": ("Dynamic Coding Rate", ["--dcr"]),
+    "dtp": ("Dynamic TX Power", ["--dtp"]),
 }
 
 
@@ -76,7 +77,7 @@ def parse_args(argv=None):
         epilog="""examples:
   python3 tools/radio_policy_compare.py
   python3 tools/radio_policy_compare.py --simtime-seconds 120 --period-seconds 5
-  python3 tools/radio_policy_compare.py --policies static,dcr -- --no-clutter
+  python3 tools/radio_policy_compare.py --policies static,dcr,dtp -- --no-clutter
 """,
     )
     parser.add_argument("--preset", default="batumi", help="Packaged scenario preset to run")
@@ -86,7 +87,7 @@ def parse_args(argv=None):
         "--policies",
         type=parse_policy_names,
         default=parse_policy_names("static"),
-        help="Comma-separated policies: static,dcr",
+        help="Comma-separated policies: static,dcr,dtp",
     )
     parser.add_argument(
         "--show-raw-output",
