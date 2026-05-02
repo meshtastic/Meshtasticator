@@ -8,10 +8,21 @@ import sys
 import tempfile
 import textwrap
 import unittest
+from array import array
+from pathlib import Path
+from unittest import mock
 
 from lib.config import Config
+from lib.terrain import NODE_Z_REFERENCE_GROUND, NODE_Z_REFERENCE_SEA_LEVEL
 
 import loraMesh
+
+
+def write_hgt(path, values):
+    data = array("h", values)
+    if sys.byteorder == "little":
+        data.byteswap()
+    path.write_bytes(data.tobytes())
 
 
 def generated_positions(node_configs):
@@ -184,6 +195,369 @@ class TestLoraMeshCli(unittest.TestCase):
         self.assertEqual([node.node_id for node in nodes], [0, 1])
         self.assertEqual([node.period for node in nodes], [2000, 2000])
         self.assertEqual(conf.NR_NODES, 2)
+
+    def test_parse_params_loads_from_map_payload(self):
+        conf = Config()
+        payload = [
+            {
+                "latitude": 416200000,
+                "longitude": 415900000,
+                "role": 2,
+            },
+            {
+                "latitude": 416300000,
+                "longitude": 416000000,
+                "role": 0,
+            },
+        ]
+
+        with mock.patch("loraMesh.fetch_map_payload", return_value=payload):
+            nodes, _ = self.parse_quietly(
+                conf,
+                [
+                    "--from-map",
+                    "https://example.test/nodes",
+                    "--map-bbox",
+                    "41.0,41.0,42.0,42.0",
+                    "--map-antenna-height",
+                    "2.5",
+                    "--no-gui",
+                ],
+            )
+
+        self.assertEqual(len(nodes), 2)
+        self.assertEqual(nodes[0].position.z, 2.5)
+        self.assertEqual((conf.GEO_ORIGIN_LAT, conf.GEO_ORIGIN_LON), (41.625, 41.595))
+
+    def test_parse_params_can_build_srtm_terrain_for_map_payload(self):
+        conf = Config()
+        payload = [
+            {
+                "latitude": 416200000,
+                "longitude": 415900000,
+                "altitude": 500,
+                "role": 2,
+            },
+            {
+                "latitude": 416300000,
+                "longitude": 416000000,
+                "role": 0,
+            },
+        ]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source_dir = tempfile.TemporaryDirectory()
+            self.addCleanup(source_dir.cleanup)
+            source_path = Path(source_dir.name) / "N41E041.hgt"
+            write_hgt(
+                source_path,
+                [10, 20, 30, 40, 50, 60, 70, 80, 90],
+            )
+
+            with mock.patch("loraMesh.fetch_map_payload", return_value=payload):
+                nodes, _ = self.parse_quietly(
+                    conf,
+                    [
+                        "--from-map",
+                        "https://example.test/nodes",
+                        "--map-bbox",
+                        "41.5,41.5,41.8,41.8",
+                        "--terrain-srtm",
+                        "--terrain-srtm-step-meters",
+                        "20000",
+                        "--terrain-srtm-cache-dir",
+                        tmpdir,
+                        "--terrain-srtm-url-template",
+                        f"{Path(source_dir.name).as_uri()}/{{tile}}.hgt",
+                        "--no-gui",
+                    ],
+                )
+
+        self.assertEqual(len(nodes), 2)
+        self.assertTrue(conf.TERRAIN_ENABLED)
+        self.assertIsNotNone(conf.TERRAIN_GRID)
+        self.assertGreater(len(conf.TERRAIN_GRID.samples), 0)
+        self.assertEqual(conf.NODE_Z_REFERENCE, NODE_Z_REFERENCE_SEA_LEVEL)
+        self.assertEqual(nodes[0].position.z, 500)
+        self.assertNotEqual(nodes[0].position.z, nodes[1].position.z)
+        self.assertGreater(nodes[1].position.z, 1.5)
+        self.assertEqual([node.antenna_height for node in nodes], [1.5, 1.5])
+
+    def test_parse_params_ignores_map_altitude_when_applying_srtm(self):
+        conf = Config()
+        payload = [
+            {
+                "latitude": -16400000,
+                "longitude": -26400000,
+                "altitude": None,
+                "role": 0,
+            },
+            {
+                "latitude": -16350000,
+                "longitude": -26350000,
+                "altitude": -1,
+                "role": 0,
+            },
+            {
+                "latitude": -16300000,
+                "longitude": -26300000,
+                "altitude": 42949649,
+                "role": 0,
+            },
+        ]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source_dir = tempfile.TemporaryDirectory()
+            self.addCleanup(source_dir.cleanup)
+            source_path = Path(source_dir.name) / "S02W003.hgt"
+            write_hgt(
+                source_path,
+                [100, 110, 120, 130, 140, 150, 160, 170, 180],
+            )
+
+            with mock.patch("loraMesh.fetch_map_payload", return_value=payload):
+                nodes, _ = self.parse_quietly(
+                    conf,
+                    [
+                        "--from-map",
+                        "https://example.test/nodes",
+                        "--map-bbox=-1.7,-2.7,-1.2,-2.2",
+                        "--map-antenna-height",
+                        "2.5",
+                        "--terrain-srtm",
+                        "--terrain-srtm-step-meters",
+                        "20000",
+                        "--terrain-srtm-cache-dir",
+                        tmpdir,
+                        "--terrain-srtm-url-template",
+                        f"{Path(source_dir.name).as_uri()}/{{tile}}.hgt",
+                        "--no-gui",
+                    ],
+                )
+
+        self.assertEqual(len(nodes), 3)
+        self.assertEqual(conf.NODE_Z_REFERENCE, NODE_Z_REFERENCE_SEA_LEVEL)
+        self.assertEqual([node.antenna_height for node in nodes], [2.5, 2.5, 2.5])
+        self.assertTrue(all(100 < node.position.z < 190 for node in nodes))
+        self.assertNotIn(-1, [node.position.z for node in nodes])
+        self.assertNotIn(42949649, [node.position.z for node in nodes])
+
+    def test_parse_params_clears_geo_origin_for_scenarios_without_origin(self):
+        conf = Config()
+        conf.GEO_ORIGIN_LAT = 41.625
+        conf.GEO_ORIGIN_LON = 41.595
+        scenario = textwrap.dedent(
+            """\
+            nodes:
+              3944424993:
+                x: 0
+                y: 0
+                z: 1
+                isRouter: false
+                isRepeater: false
+                isClientMute: false
+                antennaGain: 0
+                hopLimit: 3
+                neighborInfo: false
+              3944424994:
+                x: 10
+                y: 0
+                z: 1
+                isRouter: false
+                isRepeater: false
+                isClientMute: false
+                antennaGain: 0
+                hopLimit: 3
+                neighborInfo: false
+            """
+        )
+
+        os.makedirs("out", exist_ok=True)
+        with tempfile.NamedTemporaryFile("w", dir="out", suffix=".yaml", delete=False, encoding="utf-8") as scenario_file:
+            scenario_file.write(scenario)
+            scenario_filename = os.path.basename(scenario_file.name)
+
+        try:
+            nodes, _ = self.parse_quietly(conf, ["--from-file", scenario_filename, "--no-gui"])
+        finally:
+            os.unlink(os.path.join("out", scenario_filename))
+
+        self.assertEqual([node.node_id for node in nodes], [0, 1])
+        self.assertIsNone(conf.GEO_ORIGIN_LAT)
+        self.assertIsNone(conf.GEO_ORIGIN_LON)
+
+    def test_parse_params_rejects_one_node_before_changing_geo_origin(self):
+        conf = Config()
+        conf.GEO_ORIGIN_LAT = 41.625
+        conf.GEO_ORIGIN_LON = 41.595
+        scenario = textwrap.dedent(
+            """\
+            origin:
+              latitude: 42.0
+              longitude: 42.0
+            nodes:
+              3944424993:
+                x: 0
+                y: 0
+                z: 1
+                isRouter: false
+                isRepeater: false
+                isClientMute: false
+                antennaGain: 0
+                hopLimit: 3
+                neighborInfo: false
+            """
+        )
+
+        os.makedirs("out", exist_ok=True)
+        with tempfile.NamedTemporaryFile("w", dir="out", suffix=".yaml", delete=False, encoding="utf-8") as scenario_file:
+            scenario_file.write(scenario)
+            scenario_filename = os.path.basename(scenario_file.name)
+
+        try:
+            self.assert_parser_rejects(conf, ["--from-file", scenario_filename, "--no-gui"])
+        finally:
+            os.unlink(os.path.join("out", scenario_filename))
+
+        self.assertEqual((conf.GEO_ORIGIN_LAT, conf.GEO_ORIGIN_LON), (41.625, 41.595))
+
+    def test_terrain_srtm_generated_scenario_rejects_before_config_mutation(self):
+        conf = Config()
+        original_simtime = conf.SIMTIME
+        original_period = conf.PERIOD
+        random.seed(12345)
+        state_before = random.getstate()
+
+        error = self.assert_parser_rejects(
+            conf,
+            [
+                "2",
+                "--terrain-srtm",
+                "--simtime-seconds",
+                "1",
+                "--period-seconds",
+                "2",
+                "--no-gui",
+            ],
+        )
+
+        self.assertIn("--terrain-srtm requires", error)
+        self.assertEqual(conf.SIMTIME, original_simtime)
+        self.assertEqual(conf.PERIOD, original_period)
+        self.assertTrue(conf.GUI_ENABLED)
+        self.assertTrue(conf.PLOT)
+        self.assertIsNone(conf.NR_NODES)
+        self.assertFalse(conf.TERRAIN_ENABLED)
+        self.assertEqual(random.getstate(), state_before)
+
+    def test_failed_srtm_load_keeps_previous_terrain_config(self):
+        conf = Config()
+        terrain_grid = object()
+        conf.TERRAIN_ENABLED = True
+        conf.TERRAIN_GRID = terrain_grid
+        conf.TERRAIN_PROFILE_SAMPLES = 7
+        conf.NODE_Z_REFERENCE = NODE_Z_REFERENCE_SEA_LEVEL
+        conf.GEO_ORIGIN_LAT = 41.625
+        conf.GEO_ORIGIN_LON = 41.595
+        random.seed(12345)
+        state_before = random.getstate()
+        payload = [
+            {
+                "latitude": 416200000,
+                "longitude": 415900000,
+                "role": 2,
+            },
+            {
+                "latitude": 416300000,
+                "longitude": 416000000,
+                "role": 0,
+            },
+        ]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with mock.patch("loraMesh.fetch_map_payload", return_value=payload):
+                error = self.assert_parser_rejects(
+                    conf,
+                    [
+                        "--from-map",
+                        "https://example.test/nodes",
+                        "--map-bbox",
+                        "41.5,41.5,41.8,41.8",
+                        "--terrain-srtm",
+                        "--terrain-srtm-offline",
+                        "--terrain-srtm-cache-dir",
+                        tmpdir,
+                        "--terrain-profile-samples",
+                        "12",
+                        "--no-gui",
+                    ],
+                )
+
+        self.assertIn("could not load SRTM terrain", error)
+        self.assertTrue(conf.TERRAIN_ENABLED)
+        self.assertIs(conf.TERRAIN_GRID, terrain_grid)
+        self.assertEqual(conf.TERRAIN_PROFILE_SAMPLES, 7)
+        self.assertEqual(conf.NODE_Z_REFERENCE, NODE_Z_REFERENCE_SEA_LEVEL)
+        self.assertEqual((conf.GEO_ORIGIN_LAT, conf.GEO_ORIGIN_LON), (41.625, 41.595))
+        self.assertEqual(random.getstate(), state_before)
+
+    def test_terrain_profile_samples_resets_between_parse_calls(self):
+        conf = Config()
+        payload = [
+            {
+                "latitude": 416200000,
+                "longitude": 415900000,
+                "role": 2,
+            },
+            {
+                "latitude": 416300000,
+                "longitude": 416000000,
+                "role": 0,
+            },
+        ]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source_dir = tempfile.TemporaryDirectory()
+            self.addCleanup(source_dir.cleanup)
+            source_path = Path(source_dir.name) / "N41E041.hgt"
+            write_hgt(source_path, [10, 20, 30, 40, 50, 60, 70, 80, 90])
+            terrain_args = [
+                "--from-map",
+                "https://example.test/nodes",
+                "--map-bbox",
+                "41.5,41.5,41.8,41.8",
+                "--terrain-srtm",
+                "--terrain-srtm-step-meters",
+                "20000",
+                "--terrain-srtm-cache-dir",
+                tmpdir,
+                "--terrain-srtm-url-template",
+                f"{Path(source_dir.name).as_uri()}/{{tile}}.hgt",
+                "--no-gui",
+            ]
+
+            with mock.patch("loraMesh.fetch_map_payload", return_value=payload):
+                self.parse_quietly(conf, [*terrain_args, "--terrain-profile-samples", "7"])
+                self.assertEqual(conf.TERRAIN_PROFILE_SAMPLES, 7)
+
+                self.parse_quietly(conf, terrain_args)
+
+        self.assertEqual(conf.TERRAIN_PROFILE_SAMPLES, Config().TERRAIN_PROFILE_SAMPLES)
+        self.assertEqual(conf.NODE_Z_REFERENCE, NODE_Z_REFERENCE_SEA_LEVEL)
+
+    def test_successful_plain_parse_clears_previous_terrain_state(self):
+        conf = Config()
+        conf.TERRAIN_ENABLED = True
+        conf.TERRAIN_GRID = object()
+        conf.TERRAIN_PROFILE_SAMPLES = 7
+        conf.NODE_Z_REFERENCE = NODE_Z_REFERENCE_SEA_LEVEL
+
+        self.parse_quietly(conf, ["2", "--no-gui"])
+
+        self.assertFalse(conf.TERRAIN_ENABLED)
+        self.assertIsNone(conf.TERRAIN_GRID)
+        self.assertEqual(conf.TERRAIN_PROFILE_SAMPLES, Config().TERRAIN_PROFILE_SAMPLES)
+        self.assertEqual(conf.NODE_Z_REFERENCE, NODE_Z_REFERENCE_GROUND)
 
     def test_parse_params_rejects_before_applying_time_overrides(self):
         conf = Config()

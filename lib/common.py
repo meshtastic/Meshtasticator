@@ -1,10 +1,14 @@
 import random
-import os
 
 import numpy as np
 
 from lib import phy
 from lib.point import Point
+
+
+def node_antenna_height(node):
+    """Return antenna height above ground, falling back to legacy Point.z."""
+    return getattr(node, "antennaHeight", getattr(node, "antenna_height", node.position.z))
 
 def find_random_position(conf, node_configs) -> (float, float):
     """Given a simulation config and list of existing node configs/nodes, find a
@@ -79,7 +83,7 @@ def setup_asymmetric_links(conf, nodes):
                 nodeA = nodes[a]
                 nodeB = nodes[b]
                 distAB = nodeA.position.euclidean_distance(nodeB.position)
-                pathLossAB = phy.estimate_path_loss(conf, distAB, conf.FREQ, nodeA.position.z, nodeB.position.z)
+                pathLossAB = phy.estimate_path_loss(conf, distAB, conf.FREQ, node_antenna_height(nodeA), node_antenna_height(nodeB))
 
                 offsetAB = conf.LINK_OFFSET[(a, b)]
                 offsetBA = conf.LINK_OFFSET[(b, a)]
