@@ -401,6 +401,28 @@ class Config:
         self.NPREAM = 16   # number of preamble symbols from RadioInterface.h
         ### End of PHY parameters ###
 
+        #################################################
+        ####### TERRAIN OBSTRUCTION MODEL ###############
+        #################################################
+        # Disabled by default. When enabled, TERRAIN_GRID holds an in-memory
+        # grid sampled from SRTM HGT tiles.
+        self.TERRAIN_ENABLED = False
+        self.TERRAIN_GRID = None
+        # "ground": Point.z is antenna height above local ground.
+        # "sea_level": Point.z is absolute antenna altitude after adding
+        # terrain ground elevation.
+        self.NODE_Z_REFERENCE = "ground"
+        self.GEO_ORIGIN_LAT = None
+        self.GEO_ORIGIN_LON = None
+        self.TERRAIN_PROFILE_SAMPLES = 24
+        self.TERRAIN_FRESNEL_CLEARANCE = 0.6
+        # Match the common radio-planning 4/3 Earth-radius approximation. The
+        # terrain model uses it as an earth-bulge term so long coastal and ridge
+        # links do not look unrealistically flat.
+        self.TERRAIN_EFFECTIVE_EARTH_RADIUS_MULTIPLIER = 4.0 / 3.0
+        self.TERRAIN_MIN_ANTENNA_HEIGHT_M = 1.5
+        self.TERRAIN_MAX_LOSS_DB = 35.0
+
         # Misc
         self.SEED = 44  # random seed to use
         # End of misc

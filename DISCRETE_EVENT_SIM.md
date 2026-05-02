@@ -9,7 +9,7 @@ To start one simulation with the default configurations, run:
 
 ```python3 loraMesh.py [nr_nodes]```
 
-If no argument is given, you first have to place the nodes on a plot. After you place a node, you can change its [role](https://meshtastic.org/docs/settings/config/device#role), hopLimit, height (elevation) and antenna gain. These settings will automatically save when you place a new node or when you start the simulation.
+If no argument is given, you first have to place the nodes on a plot. After you place a node, you can change its [role](https://meshtastic.org/docs/settings/config/device#role), hopLimit, antenna height above local ground, and antenna gain. These settings will automatically save when you place a new node or when you start the simulation.
 
 ![](/img/configNode.png)
 
@@ -22,6 +22,26 @@ For non-interactive smoke tests or CI runs, pass `--no-gui` together with either
 Short deterministic smoke runs can also override the configured duration and message period from the command line:
 
 ```python3 loraMesh.py 2 --no-gui --simtime-seconds 5 --period-seconds 0.5```
+
+The same headless path can import public Meshtastic map node locations. The map
+endpoint currently returns a broad node list, so pass a local bounding box and
+an explicit simulated antenna height:
+
+```python3 loraMesh.py --from-map https://meshtastic.liamcottle.net/api/v1/nodes --map-bbox 41.50,41.50,41.82,41.86 --map-limit 50 --map-antenna-height 1.5 --no-gui```
+
+Terrain obstruction can be added to map or origin-backed scenario inputs without
+creating a custom terrain file. `--terrain-srtm` downloads missing SRTM HGT
+tiles into a local cache, samples the scenario bounding box, and feeds the
+terrain grid directly into terrain-aware node geometry:
+
+```python3 loraMesh.py --from-map https://meshtastic.liamcottle.net/api/v1/nodes --map-bbox 41.50,41.50,41.82,41.86 --map-limit 50 --terrain-srtm --no-gui```
+
+Map payload `altitude` values are absolute GPS/MSL altitude, not antenna height,
+so map import keeps using `--map-antenna-height` as the fallback antenna height
+above local ground. When `--terrain-srtm` is enabled, each map node is checked
+against its own SRTM ground sample: plausible positive map altitudes are used as
+absolute node altitude, while missing, below-ground, or implausibly high values
+fall back to `SRTM ground + antenna height` for 3D distance calculations.
 
 If you placed the nodes yourself, after a simulation the number of nodes, their coordinates and configuration are automatically saved and you can rerun the scenario with:
 
