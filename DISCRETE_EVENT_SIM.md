@@ -78,6 +78,16 @@ against its own SRTM ground sample: plausible positive map altitudes are used as
 absolute node altitude, while missing, below-ground, or implausibly high values
 fall back to `SRTM ground + antenna height` for 3D distance calculations.
 
+Land-cover clutter is a separate optional CSV grid. Use it for broad urban,
+open, water, or forest excess-loss inputs without pretending Meshtasticator is a
+building-level ray tracer:
+
+```python3 loraMesh.py --from-file nodeConfig.yaml --terrain-srtm --clutter-grid clutter.csv --no-gui```
+
+`tools/osm_to_clutter_csv.py` can build a coarse clutter grid from public
+OpenStreetMap building, landuse, natural, and water polygons. The simulator
+never fetches OpenStreetMap data implicitly.
+
 If you placed the nodes yourself, after a simulation the number of nodes, their coordinates and configuration are automatically saved and you can rerun the scenario with:
 
  ```python3 loraMesh.py --from-file```
