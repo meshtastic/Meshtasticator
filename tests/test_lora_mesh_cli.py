@@ -84,9 +84,22 @@ class TestLoraMeshCli(unittest.TestCase):
         self.assertEqual(len(nodes), 2)
         self.assertFalse(conf.GUI_ENABLED)
         self.assertFalse(conf.PLOT)
+        self.assertFalse(conf.DCR_ENABLED)
         self.assertEqual(conf.SIMTIME, 1000)
         self.assertEqual(conf.PERIOD, 500)
         self.assertIn("Number of nodes: 2", output)
+        self.assertIn("Dynamic Coding Rate: disabled", output)
+
+    def test_parse_params_enables_dcr(self):
+        conf = Config()
+
+        _, output = self.parse_quietly(
+            conf,
+            ["2", "--no-gui", "--simtime-seconds", "1", "--period-seconds", "0.5", "--dcr"],
+        )
+
+        self.assertTrue(conf.DCR_ENABLED)
+        self.assertIn("Dynamic Coding Rate: enabled", output)
 
     def test_parse_params_reuses_initial_defaults_after_override_run(self):
         conf = Config()

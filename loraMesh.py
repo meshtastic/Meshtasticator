@@ -281,6 +281,9 @@ def parse_params(conf, args=None) -> [NodeConfig]:
         help='Router type to use, taken from ROUTER_TYPE enum. Omit the leading "ROUTER_TYPE". Incompatible with --from-file',
     )
     parser.add_argument(
+        "--dcr", action="store_true", help="Enable the Dynamic Coding Rate experiment"
+    )
+    parser.add_argument(
         "--terrain-srtm",
         action="store_true",
         help="Build terrain directly from cached/downloaded SRTM tiles for the scenario bbox",
@@ -661,6 +664,7 @@ def parse_params(conf, args=None) -> [NodeConfig]:
     conf.PLOT = plot_enabled
     conf.NR_NODES = nr_nodes
     conf.ENABLE_CONNECTIVITY_MAP = connectivity_map_enabled
+    conf.DCR_ENABLED = parsed_arguments.dcr
     set_geo_origin(conf, scenario_origin)
     conf.TERRAIN_ENABLED = terrain_enabled
     conf.TERRAIN_GRID = terrain_grid
@@ -704,6 +708,7 @@ def parse_params(conf, args=None) -> [NodeConfig]:
             "Terrain data attribution:",
             f"{SRTM_DATA_ATTRIBUTION} ({SRTM_DATA_ATTRIBUTION_URL})",
         )
+    print("Dynamic Coding Rate:", "enabled" if conf.DCR_ENABLED else "disabled")
     print("PHY loss model:", "enabled" if conf.PHY_LOSS_MODEL_ENABLED else "disabled")
     print("Capture collision model:", "enabled" if conf.CAPTURE_COLLISION_MODEL_ENABLED else "disabled")
     print("Terrain model:", "enabled" if conf.TERRAIN_ENABLED else "disabled")
@@ -774,6 +779,10 @@ def run_simulation(conf, node_config):
         round(usefulness * 100, 2),
     )
     print("Number of packets dropped by delay/hop limit:", delayDropped)
+
+    if conf.DCR_ENABLED:
+        print("DCR TX packets by CR:", results["dcrTxByCr"])
+        print("DCR airtime by CR (ms):", {cr: round(ms, 2) for cr, ms in results["dcrAirtimeByCr"].items()})
 
     if conf.TERRAIN_ENABLED:
         print("Mean terrain obstruction loss (dB):", round(results["meanTerrainLossDb"], 2))

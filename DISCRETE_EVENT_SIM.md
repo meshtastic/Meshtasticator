@@ -112,6 +112,16 @@ runs. The calibration report is in `docs/batumi_radio_calibration.md`.
 
 ```python3 loraMesh.py --preset batumi --no-gui --simtime-seconds 5 --period-seconds 2 --phy-loss-model --capture-collision-model```
 
+Dynamic Coding Rate is opt-in and chooses LoRa CR 4/5..4/8 per outgoing packet
+without changing the preset's SF or bandwidth:
+
+```python3 loraMesh.py 20 --no-gui --phy-loss-model --capture-collision-model --dcr```
+
+The policy keeps ordinary first-attempt traffic compact, spends extra FEC on
+quiet retries, ACKs, non-busy direct relays, and last-hop relays, then records
+`dcrTxByCr` and `dcrAirtimeByCr` in simulation results. This keeps idle airtime
+as a reserve instead of turning every quiet packet into CR 4/8.
+
 If you placed the nodes yourself, after a simulation the number of nodes, their coordinates and configuration are automatically saved and you can rerun the scenario with:
 
  ```python3 loraMesh.py --from-file```
@@ -130,8 +140,8 @@ To simulate different parameters, you will have to change the *batchSim.py* scri
 Here we list some of the configurations, which you can change to model your scenario in */lib/config.py*. These apply to all nodes, except those that you configure per node when using the plot.
 ### Modem
 The LoRa modem ([see Meshtastic radio settings](https://meshtastic.org/docs/overview/radio-settings#predefined-channels)) that is used, as defined below:
-|Modem  | Name | Bandwidth (kHz) | Coding rate | Spreading Factor | Data rate (kbps)
-|--|--|--|--|--|--|
+| Modem | Name | Bandwidth (kHz) | Base coding rate | Spreading Factor | Nominal data rate (kbps) |
+|--|--|--:|--:|--:|--:|
 | 0 | Short Turbo | 500 | 4/5 | 7 | 21.9 |
 | 1 | Short Fast | 250 | 4/5 | 7 | 10.9 |
 | 2 | Short Slow | 250 | 4/5 | 8 | 6.25 |
@@ -142,6 +152,11 @@ The LoRa modem ([see Meshtastic radio settings](https://meshtastic.org/docs/over
 | 7 | Long Moderate | 125 | 4/8 | 11 | 0.336 |
 | 8 | Long Slow | 125 | 4/8 | 12 | 0.183 |
 | 9 | Very Long Slow | 62.5 | 4/8 | 12 | 0.0916 |
+
+The simulator stores coding rates as their LoRa denominators (`5` through
+`8`, meaning CR 4/5 through 4/8). This table shows the configured base CR; when
+`--dcr` is enabled, the simulator may select a different CR for each outgoing
+packet while leaving the preset's SF and bandwidth unchanged.
 
 ### Period
 Mean period (in ms) with which the nodes generate a new message following an exponential distribution. E.g. if you set it to 300s, each node will generate a message on average once every five minutes.

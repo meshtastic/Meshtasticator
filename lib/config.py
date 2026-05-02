@@ -42,6 +42,28 @@ class Config:
         self.COLLISION_CAPTURE_THRESHOLD_DB = 6.0
         self.COLLISION_PAYLOAD_OVERLAP_LOSS_FRACTION = 0.15
         self.DMs = False  # Set True for sending DMs (with random destination), False for broadcasts
+
+        #################################################
+        ####### DYNAMIC CODING RATE #####################
+        #################################################
+        # Disabled by default so historical simulations keep the preset CR.
+        # When enabled, the node chooses CR 4/5..4/8 per packet immediately
+        # before TX, after queueing and listen-before-talk have settled.
+        self.DCR_ENABLED = False
+        self.DCR_MIN_CR = 5
+        self.DCR_MAX_CR = 8
+        self.DCR_USER_MIN_CR = 5
+        # Limit non-urgent CR8 airtime as a share of this node's own TX airtime.
+        # This is a mesh-behavior safety rail, separate from region duty cycle.
+        self.DCR_CR8_AIRTIME_LIMIT_PERCENT = 10.0
+        # Local utilization thresholds are deliberately not regulatory limits.
+        # `_selected_region_duty_limit()` in lib.dcr compares against region
+        # duty cycle only when the selected region actually has one.
+        self.DCR_IDLE_UTIL_PERCENT = 2.0
+        self.DCR_BUSY_UTIL_PERCENT = 7.0
+        self.DCR_CONGESTED_UTIL_PERCENT = 17.5
+        self.DCR_BUSY_QUEUE_DEPTH = 3
+        self.DCR_CONGESTED_QUEUE_DEPTH = 6
         # from firmware RegionInfo regions[] in src/mesh/RadioInterface.cpp
         self.regions = {
             "US": {

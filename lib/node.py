@@ -8,6 +8,7 @@ import simpy
 
 from lib.common import find_random_position
 from lib.config import Config
+from lib.dcr import choose_dynamic_coding_rate
 from lib.discrete_event_sim_components import SimulationState, SimulationDataTracking
 from lib.geo import valid_lat_lon
 from lib.link_model import calculate_link_budget
@@ -265,6 +266,8 @@ class MeshNode:
         self.usefulPackets = 0
         self.txAirUtilization = 0
         self.airUtilization = 0
+        self.dcrTxByCr = {5: 0, 6: 0, 7: 0, 8: 0}
+        self.dcrAirtimeByCr = {5: 0.0, 6: 0.0, 7: 0.0, 8: 0.0}
         self.droppedByDelay = 0
         self.rebroadcastPackets = 0
         self.isMoving = False
@@ -463,6 +466,21 @@ class MeshNode:
             return self.timesReceived[packet.seq] > 2 if self.is_router or self.is_repeater else self.timesReceived[packet.seq] > 1
         return False
 
+    def latest_retry_timer_packet(self, packet):
+        """Return the newest queued/generated retry attempt for this message."""
+        candidates = [
+            packetSent
+            for packetSent in self.packets
+            if packetSent.origTxNodeId == self.nodeid and packetSent.seq == packet.seq
+        ]
+        if not candidates:
+            return packet
+        return min(candidates, key=lambda packetSent: packetSent.retransmissions)
+
+    def wait_for_retry_timer_airtime(self, packet):
+        """Wait until DCR has selected the airtime used by the retry timer."""
+        while self.conf.DCR_ENABLED and packet in self.packets and not packet.retryTimerAirtimeReady:
+            yield self.env.timeout(1)
 
     def generate_message(self):
         while True:
@@ -480,7 +498,11 @@ class MeshNode:
                 p = self.send_packet(destId)
 
                 while p.wantAck:  # ReliableRouter: retransmit message if no ACK received after timeout
-                    retransmissionMsec = get_retransmission_msec(self, p)
+                    retry_timer_packet = self.latest_retry_timer_packet(p)
+                    yield from self.wait_for_retry_timer_airtime(retry_timer_packet)
+                    if retry_timer_packet not in self.packets:
+                        break
+                    retransmissionMsec = get_retransmission_msec(self, retry_timer_packet)
                     yield self.env.timeout(retransmissionMsec)
 
                     ackReceived = False  # check whether you received an ACK on the transmitted message
@@ -526,6 +548,16 @@ class MeshNode:
             # check if you received an ACK for this message in the meantime
             self.was_seen_recently(packet, ownTransmit=True)
             if not self.perhaps_cancel_dupe(packet):  # if you did not receive an ACK for this message in the meantime
+                # Firmware DCR runs very late too: after queue/LBT waiting, but
+                # before airtime accounting and packet start/end timestamps.
+                decision = choose_dynamic_coding_rate(self, packet)
+                if decision.cr != packet.cr:
+                    packet.set_coding_rate(decision.cr)
+                packet.retryTimerAirtimeReady = True
+                logger.debug(
+                    f"{self.env.now:.3f} Node {self.nodeid} DCR selected CR 4/{packet.cr} for packet {packet.seq}: {decision.reason}"
+                )
+
                 logger.debug(f"{self.env.now:.3f} Node {self.nodeid} started low level send {packet.unique_packet_seq} for msg {packet.seq} hopLimit {packet.hopLimit} original Tx {packet.origTxNodeId}")
                 self.nrPacketsSent += 1
                 packet.startTime = self.env.now
@@ -541,6 +573,8 @@ class MeshNode:
                             self.packetsAtN[rx_node.nodeid].append(packet)
                 self.txAirUtilization += packet.timeOnAir
                 self.airUtilization += packet.timeOnAir
+                self.dcrTxByCr[packet.cr] = self.dcrTxByCr.get(packet.cr, 0) + 1
+                self.dcrAirtimeByCr[packet.cr] = self.dcrAirtimeByCr.get(packet.cr, 0.0) + packet.timeOnAir
                 self.bc_pipe.put(packet) # queue for nodes to receive packet
                 self.isTransmitting = True
                 yield self.env.timeout(packet.timeOnAir)

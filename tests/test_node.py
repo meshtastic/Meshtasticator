@@ -236,6 +236,68 @@ class TestMeshNodeReceive(unittest.TestCase):
         self.assertFalse(packet.receivedAtN[0])
 
 
+class TestMeshNodeRetryTimer(unittest.TestCase):
+    def make_node(self, dcr_enabled=True):
+        node = MeshNode.__new__(MeshNode)
+        node.nodeid = 3
+        node.conf = Config()
+        node.conf.DCR_ENABLED = dcr_enabled
+        node.env = simpy.Environment()
+        node.packets = []
+        return node
+
+    def make_packet(self, retransmissions, ready=False):
+        return type("Packet", (), {
+            "origTxNodeId": 3,
+            "seq": 9,
+            "retransmissions": retransmissions,
+            "retryTimerAirtimeReady": ready,
+        })()
+
+    def test_latest_retry_timer_packet_uses_newest_attempt(self):
+        node = self.make_node()
+        first = self.make_packet(retransmissions=3, ready=True)
+        retry = self.make_packet(retransmissions=1, ready=True)
+        node.packets = [first, retry]
+
+        self.assertIs(node.latest_retry_timer_packet(first), retry)
+
+    def test_wait_for_retry_timer_airtime_blocks_until_dcr_selected(self):
+        node = self.make_node()
+        packet = self.make_packet(retransmissions=3, ready=False)
+        node.packets = [packet]
+        events = []
+
+        def waiter():
+            yield from node.wait_for_retry_timer_airtime(packet)
+            events.append(node.env.now)
+
+        def selector():
+            yield node.env.timeout(3)
+            packet.retryTimerAirtimeReady = True
+
+        node.env.process(waiter())
+        node.env.process(selector())
+        node.env.run(until=4)
+
+        self.assertEqual(events, [3])
+
+    def test_wait_for_retry_timer_airtime_does_not_block_static_policy(self):
+        node = self.make_node(dcr_enabled=False)
+        packet = self.make_packet(retransmissions=3, ready=False)
+        node.packets = [packet]
+        events = []
+
+        def waiter():
+            yield from node.wait_for_retry_timer_airtime(packet)
+            events.append(node.env.now)
+
+        node.env.process(waiter())
+        node.env.run(until=1)
+
+        self.assertEqual(events, [0])
+
+
 class TestMeshNodeRandomness(unittest.TestCase):
     def make_node(self, seed):
         conf = Config()

@@ -36,12 +36,13 @@ Use `--no-gui` for repeatable command-line comparisons:
 The easiest way to compare policy experiments is the wrapper tool:
 
 ```bash
-python3 tools/radio_policy_compare.py --simtime-seconds 60 --period-seconds 5
+python3 tools/radio_policy_compare.py --policies static,dcr --simtime-seconds 60 --period-seconds 5
 ```
 
 It runs the same preset and traffic load for:
 
 - `static`: static coding rate with packet-loss and capture-collision physics.
+- `dcr`: Dynamic Coding Rate on top of the same physics flags.
 
 The output is one table with reach, useful traffic, airtime, collisions, PHY
 loss, and placeholders for future policy counters.
@@ -58,15 +59,14 @@ python3 tools/radio_policy_compare.py \
 
 Threshold flags such as `--max-reach-drop-pp` compare every non-baseline policy
 against the first policy in `--policies`; they require at least two policies.
-This slice exposes only `static`, so later policy slices can add thresholded CI
-gates once their `loraMesh.py` flags exist. The JSON file is intended for
-machines; the Markdown file is intended for CI summaries, uploaded artifacts, or
-PR comments.
+This lets CI fail when `dcr` loses too much reach/useful traffic or spends too
+much extra TX airtime. The JSON file is intended for machines; the Markdown file
+is intended for CI summaries, uploaded artifacts, or PR comments.
 
 Extra `loraMesh.py` flags can be applied to every run after `--`:
 
 ```bash
-python3 tools/radio_policy_compare.py --policies static -- --no-clutter
+python3 tools/radio_policy_compare.py --policies static,dcr -- --no-clutter
 ```
 
 Enable packet-level loss and capture-aware collisions when testing radio
