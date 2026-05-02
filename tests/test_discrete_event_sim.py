@@ -74,6 +74,8 @@ class TestDiscreteEventSim(unittest.TestCase):
                 self.droppedByDelay = 0
                 self.isMoving = False
                 self.gpsEnabled = False
+                self.dcrTxByCr = {5: 0, 6: 0, 7: 0, 8: 0}
+                self.dcrAirtimeByCr = {5: 0.0, 6: 0.0, 7: 0.0, 8: 0.0}
 
         class MockPacket:
             def __init__(self, num_nodes: int):
@@ -127,6 +129,8 @@ class TestDiscreteEventSim(unittest.TestCase):
         self.assertEqual(sim_results['collisionRate'], 0, 'expected calculated collisionRate')
         self.assertEqual(sim_results['usefulness'], 1, 'usefulness is created')
         self.assertEqual(sim_results['delayDropped'], 0, 'expected number of delayDropped')
+        self.assertEqual(sim_results['dcrTxByCr'], {5: 0, 6: 0, 7: 0, 8: 0}, 'expected DCR histogram')
+        self.assertEqual(sim_results['dcrAirtimeByCr'], {5: 0.0, 6: 0.0, 7: 0.0, 8: 0.0}, 'expected DCR airtime histogram')
 
         # keys exist, not currently checking values
         self.assertIsNotNone(sim_results['txAirUtilizationRate'], 'txAirUtilizationRate is created')
@@ -244,8 +248,6 @@ class TestDiscreteEventSim(unittest.TestCase):
 
     # TODO: add default-skip GUI test?
     def test_discrete_sim_ten_nodes(self):
-        import numpy as np
-
         from lib.node import default_generate_node_list
 
         from lib.config import CONFIG
@@ -269,15 +271,7 @@ class TestDiscreteEventSim(unittest.TestCase):
         # collect & unpack results for easy copy/paste of asserts
         results = sim.get_results()
 
-        # put "first order" results in local scope for easy access
-        packets = results["packets"]
-        packetsAtN = results["packetsAtN"]
         messageSeq = results["messageSeq"]
-        messages = results["messages"]
-        delays = results["delays"]
-        totalPairs = results["totalPairs"]
-        noLinks = results["noLinks"]
-        nodes = results["nodes"]
 
         # Begin actual tests, comparing against a hardcoded 'known
         # good' run. If these fail then a change has impacted the

@@ -87,6 +87,7 @@ class MeshPacket:
 
         self.packetLen = plen
         self.timeOnAir = airtime(self.conf, self.sf, self.cr, self.packetLen, self.bw)
+        self.retryTimerAirtimeReady = False
         self.startTime = 0
         self.endTime = 0
         self.refresh_link_budgets()
