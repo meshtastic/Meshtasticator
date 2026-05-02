@@ -68,9 +68,37 @@ class SimulationResults:
         self.results["nrCollisions"] = sum([1 for p in packets for n in nodes if p.collidedAtN[n.nodeid] is True])
         self.results["nrSensed"] = sum([1 for p in packets for n in nodes if p.sensedByN[n.nodeid] is True])
         self.results["nrReceived"] = sum([1 for p in packets for n in nodes if p.receivedAtN[n.nodeid] is True])
+        self.results["nrPhyLoss"] = sum([
+            1
+            for p in packets
+            for n in nodes
+            if n.nodeid < len(getattr(p, "phyLostAtN", [])) and p.phyLostAtN[n.nodeid] is True
+        ])
+        collision_reasons = {}
+        for p in packets:
+            for reason in getattr(p, "collisionReasonAtN", []):
+                if reason:
+                    collision_reasons[reason] = collision_reasons.get(reason, 0) + 1
+        self.results["collisionReasons"] = collision_reasons
+        terrain_losses = [
+            p.terrainLossAtN[n.nodeid]
+            for p in packets
+            for n in nodes
+            if n.nodeid < len(getattr(p, "terrainLossAtN", [])) and p.terrainLossAtN[n.nodeid] > 0
+        ]
+        self.results["meanTerrainLossDb"] = float(np.nanmean(terrain_losses)) if terrain_losses else 0.0
+        self.results["maxTerrainLossDb"] = max(terrain_losses) if terrain_losses else 0.0
+        clutter_losses = [
+            p.clutterLossAtN[n.nodeid]
+            for p in packets
+            for n in nodes
+            if n.nodeid < len(getattr(p, "clutterLossAtN", [])) and p.clutterLossAtN[n.nodeid] > 0
+        ]
+        self.results["meanClutterLossDb"] = float(np.nanmean(clutter_losses)) if clutter_losses else 0.0
+        self.results["maxClutterLossDb"] = max(clutter_losses) if clutter_losses else 0.0
         self.results["nrUseful"] = sum([n.usefulPackets for n in nodes])
 
-        self.results["meanDelay"] = np.nanmean(self.results["delays"])
+        self.results["meanDelay"] = np.nanmean(self.results["delays"]) if self.results["delays"] else np.nan
 
         # various division-by-0 guarded calculations
         if conf.NR_NODES != 0 and conf.SIMTIME != 0:

@@ -3,6 +3,7 @@ import random
 import numpy as np
 
 from lib import phy
+from lib.link_model import calculate_link_budget
 from lib.point import Point
 
 
@@ -56,7 +57,6 @@ def find_random_position(conf, node_configs) -> (float, float):
             break
     return max(-conf.XSIZE/2, position.x), max(-conf.YSIZE/2, position.y)
 
-# TODO: once lib/interactive no longer uses this, we can remove this and put all distance calculation in Point
 def calc_dist(x0, x1, y0, y1, z0=0, z1=0):
     return np.sqrt(((abs(x0-x1))**2)+((abs(y0-y1))**2)+((abs(z0-z1)**2)))
 
@@ -79,20 +79,17 @@ def setup_asymmetric_links(conf, nodes):
     for a in range(conf.NR_NODES):
         for b in range(conf.NR_NODES):
             if a != b:
-                # Calculate constant RSSI in both directions
+                # Calculate the same directed budget MeshPacket will use later:
+                # per-direction random offset, both endpoint antenna gains, and
+                # any enabled terrain/clutter/calibration layers. The summary
+                # graph should not be more optimistic than packet delivery.
                 nodeA = nodes[a]
                 nodeB = nodes[b]
-                distAB = nodeA.position.euclidean_distance(nodeB.position)
-                pathLossAB = phy.estimate_path_loss(conf, distAB, conf.FREQ, node_antenna_height(nodeA), node_antenna_height(nodeB))
+                budgetAB = calculate_link_budget(conf, nodeA, nodeB, conf.LINK_OFFSET[(a, b)])
+                budgetBA = calculate_link_budget(conf, nodeB, nodeA, conf.LINK_OFFSET[(b, a)])
 
-                offsetAB = conf.LINK_OFFSET[(a, b)]
-                offsetBA = conf.LINK_OFFSET[(b, a)]
-
-                rssiAB = conf.PTX + nodeA.antennaGain - pathLossAB - offsetAB
-                rssiBA = conf.PTX + nodeB.antennaGain - pathLossAB - offsetBA
-
-                canAhearB = (rssiAB >= conf.current_preset["sensitivity"])
-                canBhearA = (rssiBA >= conf.current_preset["sensitivity"])
+                canAhearB = (budgetAB.rssi_dbm >= conf.current_preset["sensitivity"])
+                canBhearA = (budgetBA.rssi_dbm >= conf.current_preset["sensitivity"])
 
                 totalPairs += 1
                 if canAhearB and canBhearA:
