@@ -1,3 +1,4 @@
+from lib.common import node_antenna_height
 from lib.phy import airtime, estimate_path_loss
 
 NODENUM_BROADCAST = 0xFFFFFFFF
@@ -52,7 +53,7 @@ class MeshPacket:
                 continue
             dist_3d = self.tx_node.position.euclidean_distance(rx_node.position)
             offset = self.conf.LINK_OFFSET[(self.txNodeId, rx_node.nodeid)]
-            self.LplAtN[rx_node.nodeid] = estimate_path_loss(self.conf, dist_3d, self.freq, self.tx_node.position.z, rx_node.position.z) + offset
+            self.LplAtN[rx_node.nodeid] = estimate_path_loss(self.conf, dist_3d, self.freq, node_antenna_height(self.tx_node), node_antenna_height(rx_node)) + offset
             self.rssiAtN[rx_node.nodeid] = self.txpow + self.tx_node.antennaGain + rx_node.antennaGain - self.LplAtN[rx_node.nodeid]
             if self.rssiAtN[rx_node.nodeid] >= self.conf.current_preset["sensitivity"]:
                 self.sensedByN[rx_node.nodeid] = True
