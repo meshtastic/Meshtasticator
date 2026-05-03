@@ -243,7 +243,10 @@ def parse_params(conf, args=None) -> [NodeConfig]:
     if nr_nodes < 2:
         parser.error(f"Need at least two nodes. You specified {nr_nodes}")
     if parsed_arguments.terrain_srtm and terrain_bbox is None:
-        terrain_bbox = bbox_from_node_config(config, scenario_origin)
+        try:
+            terrain_bbox = bbox_from_node_config(config, scenario_origin)
+        except ValueError as err:
+            parser.error(f"could not derive SRTM terrain bbox: {err}")
         if terrain_bbox is None:
             parser.error("--terrain-srtm requires --from-map --map-bbox or a scenario file with origin metadata")
 
