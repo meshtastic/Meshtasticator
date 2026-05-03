@@ -450,6 +450,60 @@ class TestLoraMeshCli(unittest.TestCase):
         self.assertFalse(conf.TERRAIN_ENABLED)
         self.assertEqual(random.getstate(), state_before)
 
+    def test_terrain_srtm_from_file_rejects_uncovered_bbox_before_config_mutation(self):
+        conf = Config()
+        conf.TERRAIN_ENABLED = True
+        terrain_grid = object()
+        conf.TERRAIN_GRID = terrain_grid
+        conf.GEO_ORIGIN_LAT = 41.625
+        conf.GEO_ORIGIN_LON = 41.595
+        random.seed(12345)
+        state_before = random.getstate()
+        scenario = textwrap.dedent(
+            """\
+            origin:
+              lat: 85.0
+              lon: 42.0
+            nodes:
+              3944424993:
+                x: 0
+                y: 0
+                z: 1
+                isRouter: false
+                isRepeater: false
+                isClientMute: false
+                antennaGain: 0
+                hopLimit: 3
+                neighborInfo: false
+              3944424994:
+                x: 10
+                y: 0
+                z: 1
+                isRouter: false
+                isRepeater: false
+                isClientMute: false
+                antennaGain: 0
+                hopLimit: 3
+                neighborInfo: false
+            """
+        )
+
+        os.makedirs("out", exist_ok=True)
+        with tempfile.NamedTemporaryFile("w", dir="out", suffix=".yaml", delete=False, encoding="utf-8") as scenario_file:
+            scenario_file.write(scenario)
+            scenario_filename = os.path.basename(scenario_file.name)
+
+        try:
+            error = self.assert_parser_rejects(conf, ["--from-file", scenario_filename, "--terrain-srtm", "--no-gui"])
+        finally:
+            os.unlink(os.path.join("out", scenario_filename))
+
+        self.assertIn("could not derive SRTM terrain bbox", error)
+        self.assertTrue(conf.TERRAIN_ENABLED)
+        self.assertIs(conf.TERRAIN_GRID, terrain_grid)
+        self.assertEqual((conf.GEO_ORIGIN_LAT, conf.GEO_ORIGIN_LON), (41.625, 41.595))
+        self.assertEqual(random.getstate(), state_before)
+
     def test_failed_srtm_load_keeps_previous_terrain_config(self):
         conf = Config()
         terrain_grid = object()
