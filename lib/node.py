@@ -582,15 +582,15 @@ class MeshNode:
                 self.nrPacketsSent += 1
                 packet.startTime = self.env.now
                 packet.endTime = self.env.now + packet.timeOnAir
-                for rx_node in self.nodes:
-                    if packet_is_rx_candidate(packet, rx_node.nodeid, self.conf.CAPTURE_COLLISION_MODEL_ENABLED):
-                        collision = check_collision(self.conf, self.env, packet, rx_node.nodeid, self.packetsAtN)
-                        if self.conf.CAPTURE_COLLISION_MODEL_ENABLED:
-                            # Even a packet that cannot be decoded is still RF
-                            # energy on the channel and may jam later packets.
-                            self.packetsAtN[rx_node.nodeid].append(packet)
-                        elif collision == 0:
-                            self.packetsAtN[rx_node.nodeid].append(packet)
+                rx_node_ids = packet.detected_node_ids if self.conf.CAPTURE_COLLISION_MODEL_ENABLED else packet.sensed_node_ids
+                for rx_node_id in rx_node_ids:
+                    collision = check_collision(self.conf, self.env, packet, rx_node_id, self.packetsAtN)
+                    if self.conf.CAPTURE_COLLISION_MODEL_ENABLED:
+                        # Even a packet that cannot be decoded is still RF
+                        # energy on the channel and may jam later packets.
+                        self.packetsAtN[rx_node_id].append(packet)
+                    elif collision == 0:
+                        self.packetsAtN[rx_node_id].append(packet)
                 self.txAirUtilization += packet.timeOnAir
                 self.airUtilization += packet.timeOnAir
                 self.dcrTxByCr[packet.cr] = self.dcrTxByCr.get(packet.cr, 0) + 1
