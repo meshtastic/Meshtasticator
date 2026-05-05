@@ -257,7 +257,7 @@ def generate_activity_groups(total_clients):
     people_assigned = 0
 
     # Only include 150-person special event if it's less than 20% of total
-    max_group_size = int(total_clients * 0.20)  # 20% limit
+    max_group_size = max(1, int(total_clients * 0.20))  # 20% limit, but keep tiny smoke runs finite
     if 150 <= max_group_size:
         activity_groups.append({"type": "special_event", "size": 150})
         people_assigned = 150
