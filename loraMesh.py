@@ -13,6 +13,8 @@ from lib.map_input import DEFAULT_MAP_NODES_URL, fetch_map_payload, node_configs
 from lib.node import NodeConfig, default_generate_node_list, node_configs_from_yaml, origin_from_yaml
 from lib.srtm import (
     DEFAULT_SRTM_URL_TEMPLATE,
+    SRTM_DATA_ATTRIBUTION,
+    SRTM_DATA_ATTRIBUTION_URL,
     clamp_bbox_to_srtm_coverage,
     terrain_grid_from_srtm,
 )
@@ -294,6 +296,8 @@ def parse_params(conf, args=None) -> [NodeConfig]:
     print("Simulation time (s):", conf.SIMTIME/1000)
     print("Period (s):", conf.PERIOD/1000)
     print("Interference level:", conf.INTERFERENCE_LEVEL)
+    if conf.TERRAIN_ENABLED:
+        print("Terrain data attribution:", f"{SRTM_DATA_ATTRIBUTION} ({SRTM_DATA_ATTRIBUTION_URL})")
     return config
 
 

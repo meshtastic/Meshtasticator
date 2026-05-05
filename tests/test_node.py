@@ -1,8 +1,13 @@
 import unittest
 
 import lib.node
+import simpy
 
-from lib.node import MESHTASTIC_ROLE, node_configs_from_yaml, origin_from_yaml
+from lib.config import Config
+from lib.discrete_event_sim_components import SimulationDataTracking, SimulationState
+from lib.node import MESHTASTIC_ROLE, MeshNode, NodeConfig, node_configs_from_yaml, origin_from_yaml
+from lib.point import Point
+from lib.terrain import NODE_Z_REFERENCE_SEA_LEVEL, TerrainGrid, apply_terrain_altitude
 
 
 def sample_node(x):
@@ -104,6 +109,26 @@ class TestNodeConfigYaml(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "latitude/longitude"):
             origin_from_yaml(raw)
+
+
+class TestMeshNodeTerrain(unittest.TestCase):
+    def test_mesh_node_preserves_absolute_altitude_for_terrain_recompute(self):
+        conf = Config()
+        conf.NR_NODES = 1
+        conf.MOVEMENT_ENABLED = False
+        conf.NODE_Z_REFERENCE = NODE_Z_REFERENCE_SEA_LEVEL
+        conf.TERRAIN_GRID = TerrainGrid.from_rows([(0, 0, 100), (100, 0, 120)])
+
+        node_config = NodeConfig(0, Point(0, 0, 2.5), conf.PERIOD, conf.PTX, conf.FREQ, absolute_altitude=150)
+        sim_state = SimulationState(conf, simpy.Environment())
+        node = MeshNode(conf, sim_state, SimulationDataTracking(), node_config)
+
+        apply_terrain_altitude(conf.TERRAIN_GRID, node)
+        self.assertEqual(node.position.z, 150)
+
+        node.position.update_xy(100, 0)
+        apply_terrain_altitude(conf.TERRAIN_GRID, node)
+        self.assertEqual(node.position.z, 150)
 
 
 if __name__ == "__main__":

@@ -150,7 +150,7 @@ class NodeConfig:
         return (rssi, pl)
 
 
-def node_configs_from_yaml(raw_config, period: int, tx_power: int, freq: float) -> list[NodeConfig]:
+def node_configs_from_yaml(raw_config, period: int, tx_power: int = 30, freq: float = 902e6) -> list[NodeConfig]:
     """Convert saved node YAML into NodeConfig objects.
 
     The GUI writes a plain `{node_id: node_fields}` map. Real-mesh scenario

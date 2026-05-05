@@ -13,6 +13,7 @@ from pathlib import Path
 from unittest import mock
 
 from lib.config import Config
+from lib.srtm import SRTM_DATA_ATTRIBUTION_URL
 from lib.terrain import NODE_Z_REFERENCE_GROUND, NODE_Z_REFERENCE_SEA_LEVEL
 
 import loraMesh
@@ -257,7 +258,7 @@ class TestLoraMeshCli(unittest.TestCase):
             )
 
             with mock.patch("loraMesh.fetch_map_payload", return_value=payload):
-                nodes, _ = self.parse_quietly(
+                nodes, output = self.parse_quietly(
                     conf,
                     [
                         "--from-map",
@@ -280,6 +281,8 @@ class TestLoraMeshCli(unittest.TestCase):
         self.assertIsNotNone(conf.TERRAIN_GRID)
         self.assertGreater(len(conf.TERRAIN_GRID.samples), 0)
         self.assertEqual(conf.NODE_Z_REFERENCE, NODE_Z_REFERENCE_SEA_LEVEL)
+        self.assertIn("Terrain data attribution:", output)
+        self.assertIn(SRTM_DATA_ATTRIBUTION_URL, output)
         self.assertEqual(nodes[0].position.z, 500)
         self.assertNotEqual(nodes[0].position.z, nodes[1].position.z)
         self.assertGreater(nodes[1].position.z, conf.HM)
