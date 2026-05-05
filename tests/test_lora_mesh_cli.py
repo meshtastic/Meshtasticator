@@ -198,6 +198,8 @@ class TestLoraMeshCli(unittest.TestCase):
 
     def test_parse_params_loads_from_map_payload(self):
         conf = Config()
+        conf.HM = 2.5
+        conf.hopLimit = 5
         payload = [
             {
                 "latitude": 416200000,
@@ -219,14 +221,14 @@ class TestLoraMeshCli(unittest.TestCase):
                     "https://example.test/nodes",
                     "--map-bbox",
                     "41.0,41.0,42.0,42.0",
-                    "--map-antenna-height",
-                    "2.5",
                     "--no-gui",
                 ],
             )
 
         self.assertEqual(len(nodes), 2)
-        self.assertEqual(nodes[0].position.z, 2.5)
+        self.assertEqual([node.position.z for node in nodes], [2.5, 2.5])
+        self.assertEqual([node.antenna_height for node in nodes], [2.5, 2.5])
+        self.assertEqual([node.hop_limit for node in nodes], [5, 5])
         self.assertEqual((conf.GEO_ORIGIN_LAT, conf.GEO_ORIGIN_LON), (41.625, 41.595))
 
     def test_parse_params_can_build_srtm_terrain_for_map_payload(self):
@@ -280,11 +282,12 @@ class TestLoraMeshCli(unittest.TestCase):
         self.assertEqual(conf.NODE_Z_REFERENCE, NODE_Z_REFERENCE_SEA_LEVEL)
         self.assertEqual(nodes[0].position.z, 500)
         self.assertNotEqual(nodes[0].position.z, nodes[1].position.z)
-        self.assertGreater(nodes[1].position.z, 1.5)
-        self.assertEqual([node.antenna_height for node in nodes], [1.5, 1.5])
+        self.assertGreater(nodes[1].position.z, conf.HM)
+        self.assertEqual([node.antenna_height for node in nodes], [conf.HM, conf.HM])
 
     def test_parse_params_ignores_map_altitude_when_applying_srtm(self):
         conf = Config()
+        conf.HM = 2.5
         payload = [
             {
                 "latitude": -16400000,
@@ -322,8 +325,6 @@ class TestLoraMeshCli(unittest.TestCase):
                         "--from-map",
                         "https://example.test/nodes",
                         "--map-bbox=-1.7,-2.7,-1.2,-2.2",
-                        "--map-antenna-height",
-                        "2.5",
                         "--terrain-srtm",
                         "--terrain-srtm-step-meters",
                         "20000",
@@ -557,6 +558,7 @@ class TestLoraMeshCli(unittest.TestCase):
 
     def test_terrain_profile_samples_resets_between_parse_calls(self):
         conf = Config()
+        conf.TERRAIN_PROFILE_SAMPLES = 31
         payload = [
             {
                 "latitude": 416200000,
@@ -596,11 +598,12 @@ class TestLoraMeshCli(unittest.TestCase):
 
                 self.parse_quietly(conf, terrain_args)
 
-        self.assertEqual(conf.TERRAIN_PROFILE_SAMPLES, Config().TERRAIN_PROFILE_SAMPLES)
+        self.assertEqual(conf.TERRAIN_PROFILE_SAMPLES, 31)
         self.assertEqual(conf.NODE_Z_REFERENCE, NODE_Z_REFERENCE_SEA_LEVEL)
 
     def test_successful_plain_parse_clears_previous_terrain_state(self):
         conf = Config()
+        loraMesh.get_cli_defaults(conf)
         conf.TERRAIN_ENABLED = True
         conf.TERRAIN_GRID = object()
         conf.TERRAIN_PROFILE_SAMPLES = 7
