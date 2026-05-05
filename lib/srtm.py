@@ -1,4 +1,4 @@
-"""SRTM HGT helpers for Meshtasticator terrain inputs.
+"""Mapzen Terrain Tiles / SRTM HGT helpers for Meshtasticator terrain inputs.
 
 The simulator can build an in-memory terrain grid directly from cached or
 downloaded HGT tiles.
@@ -19,6 +19,8 @@ from lib.terrain import TerrainGrid, latlon_to_xy
 
 
 DEFAULT_SRTM_URL_TEMPLATE = "https://s3.amazonaws.com/elevation-tiles-prod/skadi/{lat_band}/{tile}.hgt.gz"
+SRTM_DATA_ATTRIBUTION = "Mapzen Terrain Tiles on AWS, using SRTM/NASA and other open elevation sources"
+SRTM_DATA_ATTRIBUTION_URL = "https://registry.opendata.aws/terrain-tiles/"
 HGT_VOID = -32768
 SRTM_MIN_LAT = -56.0
 SRTM_MAX_LAT = 60.0

@@ -24,21 +24,33 @@ Short deterministic smoke runs can also override the configured duration and mes
 ```python3 loraMesh.py 2 --no-gui --simtime-seconds 5 --period-seconds 0.5```
 
 The same headless path can import public Meshtastic map node locations. The map
-endpoint currently returns a broad node list, so pass a local bounding box and
-an explicit simulated antenna height:
+endpoint currently returns a broad node list, so pass a local area-of-interest
+bounding box. `--map-bbox` uses the common `min_lat,min_lon,max_lat,max_lon`
+order that most GIS tools call `south,west,north,east`; you can copy those four
+numbers from OpenStreetMap's Export panel, geojson.io's bbox readout, QGIS, or
+any other tool that shows the extent of the map view or selected polygon. Keep
+the box tight enough for the local scenario you want to simulate:
 
-```python3 loraMesh.py --from-map https://meshtastic.liamcottle.net/api/v1/nodes --map-bbox 41.50,41.50,41.82,41.86 --map-limit 50 --map-antenna-height 1.5 --no-gui```
+```python3 loraMesh.py --from-map https://meshtastic.liamcottle.net/api/v1/nodes --map-bbox 41.50,41.50,41.82,41.86 --map-limit 50 --no-gui```
+
+Map-imported nodes use the same `HM` antenna height and `hopLimit` defaults as
+generated and file-backed scenarios. Change those config values when the
+imported public map does not carry the simulation value you want.
 
 Terrain obstruction can be added to map or origin-backed scenario inputs without
 creating a custom terrain file. `--terrain-srtm` downloads missing SRTM HGT
-tiles into a local cache, samples the scenario bounding box, and feeds the
-terrain grid directly into terrain-aware node geometry:
+tiles from Mapzen Terrain Tiles on AWS into a local cache, samples the scenario
+bounding box, and feeds the terrain grid directly into terrain-aware node
+geometry. When publishing screenshots, reports, or derived datasets from this
+terrain source, attribute the terrain data to
+[Mapzen Terrain Tiles on AWS](https://registry.opendata.aws/terrain-tiles/),
+SRTM/NASA, and their underlying open elevation sources:
 
 ```python3 loraMesh.py --from-map https://meshtastic.liamcottle.net/api/v1/nodes --map-bbox 41.50,41.50,41.82,41.86 --map-limit 50 --terrain-srtm --no-gui```
 
 Map payload `altitude` values are absolute GPS/MSL altitude, not antenna height,
-so map import keeps using `--map-antenna-height` as the fallback antenna height
-above local ground. When `--terrain-srtm` is enabled, each map node is checked
+so map import keeps using `HM` as the fallback antenna height above local
+ground. When `--terrain-srtm` is enabled, each map node is checked
 against its own SRTM ground sample: plausible positive map altitudes are used as
 absolute node altitude, while missing, below-ground, or implausibly high values
 fall back to `SRTM ground + antenna height` for 3D distance calculations.

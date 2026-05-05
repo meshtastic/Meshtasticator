@@ -17,7 +17,6 @@ from lib.srtm import (
     terrain_grid_from_srtm,
 )
 from lib.terrain import (
-    NODE_Z_REFERENCE_GROUND,
     NODE_Z_REFERENCE_SEA_LEVEL,
     apply_terrain_altitudes,
     xy_to_latlon,
@@ -37,7 +36,6 @@ def configure_logging():
 def get_cli_defaults(conf):
     """Remember the caller's initial CLI defaults across reusable parse calls."""
     if not hasattr(conf, CLI_DEFAULT_ATTR):
-        terrain_defaults = type(conf)()
         setattr(
             conf,
             CLI_DEFAULT_ATTR,
@@ -46,8 +44,8 @@ def get_cli_defaults(conf):
                 "PERIOD": conf.PERIOD,
                 "GUI_ENABLED": conf.GUI_ENABLED,
                 "PLOT": conf.PLOT,
-                "TERRAIN_PROFILE_SAMPLES": terrain_defaults.TERRAIN_PROFILE_SAMPLES,
-                "NODE_Z_REFERENCE": NODE_Z_REFERENCE_GROUND,
+                "TERRAIN_PROFILE_SAMPLES": conf.TERRAIN_PROFILE_SAMPLES,
+                "NODE_Z_REFERENCE": conf.NODE_Z_REFERENCE,
             },
         )
     return getattr(conf, CLI_DEFAULT_ATTR)
@@ -117,8 +115,6 @@ def parse_params(conf, args=None) -> [NodeConfig]:
     parser.add_argument('--terrain-profile-samples', type=int, help='number of terrain samples along each TX/RX path')
     parser.add_argument('--map-bbox', type=str, help='Map import bounding box as min_lat,min_lon,max_lat,max_lon')
     parser.add_argument('--map-limit', type=int, help='Maximum number of positioned map nodes to import after bbox filtering')
-    parser.add_argument('--map-antenna-height', type=float, default=1.5, help='Antenna height in meters for map-imported nodes')
-    parser.add_argument('--map-hop-limit', type=int, default=3, help='Hop limit for map-imported nodes')
     parser.add_argument('--simtime-seconds', type=float, help='Override simulation duration in seconds')
     parser.add_argument('--period-seconds', type=float, help='Override mean message-generation period in seconds')
     parser.add_argument('--no-gui', action='store_true', help='Run without Tk/Matplotlib graphing or schedule plotting')
@@ -145,10 +141,10 @@ def parse_params(conf, args=None) -> [NodeConfig]:
 
     if parsed_arguments.map_limit is not None and parsed_arguments.map_limit < 1:
         parser.error("--map-limit must be at least 1")
-    if not math.isfinite(parsed_arguments.map_antenna_height) or parsed_arguments.map_antenna_height <= 0:
-        parser.error("--map-antenna-height must be a positive finite number")
-    if parsed_arguments.map_hop_limit < 0:
-        parser.error("--map-hop-limit must be at least 0")
+    if not math.isfinite(conf.HM) or conf.HM <= 0:
+        parser.error("config HM must be a positive finite antenna height")
+    if conf.hopLimit < 0:
+        parser.error("config hopLimit must be at least 0")
     if parsed_arguments.terrain_profile_samples is not None and parsed_arguments.terrain_profile_samples < 2:
         parser.error("--terrain-profile-samples must be at least 2")
     if not math.isfinite(parsed_arguments.terrain_srtm_step_meters) or parsed_arguments.terrain_srtm_step_meters <= 0:
@@ -202,8 +198,8 @@ def parse_params(conf, args=None) -> [NodeConfig]:
                 period,
                 bbox=terrain_bbox,
                 limit=parsed_arguments.map_limit,
-                antenna_height=parsed_arguments.map_antenna_height,
-                hop_limit=parsed_arguments.map_hop_limit,
+                antenna_height=conf.HM,
+                hop_limit=conf.hopLimit,
                 tx_power=conf.PTX,
                 freq=conf.FREQ,
                 return_origin=True,
