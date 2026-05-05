@@ -267,13 +267,6 @@ def estimate_path_loss(conf, dist, freq, txZ=None, rxZ=None, model=None):
     Returns:
     path loss as float
     '''
-    if txZ is None:
-        txZ = conf.HM
-    if rxZ is None:
-        rxZ = conf.HM
-    if model is None:
-        model = conf.MODEL
-
     # With randomized movements we may end up on top of another node which is problematic for log(dist)
     #
     # Some real-mesh presets can also set a larger floor as an empirical
@@ -281,6 +274,12 @@ def estimate_path_loss(conf, dist, freq, txZ=None, rxZ=None, model=None):
     # at apartment-scale separations, and map node positions are coarse enough
     # that "two pins are close" does not mean "two antennas have clear 20 m RF".
     dist = max(dist, conf.PATH_LOSS_DISTANCE_FLOOR_M)
+    if txZ is None:
+        txZ = conf.HM
+    if rxZ is None:
+        rxZ = conf.HM
+    if model is None:
+        model = conf.MODEL
 
     # Log-Distance model
     if model == 0:
@@ -325,7 +324,7 @@ def estimate_path_loss(conf, dist, freq, txZ=None, rxZ=None, model=None):
             + 45.5 + (35.46 - 1.1 * rxZ) * (math.log10(freq) - 6.0) \
             - 13.82 * math.log10(rxZ) + 0.7 * rxZ + C
     else:
-        raise ValueError(f"Unsupported path loss model: {model}")
+        raise ValueError(f"unsupported path loss model: {model}")
 
     return Lpl
 
