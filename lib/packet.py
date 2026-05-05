@@ -53,7 +53,8 @@ class MeshPacket:
         self.genTime = genTime
         self.now = now
         self.nodes = nodes
-        self.baseTxPower = int(self.conf.PTX)
+        self.tx_node = next(n for n in nodes if n.nodeid == self.txNodeId)
+        self.baseTxPower = int(getattr(self.tx_node, "txPower", self.conf.PTX))
         self.txpow = self.baseTxPower
         self.priorHopRssi = None
         self.priorHopSnr = None
@@ -77,7 +78,6 @@ class MeshPacket:
         self.cr = self.conf.current_preset["cr"]
         self.bw = self.conf.current_preset["bw"]
         self.freq = self.conf.FREQ
-        self.tx_node = next(n for n in nodes if n.nodeid == self.txNodeId)
         self.connectivity_map = connectivity_map
         self.baseline_pathloss_matrix = baseline_pathloss_matrix
 

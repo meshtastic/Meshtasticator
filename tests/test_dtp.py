@@ -202,6 +202,32 @@ class TestDynamicTxPowerPacketPhysics(unittest.TestCase):
         self.assertFalse(packet.sensedByN[1])
         self.assertLess(packet.rssiAtN[1], conf.current_preset["sensitivity"])
 
+    def test_packet_base_power_comes_from_transmitting_node(self):
+        conf, nodes = self.make_nodes(100)
+        nodes[0].txPower = 20
+        connectivity_map = {0: {1}, 1: {0}}
+        baseline_pathloss_matrix = [[None, None], [None, None]]
+
+        packet = MeshPacket(
+            conf,
+            nodes,
+            0,
+            NODENUM_BROADCAST,
+            0,
+            40,
+            1,
+            0,
+            True,
+            False,
+            None,
+            0,
+            connectivity_map,
+            baseline_pathloss_matrix,
+        )
+
+        self.assertEqual(packet.baseTxPower, 20)
+        self.assertEqual(packet.txpow, 20)
+
 
 if __name__ == "__main__":
     unittest.main()

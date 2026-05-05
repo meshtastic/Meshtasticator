@@ -64,7 +64,7 @@ class MeshNodeStats:
 class NodeConfig:
     """Specific configuration for a node
     """
-    def __init__(self, node_id: int, position: Point, period: int, tx_power: int = 30, freq: float = 902e6, role: MESHTASTIC_ROLE = MESHTASTIC_ROLE.CLIENT, antenna_gain: float = 0, hop_limit: int = 3, neighbor_info: bool = False, antenna_height=None, absolute_altitude=None):
+    def __init__(self, node_id: int, position: Point, period: int, tx_power: int = 30, freq: float = 902e6, role: MESHTASTIC_ROLE = MESHTASTIC_ROLE.CLIENT, antenna_gain: float = 0, hop_limit: int = 3, neighbor_info: bool = False, antenna_height=None, absolute_altitude=None, tx_power_dbm=None):
         """Initial configuration of a node
 
         Arguments:
@@ -79,11 +79,15 @@ class NodeConfig:
         neighbor_info -- if neighbor info is enabled. Default False
         antenna_height -- antenna height above local ground. Default: position.z
         absolute_altitude -- optional map-reported absolute altitude in meters
+        tx_power_dbm -- optional per-node TX power override.
         """
         self.node_id = node_id
         self.position = position.copy() # make sure we keep our own point
         self.period = period
+        if tx_power_dbm is not None:
+            tx_power = int(tx_power_dbm)
         self.tx_power = tx_power
+        self.tx_power_dbm = tx_power
         self.freq = freq
         self.role = role
         self.antenna_gain = antenna_gain
@@ -91,6 +95,7 @@ class NodeConfig:
         self.neighbor_info = neighbor_info
         self.antenna_height = position.z if antenna_height is None else antenna_height
         self.absolute_altitude = absolute_altitude
+        self.tx_power_dbm = tx_power_dbm
 
     @classmethod
     def from_gen_scenario_output(cls, node_id: int, node_dict: {}, period: int, tx_power: int, freq: float):
@@ -129,7 +134,8 @@ class NodeConfig:
 
         antenna_height = nd.get("antennaHeight", nd["z"])
         absolute_altitude = nd.get("absoluteAltitude")
-        return NodeConfig(node_id, position, period, tx_power, freq, role, nd['antennaGain'], nd['hopLimit'], nd['neighborInfo'], antenna_height, absolute_altitude)
+        tx_power_dbm = nd.get("txPowerDbm", nd.get("ptx"))
+        return NodeConfig(node_id, position, period, tx_power, freq, role, nd['antennaGain'], nd['hopLimit'], nd['neighborInfo'], antenna_height, absolute_altitude, tx_power_dbm)
 
     def compute_rssi_and_pathloss_to(self, rx_nodeconf, conf: Config) -> (float, float):
         """Compute RSSI and pathloss from this node config as the transmitting node
@@ -244,12 +250,13 @@ class MeshNode:
         self.rebroadcastRng = random.Random(f"{self.conf.SEED}:{self.nodeid}:rebroadcast")
 
         # require the user to specify a node configuration now, including position
-        self.position = self.node_conf.position # explicitly use position in node_conf
+        self.position = self.node_conf.position.copy() # make sure we have our own point
         self.role = self.node_conf.role
         self.hopLimit = self.node_conf.hop_limit
         self.antennaGain = self.node_conf.antenna_gain
         self.antennaHeight = self.node_conf.antenna_height
         self.absolute_altitude = self.node_conf.absolute_altitude
+        self.txPower = self.node_conf.tx_power
         self.period = self.node_conf.period
 
         # using this more like a struct than a proper object.
