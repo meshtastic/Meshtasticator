@@ -55,6 +55,16 @@ def srtm_tile_name(lat, lon):
     return f"{lat_prefix}{abs(lat_floor):02d}{lon_prefix}{abs(lon_floor):03d}"
 
 
+def _edge_clamped_sample_coordinate(value, upper_bound):
+    return math.nextafter(value, -math.inf) if value == upper_bound else value
+
+
+def _sample_tile_name(lat, lon):
+    lat_for_tile = _edge_clamped_sample_coordinate(lat, SRTM_MAX_LAT)
+    lon_for_tile = _edge_clamped_sample_coordinate(lon, SRTM_MAX_LON)
+    return srtm_tile_name(lat_for_tile, lon_for_tile)
+
+
 def _parse_tile_name(tile_name):
     if len(tile_name) != 7 or tile_name[0] not in "NS" or tile_name[3] not in "EW":
         raise ValueError(f"invalid SRTM tile name: {tile_name}")
@@ -281,7 +291,7 @@ def terrain_rows_from_srtm(
 
     for lat in _coordinate_values(min_lat, max_lat, lat_step):
         for lon in _coordinate_values(min_lon, max_lon, lon_step):
-            tile = tiles.get(srtm_tile_name(lat, lon))
+            tile = tiles.get(_sample_tile_name(lat, lon))
             if tile is None:
                 continue
             elevation = tile.elevation_at(lat, lon)
