@@ -28,7 +28,11 @@ def write_hgt(path, values):
 
 def generated_positions(node_configs):
     return [
-        (round(node.position.x, 6), round(node.position.y, 6), round(node.position.z, 6))
+        (
+            round(node.position.x, 6),
+            round(node.position.y, 6),
+            round(node.position.z, 6),
+        )
         for node in node_configs
     ]
 
@@ -97,7 +101,9 @@ class TestLoraMeshCli(unittest.TestCase):
         self.assertTrue(conf.PLOT)
         self.assertEqual(conf.SIMTIME, default_simtime)
         self.assertEqual(conf.PERIOD, default_period)
-        self.assertEqual([node.period for node in nodes], [default_period, default_period])
+        self.assertEqual(
+            [node.period for node in nodes], [default_period, default_period]
+        )
 
     def test_parse_params_preserves_caller_initial_defaults(self):
         conf = Config()
@@ -106,7 +112,9 @@ class TestLoraMeshCli(unittest.TestCase):
         conf.GUI_ENABLED = False
         conf.PLOT = False
 
-        self.parse_quietly(conf, ["2", "--simtime-seconds", "1", "--period-seconds", "0.5"])
+        self.parse_quietly(
+            conf, ["2", "--simtime-seconds", "1", "--period-seconds", "0.5"]
+        )
         nodes, _ = self.parse_quietly(conf, ["2"])
 
         self.assertFalse(conf.GUI_ENABLED)
@@ -118,8 +126,12 @@ class TestLoraMeshCli(unittest.TestCase):
     def test_parse_params_rejects_sub_centisecond_time_overrides(self):
         conf = Config()
 
-        simtime_error = self.assert_parser_rejects(conf, ["2", "--no-gui", "--simtime-seconds", "0.009"])
-        period_error = self.assert_parser_rejects(conf, ["2", "--no-gui", "--period-seconds", "0.009"])
+        simtime_error = self.assert_parser_rejects(
+            conf, ["2", "--no-gui", "--simtime-seconds", "0.009"]
+        )
+        period_error = self.assert_parser_rejects(
+            conf, ["2", "--no-gui", "--period-seconds", "0.009"]
+        )
 
         self.assertIn("--simtime-seconds must be at least 0.01 seconds", simtime_error)
         self.assertIn("--period-seconds must be at least 0.01 seconds", period_error)
@@ -181,7 +193,9 @@ class TestLoraMeshCli(unittest.TestCase):
         )
 
         os.makedirs("out", exist_ok=True)
-        with tempfile.NamedTemporaryFile("w", dir="out", suffix=".yaml", delete=False, encoding="utf-8") as scenario_file:
+        with tempfile.NamedTemporaryFile(
+            "w", dir="out", suffix=".yaml", delete=False, encoding="utf-8"
+        ) as scenario_file:
             scenario_file.write(scenario)
             scenario_filename = os.path.basename(scenario_file.name)
 
@@ -241,7 +255,11 @@ class TestLoraMeshCli(unittest.TestCase):
                 1: {
                     "num": 1,
                     "user": {"id": "!00000001", "role": "ROUTER"},
-                    "position": {"latitude": 41.62, "longitude": 41.59, "altitude": 120},
+                    "position": {
+                        "latitude": 41.62,
+                        "longitude": 41.59,
+                        "altitude": 120,
+                    },
                 },
                 2: {
                     "num": 2,
@@ -251,7 +269,9 @@ class TestLoraMeshCli(unittest.TestCase):
             }
         }
 
-        with mock.patch("loraMesh.fetch_nodedb_payload", return_value=payload) as fetch_nodedb:
+        with mock.patch(
+            "loraMesh.fetch_nodedb_payload", return_value=payload
+        ) as fetch_nodedb:
             nodes, _ = self.parse_quietly(
                 conf,
                 [
@@ -264,7 +284,9 @@ class TestLoraMeshCli(unittest.TestCase):
                 ],
             )
 
-        fetch_nodedb.assert_called_once_with(host="192.0.2.10", port=None, serial_port=None)
+        fetch_nodedb.assert_called_once_with(
+            host="192.0.2.10", port=None, serial_port=None
+        )
         self.assertEqual(len(nodes), 2)
         self.assertEqual([node.position.z for node in nodes], [2.5, 2.5])
         self.assertEqual([node.antenna_height for node in nodes], [2.5, 2.5])
@@ -277,6 +299,15 @@ class TestLoraMeshCli(unittest.TestCase):
         error = self.assert_parser_rejects(conf, ["2", "--nodedb-host", "192.0.2.10"])
 
         self.assertIn("--nodedb-* options require --from-nodedb", error)
+
+    def test_parse_params_rejects_nodedb_port_without_host(self):
+        conf = Config()
+
+        error = self.assert_parser_rejects(
+            conf, ["--from-nodedb", "--nodedb-port", "4404"]
+        )
+
+        self.assertIn("--nodedb-port requires --nodedb-host", error)
 
     def test_parse_params_can_build_srtm_terrain_for_map_payload(self):
         conf = Config()
@@ -423,12 +454,16 @@ class TestLoraMeshCli(unittest.TestCase):
         )
 
         os.makedirs("out", exist_ok=True)
-        with tempfile.NamedTemporaryFile("w", dir="out", suffix=".yaml", delete=False, encoding="utf-8") as scenario_file:
+        with tempfile.NamedTemporaryFile(
+            "w", dir="out", suffix=".yaml", delete=False, encoding="utf-8"
+        ) as scenario_file:
             scenario_file.write(scenario)
             scenario_filename = os.path.basename(scenario_file.name)
 
         try:
-            nodes, _ = self.parse_quietly(conf, ["--from-file", scenario_filename, "--no-gui"])
+            nodes, _ = self.parse_quietly(
+                conf, ["--from-file", scenario_filename, "--no-gui"]
+            )
         finally:
             os.unlink(os.path.join("out", scenario_filename))
 
@@ -460,12 +495,16 @@ class TestLoraMeshCli(unittest.TestCase):
         )
 
         os.makedirs("out", exist_ok=True)
-        with tempfile.NamedTemporaryFile("w", dir="out", suffix=".yaml", delete=False, encoding="utf-8") as scenario_file:
+        with tempfile.NamedTemporaryFile(
+            "w", dir="out", suffix=".yaml", delete=False, encoding="utf-8"
+        ) as scenario_file:
             scenario_file.write(scenario)
             scenario_filename = os.path.basename(scenario_file.name)
 
         try:
-            self.assert_parser_rejects(conf, ["--from-file", scenario_filename, "--no-gui"])
+            self.assert_parser_rejects(
+                conf, ["--from-file", scenario_filename, "--no-gui"]
+            )
         finally:
             os.unlink(os.path.join("out", scenario_filename))
 
@@ -539,12 +578,16 @@ class TestLoraMeshCli(unittest.TestCase):
         )
 
         os.makedirs("out", exist_ok=True)
-        with tempfile.NamedTemporaryFile("w", dir="out", suffix=".yaml", delete=False, encoding="utf-8") as scenario_file:
+        with tempfile.NamedTemporaryFile(
+            "w", dir="out", suffix=".yaml", delete=False, encoding="utf-8"
+        ) as scenario_file:
             scenario_file.write(scenario)
             scenario_filename = os.path.basename(scenario_file.name)
 
         try:
-            error = self.assert_parser_rejects(conf, ["--from-file", scenario_filename, "--terrain-srtm", "--no-gui"])
+            error = self.assert_parser_rejects(
+                conf, ["--from-file", scenario_filename, "--terrain-srtm", "--no-gui"]
+            )
         finally:
             os.unlink(os.path.join("out", scenario_filename))
 
@@ -642,7 +685,9 @@ class TestLoraMeshCli(unittest.TestCase):
             ]
 
             with mock.patch("loraMesh.fetch_map_payload", return_value=payload):
-                self.parse_quietly(conf, [*terrain_args, "--terrain-profile-samples", "7"])
+                self.parse_quietly(
+                    conf, [*terrain_args, "--terrain-profile-samples", "7"]
+                )
                 self.assertEqual(conf.TERRAIN_PROFILE_SAMPLES, 7)
 
                 self.parse_quietly(conf, terrain_args)

@@ -18,8 +18,12 @@ from urllib.request import urlopen
 from lib.terrain import TerrainGrid, latlon_to_xy
 
 
-DEFAULT_SRTM_URL_TEMPLATE = "https://s3.amazonaws.com/elevation-tiles-prod/skadi/{lat_band}/{tile}.hgt.gz"
-SRTM_DATA_ATTRIBUTION = "Mapzen Terrain Tiles on AWS, using SRTM/NASA and other open elevation sources"
+DEFAULT_SRTM_URL_TEMPLATE = (
+    "https://s3.amazonaws.com/elevation-tiles-prod/skadi/{lat_band}/{tile}.hgt.gz"
+)
+SRTM_DATA_ATTRIBUTION = (
+    "Mapzen Terrain Tiles on AWS, using SRTM/NASA and other open elevation sources"
+)
 SRTM_DATA_ATTRIBUTION_URL = "https://registry.opendata.aws/terrain-tiles/"
 HGT_VOID = -32768
 SRTM_MIN_LAT = -56.0
@@ -66,13 +70,33 @@ def tiles_for_bbox(bbox):
     if min_lat < SRTM_MIN_LAT or max_lat > SRTM_MAX_LAT:
         raise ValueError("SRTM coverage is limited to latitudes between 56°S and 60°N")
     if min_lon < SRTM_MIN_LON or max_lon > SRTM_MAX_LON:
-        raise ValueError("SRTM coverage is limited to longitudes between 180°W and 180°E")
+        raise ValueError(
+            "SRTM coverage is limited to longitudes between 180°W and 180°E"
+        )
 
-    max_lat_tile = math.floor(math.nextafter(max_lat, -math.inf)) if max_lat > min_lat else math.floor(max_lat)
-    max_lon_tile = math.floor(math.nextafter(max_lon, -math.inf)) if max_lon > min_lon else math.floor(max_lon)
+    min_lat_for_tile = (
+        math.nextafter(min_lat, -math.inf) if min_lat == SRTM_MAX_LAT else min_lat
+    )
+    min_lon_for_tile = (
+        math.nextafter(min_lon, -math.inf) if min_lon == SRTM_MAX_LON else min_lon
+    )
+    max_lat_for_tile = (
+        math.nextafter(max_lat, -math.inf)
+        if max_lat > min_lat or max_lat == SRTM_MAX_LAT
+        else max_lat
+    )
+    max_lon_for_tile = (
+        math.nextafter(max_lon, -math.inf)
+        if max_lon > min_lon or max_lon == SRTM_MAX_LON
+        else max_lon
+    )
+    min_lat_tile = math.floor(min_lat_for_tile)
+    min_lon_tile = math.floor(min_lon_for_tile)
+    max_lat_tile = math.floor(max_lat_for_tile)
+    max_lon_tile = math.floor(max_lon_for_tile)
     names = []
-    for lat_floor in range(math.floor(min_lat), max_lat_tile + 1):
-        for lon_floor in range(math.floor(min_lon), max_lon_tile + 1):
+    for lat_floor in range(min_lat_tile, max_lat_tile + 1):
+        for lon_floor in range(min_lon_tile, max_lon_tile + 1):
             names.append(srtm_tile_name(lat_floor, lon_floor))
     return sorted(set(names))
 
@@ -148,7 +172,9 @@ class SrtmTile:
         return float(value)
 
 
-def ensure_hgt_tile(tile_name, cache_dir, url_template=DEFAULT_SRTM_URL_TEMPLATE, download_missing=True):
+def ensure_hgt_tile(
+    tile_name, cache_dir, url_template=DEFAULT_SRTM_URL_TEMPLATE, download_missing=True
+):
     """Return a cached `.hgt` path, downloading and unpacking it when allowed."""
     cache_dir = Path(cache_dir).expanduser()
     cache_dir.mkdir(parents=True, exist_ok=True)
@@ -163,35 +189,52 @@ def ensure_hgt_tile(tile_name, cache_dir, url_template=DEFAULT_SRTM_URL_TEMPLATE
     try:
         url = url_template.format(tile=tile_name, lat_band=lat_band)
     except KeyError as err:
-        raise ValueError("url_template may only use {tile} and {lat_band} placeholders") from err
+        raise ValueError(
+            "url_template may only use {tile} and {lat_band} placeholders"
+        ) from err
     parsed_path = Path(urlparse(url).path)
-    download_path = cache_dir / f"{tile_name}{''.join(parsed_path.suffixes) or '.download'}"
+    download_path = (
+        cache_dir / f"{tile_name}{''.join(parsed_path.suffixes) or '.download'}"
+    )
     partial_hgt_path = cache_dir / f"{tile_name}.hgt.tmp"
 
     try:
         with urlopen(url, timeout=60) as response, download_path.open("wb") as out:
             shutil.copyfileobj(response, out)
     except (OSError, urllib.error.URLError) as err:
-        raise ValueError(f"could not download SRTM tile {tile_name} from {url}: {err}") from err
+        raise ValueError(
+            f"could not download SRTM tile {tile_name} from {url}: {err}"
+        ) from err
 
     try:
         partial_hgt_path.unlink(missing_ok=True)
         if download_path.suffix == ".gz":
-            with gzip.open(download_path, "rb") as src, partial_hgt_path.open("wb") as out:
+            with (
+                gzip.open(download_path, "rb") as src,
+                partial_hgt_path.open("wb") as out,
+            ):
                 shutil.copyfileobj(src, out)
         elif download_path.suffix == ".zip":
             with zipfile.ZipFile(download_path) as archive:
-                hgt_members = [name for name in archive.namelist() if name.lower().endswith(".hgt")]
+                hgt_members = [
+                    name for name in archive.namelist() if name.lower().endswith(".hgt")
+                ]
                 if not hgt_members:
                     raise ValueError(f"zip archive has no .hgt member: {download_path}")
                 expected_name = f"{tile_name}.hgt".lower()
                 matching_members = [
-                    name for name in hgt_members
+                    name
+                    for name in hgt_members
                     if Path(name).name.lower() == expected_name
                 ]
                 if not matching_members:
-                    raise ValueError(f"zip archive has no {tile_name}.hgt member: {download_path}")
-                with archive.open(matching_members[0]) as src, partial_hgt_path.open("wb") as out:
+                    raise ValueError(
+                        f"zip archive has no {tile_name}.hgt member: {download_path}"
+                    )
+                with (
+                    archive.open(matching_members[0]) as src,
+                    partial_hgt_path.open("wb") as out,
+                ):
                     shutil.copyfileobj(src, out)
         else:
             download_path.replace(partial_hgt_path)
@@ -215,7 +258,13 @@ def _coordinate_values(start, stop, step):
     return values
 
 
-def terrain_rows_from_srtm(bbox, step_meters, cache_dir, url_template=DEFAULT_SRTM_URL_TEMPLATE, download_missing=True):
+def terrain_rows_from_srtm(
+    bbox,
+    step_meters,
+    cache_dir,
+    url_template=DEFAULT_SRTM_URL_TEMPLATE,
+    download_missing=True,
+):
     """Yield lat/lon/elevation rows sampled from SRTM tiles over `bbox`."""
     if not math.isfinite(step_meters) or step_meters <= 0:
         raise ValueError("step_meters must be a positive finite number")
@@ -256,7 +305,9 @@ def terrain_grid_from_srtm(
 ):
     """Build an in-memory TerrainGrid from SRTM tiles without writing CSV."""
     samples = []
-    for row in terrain_rows_from_srtm(bbox, step_meters, cache_dir, url_template, download_missing):
+    for row in terrain_rows_from_srtm(
+        bbox, step_meters, cache_dir, url_template, download_missing
+    ):
         lat = float(row["lat"])
         lon = float(row["lon"])
         elevation = float(row["elevation_m"])

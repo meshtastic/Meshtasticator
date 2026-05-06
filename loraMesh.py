@@ -9,9 +9,19 @@ from pathlib import Path
 import yaml
 
 from lib.config import CONFIG
-from lib.map_input import DEFAULT_MAP_NODES_URL, fetch_map_payload, node_configs_from_map_payload, parse_bbox
+from lib.map_input import (
+    DEFAULT_MAP_NODES_URL,
+    fetch_map_payload,
+    node_configs_from_map_payload,
+    parse_bbox,
+)
 from lib.nodedb_input import fetch_nodedb_payload, node_configs_from_nodedb_payload
-from lib.node import NodeConfig, default_generate_node_list, node_configs_from_yaml, origin_from_yaml
+from lib.node import (
+    NodeConfig,
+    default_generate_node_list,
+    node_configs_from_yaml,
+    origin_from_yaml,
+)
 from lib.srtm import (
     DEFAULT_SRTM_URL_TEMPLATE,
     SRTM_DATA_ATTRIBUTION,
@@ -33,7 +43,7 @@ CLI_DEFAULT_ATTR = "_lora_mesh_cli_defaults"
 
 def configure_logging():
     """Apply CLI logging defaults without changing logging during module import."""
-    logging.basicConfig(level=logging.INFO) # default log level
+    logging.basicConfig(level=logging.INFO)  # default log level
 
 
 def get_cli_defaults(conf):
@@ -93,40 +103,123 @@ def parse_params(conf, args=None) -> [NodeConfig]:
     # loraMesh.py [nr_nodes [router_type]] | [--from-file [file_name]]
     # we'll replicate the intent with argparse, but more strictly, so flags like '--never--from-file' will no longer be accepted
     parser = argparse.ArgumentParser(
-        description='run a single interactive or discrete Meshtastic network simulation'
-        )
+        description="run a single interactive or discrete Meshtastic network simulation"
+    )
 
     # only allow one of --from-file optional, or nr_nodes positional exclusively
     group = parser.add_mutually_exclusive_group()
-    group.add_argument('nr_nodes', nargs='?', type=int, help='Number of nodes to generate. If unspecified, do interactive simulation')
-    group.add_argument('--from-file', nargs='?', const='nodeConfig.yaml', type=str, metavar='filename', help='Name of yaml file storing node config under "out/" directory. If unspecified, defaults to "nodeConfig.yaml".')
-    group.add_argument('--from-map', nargs='?', const=DEFAULT_MAP_NODES_URL, type=str, metavar='url', help='Fetch node locations from a Meshtastic map /api/v1/nodes endpoint.')
-    group.add_argument('--from-nodedb', action='store_true', help='Fetch positioned nodes from a local Meshtastic device NodeDB.')
+    group.add_argument(
+        "nr_nodes",
+        nargs="?",
+        type=int,
+        help="Number of nodes to generate. If unspecified, do interactive simulation",
+    )
+    group.add_argument(
+        "--from-file",
+        nargs="?",
+        const="nodeConfig.yaml",
+        type=str,
+        metavar="filename",
+        help='Name of yaml file storing node config under "out/" directory. If unspecified, defaults to "nodeConfig.yaml".',
+    )
+    group.add_argument(
+        "--from-map",
+        nargs="?",
+        const=DEFAULT_MAP_NODES_URL,
+        type=str,
+        metavar="url",
+        help="Fetch node locations from a Meshtastic map /api/v1/nodes endpoint.",
+    )
+    group.add_argument(
+        "--from-nodedb",
+        action="store_true",
+        help="Fetch positioned nodes from a local Meshtastic device NodeDB.",
+    )
 
     # the earlier behavior of specifying `router_type` as an optional positional arg with `nr_nodes` is difficult to exactly
     # replicate with argparse, especially since nesting groups was an unintended feature and deprecated.
     # Just implement as an optional argument, and manually treat it as incompatible with `--from-file`
-    parser.add_argument('--router-type', type=conf.ROUTER_TYPE, choices=conf.ROUTER_TYPE, help='Router type to use, taken from ROUTER_TYPE enum. Omit the leading "ROUTER_TYPE". Incompatible with --from-file')
-    parser.add_argument('--terrain-srtm', action='store_true', help='Build terrain directly from cached/downloaded SRTM tiles for the scenario bbox')
-    parser.add_argument('--terrain-srtm-step-meters', type=float, default=1000.0, help='SRTM terrain sample spacing in meters')
     parser.add_argument(
-        '--terrain-srtm-cache-dir',
-        default=str(Path.home() / ".cache" / "meshtasticator" / "srtm"),
-        help='where downloaded SRTM .hgt tiles are cached',
+        "--router-type",
+        type=conf.ROUTER_TYPE,
+        choices=conf.ROUTER_TYPE,
+        help='Router type to use, taken from ROUTER_TYPE enum. Omit the leading "ROUTER_TYPE". Incompatible with --from-file',
     )
-    parser.add_argument('--terrain-srtm-url-template', default=DEFAULT_SRTM_URL_TEMPLATE, help='SRTM download URL template with {lat_band} and {tile}')
-    parser.add_argument('--terrain-srtm-offline', action='store_true', help='use cached SRTM tiles only')
-    parser.add_argument('--terrain-profile-samples', type=int, help='number of terrain samples along each TX/RX path')
-    parser.add_argument('--map-bbox', type=str, help='Position import bounding box as min_lat,min_lon,max_lat,max_lon')
-    parser.add_argument('--map-limit', type=int, help='Maximum number of positioned imported nodes after bbox filtering')
-    parser.add_argument('--nodedb-host', type=str, help='Hostname or IP of a Meshtastic TCP device for --from-nodedb')
-    parser.add_argument('--nodedb-port', type=int, help='TCP port of a Meshtastic TCP device for --from-nodedb')
-    parser.add_argument('--nodedb-serial-port', type=str, help='Serial device path for --from-nodedb; defaults to Meshtastic auto-detection')
-    parser.add_argument('--simtime-seconds', type=float, help='Override simulation duration in seconds')
-    parser.add_argument('--period-seconds', type=float, help='Override mean message-generation period in seconds')
-    parser.add_argument('--no-gui', action='store_true', help='Run without Tk/Matplotlib graphing or schedule plotting')
-    parser.add_argument('--disable-connectivity-map', action='store_true', help='disable the connectivity map optimization. May be faster for some scenarios with many moving nodes and/or a densely connected network.')
-    parser.add_argument('-v', '--verbose', action='store_true', help='enable verbose/debug output')
+    parser.add_argument(
+        "--terrain-srtm",
+        action="store_true",
+        help="Build terrain directly from cached/downloaded SRTM tiles for the scenario bbox",
+    )
+    parser.add_argument(
+        "--terrain-srtm-step-meters",
+        type=float,
+        default=1000.0,
+        help="SRTM terrain sample spacing in meters",
+    )
+    parser.add_argument(
+        "--terrain-srtm-cache-dir",
+        default=str(Path.home() / ".cache" / "meshtasticator" / "srtm"),
+        help="where downloaded SRTM .hgt tiles are cached",
+    )
+    parser.add_argument(
+        "--terrain-srtm-url-template",
+        default=DEFAULT_SRTM_URL_TEMPLATE,
+        help="SRTM download URL template with {lat_band} and {tile}",
+    )
+    parser.add_argument(
+        "--terrain-srtm-offline", action="store_true", help="use cached SRTM tiles only"
+    )
+    parser.add_argument(
+        "--terrain-profile-samples",
+        type=int,
+        help="number of terrain samples along each TX/RX path",
+    )
+    parser.add_argument(
+        "--map-bbox",
+        type=str,
+        help="Position import bounding box as min_lat,min_lon,max_lat,max_lon",
+    )
+    parser.add_argument(
+        "--map-limit",
+        type=int,
+        help="Maximum number of positioned imported nodes after bbox filtering",
+    )
+    parser.add_argument(
+        "--nodedb-host",
+        type=str,
+        help="Hostname or IP of a Meshtastic TCP device for --from-nodedb",
+    )
+    parser.add_argument(
+        "--nodedb-port",
+        type=int,
+        help="TCP port of a Meshtastic TCP device for --from-nodedb",
+    )
+    parser.add_argument(
+        "--nodedb-serial-port",
+        type=str,
+        help="Serial device path for --from-nodedb; defaults to Meshtastic auto-detection",
+    )
+    parser.add_argument(
+        "--simtime-seconds", type=float, help="Override simulation duration in seconds"
+    )
+    parser.add_argument(
+        "--period-seconds",
+        type=float,
+        help="Override mean message-generation period in seconds",
+    )
+    parser.add_argument(
+        "--no-gui",
+        action="store_true",
+        help="Run without Tk/Matplotlib graphing or schedule plotting",
+    )
+    parser.add_argument(
+        "--disable-connectivity-map",
+        action="store_true",
+        help="disable the connectivity map optimization. May be faster for some scenarios with many moving nodes and/or a densely connected network.",
+    )
+    parser.add_argument(
+        "-v", "--verbose", action="store_true", help="enable verbose/debug output"
+    )
 
     parsed_arguments = parser.parse_args(args)
 
@@ -137,13 +230,23 @@ def parse_params(conf, args=None) -> [NodeConfig]:
     plot_enabled = cli_defaults["PLOT"]
 
     if parsed_arguments.simtime_seconds is not None:
-        if not math.isfinite(parsed_arguments.simtime_seconds) or parsed_arguments.simtime_seconds < MIN_TIME_OVERRIDE_SECONDS:
-            parser.error(f"--simtime-seconds must be at least {MIN_TIME_OVERRIDE_SECONDS} seconds")
+        if (
+            not math.isfinite(parsed_arguments.simtime_seconds)
+            or parsed_arguments.simtime_seconds < MIN_TIME_OVERRIDE_SECONDS
+        ):
+            parser.error(
+                f"--simtime-seconds must be at least {MIN_TIME_OVERRIDE_SECONDS} seconds"
+            )
         simtime = int(parsed_arguments.simtime_seconds * conf.ONE_SECOND_INTERVAL)
 
     if parsed_arguments.period_seconds is not None:
-        if not math.isfinite(parsed_arguments.period_seconds) or parsed_arguments.period_seconds < MIN_TIME_OVERRIDE_SECONDS:
-            parser.error(f"--period-seconds must be at least {MIN_TIME_OVERRIDE_SECONDS} seconds")
+        if (
+            not math.isfinite(parsed_arguments.period_seconds)
+            or parsed_arguments.period_seconds < MIN_TIME_OVERRIDE_SECONDS
+        ):
+            parser.error(
+                f"--period-seconds must be at least {MIN_TIME_OVERRIDE_SECONDS} seconds"
+            )
         period = int(parsed_arguments.period_seconds * conf.ONE_SECOND_INTERVAL)
 
     if parsed_arguments.map_limit is not None and parsed_arguments.map_limit < 1:
@@ -152,9 +255,15 @@ def parse_params(conf, args=None) -> [NodeConfig]:
         parser.error("config HM must be a positive finite antenna height")
     if conf.hopLimit < 0:
         parser.error("config hopLimit must be at least 0")
-    if parsed_arguments.terrain_profile_samples is not None and parsed_arguments.terrain_profile_samples < 2:
+    if (
+        parsed_arguments.terrain_profile_samples is not None
+        and parsed_arguments.terrain_profile_samples < 2
+    ):
         parser.error("--terrain-profile-samples must be at least 2")
-    if not math.isfinite(parsed_arguments.terrain_srtm_step_meters) or parsed_arguments.terrain_srtm_step_meters <= 0:
+    if (
+        not math.isfinite(parsed_arguments.terrain_srtm_step_meters)
+        or parsed_arguments.terrain_srtm_step_meters <= 0
+    ):
         parser.error("--terrain-srtm-step-meters must be a positive finite number")
 
     if parsed_arguments.no_gui:
@@ -175,13 +284,21 @@ def parse_params(conf, args=None) -> [NodeConfig]:
         or parsed_arguments.from_map is not None
         or parsed_arguments.from_nodedb
     ) and parsed_arguments.router_type is not None:
-        parser.error("Incompatible argument selection. --from-file/--from-map/--from-nodedb and --router-type can not be used together")
+        parser.error(
+            "Incompatible argument selection. --from-file/--from-map/--from-nodedb and --router-type can not be used together"
+        )
     if not parsed_arguments.from_nodedb and (
         parsed_arguments.nodedb_host is not None
         or parsed_arguments.nodedb_port is not None
         or parsed_arguments.nodedb_serial_port is not None
     ):
         parser.error("--nodedb-* options require --from-nodedb")
+    if (
+        parsed_arguments.from_nodedb
+        and parsed_arguments.nodedb_port is not None
+        and parsed_arguments.nodedb_host is None
+    ):
+        parser.error("--nodedb-port requires --nodedb-host")
 
     seeded_for_scenario = False
     terrain_bbox = None
@@ -194,7 +311,9 @@ def parse_params(conf, args=None) -> [NodeConfig]:
         terrain_profile_samples = parsed_arguments.terrain_profile_samples
     if parsed_arguments.from_file is not None:
         try:
-            with open(os.path.join("out", parsed_arguments.from_file), 'r', encoding="utf-8") as file:
+            with open(
+                os.path.join("out", parsed_arguments.from_file), "r", encoding="utf-8"
+            ) as file:
                 raw_config = yaml.safe_load(file)
             config = node_configs_from_yaml(raw_config, period, conf.PTX, conf.FREQ)
             scenario_origin = origin_from_yaml(raw_config)
@@ -203,7 +322,9 @@ def parse_params(conf, args=None) -> [NodeConfig]:
         nr_nodes = len(config)
     elif parsed_arguments.from_map is not None:
         if parsed_arguments.map_bbox is None:
-            parser.error("--from-map requires --map-bbox min_lat,min_lon,max_lat,max_lon")
+            parser.error(
+                "--from-map requires --map-bbox min_lat,min_lon,max_lat,max_lon"
+            )
         try:
             terrain_bbox = parse_bbox(parsed_arguments.map_bbox)
             raw_map_payload = fetch_map_payload(parsed_arguments.from_map)
@@ -246,9 +367,13 @@ def parse_params(conf, args=None) -> [NodeConfig]:
         nr_nodes = len(config)
     elif parsed_arguments.nr_nodes is not None:
         if parsed_arguments.terrain_srtm:
-            parser.error("--terrain-srtm requires --from-map --map-bbox or a scenario file with origin metadata")
+            parser.error(
+                "--terrain-srtm requires --from-map --map-bbox or a scenario file with origin metadata"
+            )
         if parsed_arguments.nr_nodes < 2:
-            parser.error(f"Need at least two nodes. You specified {parsed_arguments.nr_nodes}")
+            parser.error(
+                f"Need at least two nodes. You specified {parsed_arguments.nr_nodes}"
+            )
         nr_nodes = parsed_arguments.nr_nodes
         if parsed_arguments.router_type is not None:
             routerType = parsed_arguments.router_type
@@ -263,7 +388,9 @@ def parse_params(conf, args=None) -> [NodeConfig]:
         config = default_generate_node_list(conf)
     else:
         if parsed_arguments.terrain_srtm:
-            parser.error("--terrain-srtm requires --from-map --map-bbox or a scenario file with origin metadata")
+            parser.error(
+                "--terrain-srtm requires --from-map --map-bbox or a scenario file with origin metadata"
+            )
         if not gui_enabled:
             parser.error("--no-gui requires nr_nodes or --from-file")
         from lib.gui import gen_scenario
@@ -280,7 +407,9 @@ def parse_params(conf, args=None) -> [NodeConfig]:
         except ValueError as err:
             parser.error(f"could not derive SRTM terrain bbox: {err}")
         if terrain_bbox is None:
-            parser.error("--terrain-srtm requires --from-map --map-bbox or a scenario file with origin metadata")
+            parser.error(
+                "--terrain-srtm requires --from-map --map-bbox or a scenario file with origin metadata"
+            )
 
     if parsed_arguments.terrain_srtm:
         try:
@@ -321,17 +450,20 @@ def parse_params(conf, args=None) -> [NodeConfig]:
         # resolved into a usable scenario. Failed parser inputs should not leave
         # imported callers with noisier logging.
         logger.setLevel(logging.DEBUG)
-        lib_logger = logging.getLogger('lib')
+        lib_logger = logging.getLogger("lib")
         lib_logger.setLevel(logging.DEBUG)
         print("verbose output enabled")
 
     print("Number of nodes:", conf.NR_NODES)
     print("Modem:", conf.MODEM_PRESET)
-    print("Simulation time (s):", conf.SIMTIME/1000)
-    print("Period (s):", conf.PERIOD/1000)
+    print("Simulation time (s):", conf.SIMTIME / 1000)
+    print("Period (s):", conf.PERIOD / 1000)
     print("Interference level:", conf.INTERFERENCE_LEVEL)
     if conf.TERRAIN_ENABLED:
-        print("Terrain data attribution:", f"{SRTM_DATA_ATTRIBUTION} ({SRTM_DATA_ATTRIBUTION_URL})")
+        print(
+            "Terrain data attribution:",
+            f"{SRTM_DATA_ATTRIBUTION} ({SRTM_DATA_ATTRIBUTION_URL})",
+        )
     return config
 
 
@@ -367,39 +499,48 @@ def run_simulation(conf, node_config):
     messages = results["messages"]
 
     # collect second-order results from finalized results
-    sent = results['sent']
-    potentialReceivers = results['potentialReceivers']
-    nrCollisions = results['nrCollisions']
-    nrSensed = results['nrSensed']
-    nrReceived = results['nrReceived']
-    meanDelay = results['meanDelay']
-    txAirUtilizationRate = results['txAirUtilizationRate']
-    collisionRate = results['collisionRate']
-    nodeReach = results['nodeReach']
-    usefulness = results['usefulness']
-    delayDropped = results['delayDropped']
+    sent = results["sent"]
+    potentialReceivers = results["potentialReceivers"]
+    nrCollisions = results["nrCollisions"]
+    nrSensed = results["nrSensed"]
+    nrReceived = results["nrReceived"]
+    meanDelay = results["meanDelay"]
+    txAirUtilizationRate = results["txAirUtilizationRate"]
+    collisionRate = results["collisionRate"]
+    nodeReach = results["nodeReach"]
+    usefulness = results["usefulness"]
+    delayDropped = results["delayDropped"]
 
     print("*******************************")
     print(f"\nRouter Type: {conf.SELECTED_ROUTER_TYPE}")
-    print('Number of messages created:', messageSeq)
-    print('Number of packets sent:', sent, 'to', potentialReceivers, 'potential receivers')
+    print("Number of messages created:", messageSeq)
+    print(
+        "Number of packets sent:", sent, "to", potentialReceivers, "potential receivers"
+    )
     print("Number of collisions:", nrCollisions)
     print("Number of packets sensed:", nrSensed)
     print("Number of packets received:", nrReceived)
-    print('Delay average (ms):', round(meanDelay, 2))
-    print('Average Tx air utilization:', round(txAirUtilizationRate * 100, 2), '%')
-    print("Percentage of packets that collided:", round(collisionRate*100, 2))
-    print("Average percentage of nodes reached:", round(nodeReach*100, 2))
-    print("Percentage of received packets containing new message:", round(usefulness*100, 2))
+    print("Delay average (ms):", round(meanDelay, 2))
+    print("Average Tx air utilization:", round(txAirUtilizationRate * 100, 2), "%")
+    print("Percentage of packets that collided:", round(collisionRate * 100, 2))
+    print("Average percentage of nodes reached:", round(nodeReach * 100, 2))
+    print(
+        "Percentage of received packets containing new message:",
+        round(usefulness * 100, 2),
+    )
     print("Number of packets dropped by delay/hop limit:", delayDropped)
 
     if conf.MODEL_ASYMMETRIC_LINKS:
-        noLinkRate = results['noLinkRate']
-        print("No links:", round(noLinkRate * 100, 2), '%')
+        asymmetricLinkRate = results["asymmetricLinkRate"]
+        symmetricLinkRate = results["symmetricLinkRate"]
+        noLinkRate = results["noLinkRate"]
+        print("Asymmetric links:", round(asymmetricLinkRate * 100, 2), "%")
+        print("Symmetric links:", round(symmetricLinkRate * 100, 2), "%")
+        print("No links:", round(noLinkRate * 100, 2), "%")
 
     if conf.MOVEMENT_ENABLED:
-        movingNodes = results['movingNodes']
-        gpsEnabled = results['gpsEnabled']
+        movingNodes = results["movingNodes"]
+        gpsEnabled = results["gpsEnabled"]
         print("Number of moving nodes:", movingNodes)
         print("Number of moving nodes w/ GPS:", gpsEnabled)
 

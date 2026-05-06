@@ -59,6 +59,10 @@ class TestSrtm(unittest.TestCase):
     def test_tiles_for_bbox_excludes_global_edge_tiles(self):
         self.assertEqual(tiles_for_bbox((59.5, 179.5, 60.0, 180.0)), ["N59E179"])
 
+    def test_tiles_for_bbox_maps_zero_span_global_edges_to_existing_tiles(self):
+        self.assertEqual(tiles_for_bbox((60.0, 41.0, 60.0, 41.1)), ["N59E041"])
+        self.assertEqual(tiles_for_bbox((59.9, 180.0, 60.0, 180.0)), ["N59E179"])
+
     def test_tiles_for_bbox_rejects_outside_srtm_latitude_coverage(self):
         with self.assertRaisesRegex(ValueError, "56°S and 60°N"):
             tiles_for_bbox((60.0, 41.0, 60.1, 41.1))
@@ -124,7 +128,10 @@ class TestSrtm(unittest.TestCase):
             source_dir.mkdir()
             raw_hgt = source_dir / "N41E041.hgt"
             write_hgt(raw_hgt, [1, 2, 3, 4])
-            with raw_hgt.open("rb") as src, gzip.open(source_dir / "N41E041.hgt.gz", "wb") as dst:
+            with (
+                raw_hgt.open("rb") as src,
+                gzip.open(source_dir / "N41E041.hgt.gz", "wb") as dst,
+            ):
                 dst.write(src.read())
 
             path = ensure_hgt_tile(
@@ -180,7 +187,9 @@ class TestSrtm(unittest.TestCase):
     def test_ensure_hgt_tile_rejects_unknown_template_placeholder(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             with self.assertRaisesRegex(ValueError, "tile"):
-                ensure_hgt_tile("N41E041", tmpdir, url_template="file:///tmp/{missing}.hgt")
+                ensure_hgt_tile(
+                    "N41E041", tmpdir, url_template="file:///tmp/{missing}.hgt"
+                )
 
     def test_ensure_hgt_tile_does_not_cache_failed_unpack(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -198,6 +207,7 @@ class TestSrtm(unittest.TestCase):
 
             self.assertFalse((cache_dir / "N41E041.hgt").exists())
             self.assertFalse((cache_dir / "N41E041.hgt.tmp").exists())
+
 
 if __name__ == "__main__":
     unittest.main()
