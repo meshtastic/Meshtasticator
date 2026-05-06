@@ -28,12 +28,15 @@ from lib.srtm import (
     SRTM_DATA_ATTRIBUTION_URL,
     clamp_bbox_to_srtm_coverage,
     terrain_grid_from_srtm,
+    tiles_for_bbox,
 )
 from lib.terrain import (
     NODE_Z_REFERENCE_SEA_LEVEL,
     apply_terrain_altitudes,
+    node_antenna_height,
     xy_to_latlon,
 )
+from lib.phy import estimate_path_loss
 
 conf = CONFIG
 logger = logging.getLogger(__name__)
@@ -73,15 +76,15 @@ def set_geo_origin(conf, origin):
     conf.GEO_ORIGIN_LAT, conf.GEO_ORIGIN_LON = origin
 
 
-def bbox_from_node_config(node_config, origin, margin_m=1000.0):
-    """Build a geographic bbox around local x/y nodes when an origin exists."""
+def bbox_from_points(points, origin, margin_m=1000.0):
+    """Build a geographic bbox around local x/y points when an origin exists."""
     if origin is None:
         return None
     origin_lat, origin_lon = origin
-    min_x = min(node.position.x for node in node_config) - margin_m
-    max_x = max(node.position.x for node in node_config) + margin_m
-    min_y = min(node.position.y for node in node_config) - margin_m
-    max_y = max(node.position.y for node in node_config) + margin_m
+    min_x = min(point.x for point in points) - margin_m
+    max_x = max(point.x for point in points) + margin_m
+    min_y = min(point.y for point in points) - margin_m
+    max_y = max(point.y for point in points) + margin_m
     lat_a, lon_a = xy_to_latlon(min_x, min_y, origin_lat, origin_lon)
     lat_b, lon_b = xy_to_latlon(max_x, max_y, origin_lat, origin_lon)
     return clamp_bbox_to_srtm_coverage(
@@ -92,6 +95,51 @@ def bbox_from_node_config(node_config, origin, margin_m=1000.0):
             max(lon_a, lon_b),
         )
     )
+
+
+def bbox_from_node_config(node_config, origin, margin_m=1000.0):
+    """Build a geographic bbox around local x/y nodes when an origin exists."""
+    return bbox_from_points([node.position for node in node_config], origin, margin_m)
+
+
+def nodes_have_flat_link_budget(conf, node_a, node_b):
+    """Return whether two nodes can hear each other before terrain loss."""
+    distance = node_a.position.euclidean_distance(node_b.position)
+    path_loss = estimate_path_loss(
+        conf,
+        distance,
+        conf.FREQ,
+        node_antenna_height(node_a),
+        node_antenna_height(node_b),
+    )
+    sensitivity = conf.current_preset["sensitivity"]
+    antenna_gain_a = getattr(node_a, "antennaGain", getattr(node_a, "antenna_gain", 0))
+    antenna_gain_b = getattr(node_b, "antennaGain", getattr(node_b, "antenna_gain", 0))
+    rssi_ab = conf.PTX + antenna_gain_a - path_loss
+    rssi_ba = conf.PTX + antenna_gain_b - path_loss
+    return rssi_ab >= sensitivity or rssi_ba >= sensitivity
+
+
+def srtm_tiles_for_node_config_links(conf, node_config, origin, margin_m=1000.0):
+    """Return SRTM tiles around nodes and flat-link candidate paths."""
+    if origin is None:
+        return None
+
+    tile_names = set()
+    for node in node_config:
+        bbox = bbox_from_points([node.position], origin, margin_m)
+        tile_names.update(tiles_for_bbox(bbox))
+
+    for index, node_a in enumerate(node_config):
+        for node_b in node_config[index + 1 :]:
+            if not nodes_have_flat_link_budget(conf, node_a, node_b):
+                continue
+            bbox = bbox_from_points(
+                [node_a.position, node_b.position], origin, margin_m
+            )
+            tile_names.update(tiles_for_bbox(bbox))
+
+    return sorted(tile_names)
 
 
 def parse_params(conf, args=None) -> [NodeConfig]:
@@ -302,6 +350,7 @@ def parse_params(conf, args=None) -> [NodeConfig]:
 
     seeded_for_scenario = False
     terrain_bbox = None
+    terrain_tile_names = None
     scenario_origin = None
     terrain_grid = None
     terrain_enabled = parsed_arguments.terrain_srtm
@@ -404,6 +453,9 @@ def parse_params(conf, args=None) -> [NodeConfig]:
     if parsed_arguments.terrain_srtm and terrain_bbox is None:
         try:
             terrain_bbox = bbox_from_node_config(config, scenario_origin)
+            terrain_tile_names = srtm_tiles_for_node_config_links(
+                conf, config, scenario_origin
+            )
         except ValueError as err:
             parser.error(f"could not derive SRTM terrain bbox: {err}")
         if terrain_bbox is None:
@@ -422,6 +474,7 @@ def parse_params(conf, args=None) -> [NodeConfig]:
                 origin_lon,
                 parsed_arguments.terrain_srtm_url_template,
                 download_missing=not parsed_arguments.terrain_srtm_offline,
+                tile_names=terrain_tile_names,
             )
             apply_terrain_altitudes(terrain_grid, config)
             node_z_reference = NODE_Z_REFERENCE_SEA_LEVEL
