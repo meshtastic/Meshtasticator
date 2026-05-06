@@ -8,12 +8,14 @@ from lib.map_input import (
     payload_nodes,
     role_name_for_node,
 )
+from lib.nodedb_input import node_configs_from_nodedb_payload, positioned_nodedb_nodes, role_name_for_nodedb_node
 from lib.node import MESHTASTIC_ROLE
 
 
 class TestMapInput(unittest.TestCase):
     def test_decode_map_coordinate(self):
         self.assertEqual(decode_map_coordinate(416219136), 41.6219136)
+        self.assertEqual(decode_map_coordinate(41.6219136), 41.6219136)
         self.assertIsNone(decode_map_coordinate(None))
 
     def test_decode_map_altitude_keeps_only_positive_finite_values(self):
@@ -200,6 +202,58 @@ class TestMapInput(unittest.TestCase):
             node_configs_from_map_payload(payload, 1000, origin=(91.0, 41.59))
         with self.assertRaises(ValueError):
             node_configs_from_map_payload(payload, 1000, origin=("bad", 41.59))
+
+    def test_nodedb_payload_builds_projected_node_configs(self):
+        payload = {
+            "nodesByNum": {
+                1: {
+                    "num": 1,
+                    "user": {"id": "!00000001", "role": "ROUTER"},
+                    "position": {"latitude": 41.62, "longitude": 41.59, "altitude": 120},
+                },
+                2: {
+                    "num": 2,
+                    "user": {"id": "!00000002", "role": "CLIENT"},
+                    "position": {"latitudeI": 416300000, "longitudeI": 416000000},
+                },
+                3: {
+                    "num": 3,
+                    "user": {"id": "!00000003", "role": "CLIENT"},
+                    "position": {"latitude": 50.0, "longitude": 50.0},
+                },
+            }
+        }
+
+        configs = node_configs_from_nodedb_payload(
+            payload,
+            1000,
+            bbox=(41.0, 41.0, 42.0, 42.0),
+            antenna_height=2.5,
+            hop_limit=5,
+            origin=(41.62, 41.59),
+        )
+
+        self.assertEqual(len(configs), 2)
+        self.assertEqual([config.node_id for config in configs], [0, 1])
+        self.assertEqual(configs[0].role, MESHTASTIC_ROLE.ROUTER)
+        self.assertEqual(configs[0].absolute_altitude, 120)
+        self.assertEqual([config.antenna_height for config in configs], [2.5, 2.5])
+        self.assertEqual([config.hop_limit for config in configs], [5, 5])
+
+    def test_nodedb_payload_skips_unpositioned_nodes(self):
+        payload = [
+            {"num": 1, "position": {"time": 1640206266}},
+            {"num": 2, "position": {"latitude": 41.62, "longitude": 41.59}},
+        ]
+
+        positioned = positioned_nodedb_nodes(payload)
+
+        self.assertEqual(len(positioned), 1)
+        self.assertEqual(positioned[0][1:], (41.62, 41.59))
+
+    def test_nodedb_role_defaults_to_client(self):
+        self.assertEqual(role_name_for_nodedb_node({}), "CLIENT")
+        self.assertEqual(role_name_for_nodedb_node({"user": {"role": "router_client"}}), "ROUTER_CLIENT")
 
 
 if __name__ == "__main__":

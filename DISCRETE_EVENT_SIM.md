@@ -23,19 +23,29 @@ Short deterministic smoke runs can also override the configured duration and mes
 
 ```python3 loraMesh.py 2 --no-gui --simtime-seconds 5 --period-seconds 0.5```
 
-The same headless path can import public Meshtastic map node locations. The map
-endpoint currently returns a broad node list, so pass a local area-of-interest
-bounding box. `--map-bbox` uses the common `min_lat,min_lon,max_lat,max_lon`
-order that most GIS tools call `south,west,north,east`; you can copy those four
-numbers from OpenStreetMap's Export panel, geojson.io's bbox readout, QGIS, or
-any other tool that shows the extent of the map view or selected polygon. Keep
-the box tight enough for the local scenario you want to simulate:
+The same headless path can import positioned real-mesh nodes. `--from-map`
+reads a Meshtastic map `/api/v1/nodes` JSON endpoint; the public default is
+`https://meshtastic.liamcottle.net/api/v1/nodes`, but you can pass another
+compatible endpoint URL. These map endpoints usually return a broad node list,
+so pass a local area-of-interest bounding box. `--map-bbox` uses the common
+`min_lat,min_lon,max_lat,max_lon` order that most GIS tools call
+`south,west,north,east`; you can copy those four numbers from OpenStreetMap's
+Export panel, geojson.io's bbox readout, QGIS, or any other tool that shows the
+extent of the map view or selected polygon. Keep the box tight enough for the
+local scenario you want to simulate:
 
 ```python3 loraMesh.py --from-map https://meshtastic.liamcottle.net/api/v1/nodes --map-bbox 41.50,41.50,41.82,41.86 --map-limit 50 --no-gui```
 
-Map-imported nodes use the same `HM` antenna height and `hopLimit` defaults as
+You can also import positioned nodes from the NodeDB cached by a local
+Meshtastic device. This uses the Python client `interface.nodesByNum` data that
+backs `meshtastic --nodes`, not the pretty-printed table. Use TCP for a network
+device, or omit `--nodedb-host` to use Meshtastic serial auto-detection:
+
+```python3 loraMesh.py --from-nodedb --nodedb-host 192.168.1.23 --map-bbox 41.50,41.50,41.82,41.86 --map-limit 50 --no-gui```
+
+Imported nodes use the same `HM` antenna height and `hopLimit` defaults as
 generated and file-backed scenarios. Change those config values when the
-imported public map does not carry the simulation value you want.
+position source does not carry the simulation value you want.
 
 Terrain obstruction can be added to map or origin-backed scenario inputs without
 creating a custom terrain file. `--terrain-srtm` downloads missing SRTM HGT

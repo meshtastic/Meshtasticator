@@ -1,4 +1,4 @@
-"""Input adapter for public Meshtastic map node locations.
+"""Input adapter for public Meshtastic map and positioned node locations.
 
 The public map is useful as a location source, but it is not a simulator data
 model. This adapter only converts map nodes with valid positions into the same
@@ -24,7 +24,10 @@ def decode_map_coordinate(value):
     """Decode Meshtastic map integer coordinates into decimal degrees."""
     if value is None:
         return None
-    return float(value) / 1e7
+    coordinate = float(value)
+    if abs(coordinate) > 180:
+        coordinate /= 1e7
+    return coordinate
 
 
 def decode_map_altitude(value):
@@ -134,11 +137,9 @@ def filter_positioned_map_nodes(nodes, bbox=None):
     return positioned
 
 
-def node_configs_from_map_payload(
-    payload,
+def node_configs_from_positioned_rows(
+    positioned,
     period,
-    bbox=None,
-    limit=None,
     antenna_height=1.5,
     hop_limit=3,
     tx_power=30,
@@ -146,15 +147,7 @@ def node_configs_from_map_payload(
     origin=None,
     return_origin=False,
 ):
-    """Build NodeConfig objects from a Meshtastic map `/api/v1/nodes` payload."""
-    positioned = filter_positioned_map_nodes(payload_nodes(payload), bbox)
-    if limit is not None:
-        if limit < 1:
-            raise ValueError("map limit must be at least 1")
-        positioned = positioned[:limit]
-    if not positioned:
-        raise ValueError("map payload produced no positioned nodes")
-
+    """Build NodeConfig objects from `(node, lat, lon)` positioned rows."""
     if origin is None:
         origin_lat = statistics.median([lat for _, lat, _ in positioned])
         origin_lon = statistics.median([lon for _, _, lon in positioned])
@@ -192,3 +185,32 @@ def node_configs_from_map_payload(
     if return_origin:
         return configs, origin_tuple
     return configs
+
+
+def node_configs_from_map_payload(
+    payload,
+    period,
+    bbox=None,
+    limit=None,
+    antenna_height=1.5,
+    hop_limit=3,
+    origin=None,
+    return_origin=False,
+):
+    """Build NodeConfig objects from a Meshtastic map `/api/v1/nodes` payload."""
+    positioned = filter_positioned_map_nodes(payload_nodes(payload), bbox)
+    if limit is not None:
+        if limit < 1:
+            raise ValueError("map limit must be at least 1")
+        positioned = positioned[:limit]
+    if not positioned:
+        raise ValueError("map payload produced no positioned nodes")
+
+    return node_configs_from_positioned_rows(
+        positioned,
+        period,
+        antenna_height=antenna_height,
+        hop_limit=hop_limit,
+        origin=origin,
+        return_origin=return_origin,
+    )
