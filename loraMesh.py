@@ -102,6 +102,26 @@ def bbox_from_node_config(node_config, origin, margin_m=1000.0):
     return bbox_from_points([node.position for node in node_config], origin, margin_m)
 
 
+def fit_simulation_bounds_to_node_config(conf, node_config, margin_m=1000.0):
+    """Expand movement/GUI bounds so loaded coordinates are not clamped."""
+    min_x = min(node.position.x for node in node_config) - margin_m
+    max_x = max(node.position.x for node in node_config) + margin_m
+    min_y = min(node.position.y for node in node_config) - margin_m
+    max_y = max(node.position.y for node in node_config) + margin_m
+
+    left = conf.OX - conf.XSIZE / 2
+    right = conf.OX + conf.XSIZE / 2
+    bottom = conf.OY - conf.YSIZE / 2
+    top = conf.OY + conf.YSIZE / 2
+    if left <= min_x and max_x <= right and bottom <= min_y and max_y <= top:
+        return
+
+    conf.OX = (min_x + max_x) / 2
+    conf.OY = (min_y + max_y) / 2
+    conf.XSIZE = max_x - min_x
+    conf.YSIZE = max_y - min_y
+
+
 def nodes_have_flat_link_budget(conf, node_a, node_b):
     """Return whether two nodes can hear each other before terrain loss."""
     distance = node_a.position.euclidean_distance(node_b.position)
@@ -349,6 +369,7 @@ def parse_params(conf, args=None) -> [NodeConfig]:
         parser.error("--nodedb-port requires --nodedb-host")
 
     seeded_for_scenario = False
+    bounds_follow_node_config = False
     terrain_bbox = None
     terrain_tile_names = None
     scenario_origin = None
@@ -369,6 +390,7 @@ def parse_params(conf, args=None) -> [NodeConfig]:
         except (OSError, ValueError, yaml.YAMLError) as err:
             parser.error(f"could not load --from-file YAML: {err}")
         nr_nodes = len(config)
+        bounds_follow_node_config = True
     elif parsed_arguments.from_map is not None:
         if parsed_arguments.map_bbox is None:
             parser.error(
@@ -392,6 +414,7 @@ def parse_params(conf, args=None) -> [NodeConfig]:
         except ValueError as err:
             parser.error(str(err))
         nr_nodes = len(config)
+        bounds_follow_node_config = True
     elif parsed_arguments.from_nodedb:
         try:
             if parsed_arguments.map_bbox is not None:
@@ -414,6 +437,7 @@ def parse_params(conf, args=None) -> [NodeConfig]:
         except ValueError as err:
             parser.error(str(err))
         nr_nodes = len(config)
+        bounds_follow_node_config = True
     elif parsed_arguments.nr_nodes is not None:
         if parsed_arguments.terrain_srtm:
             parser.error(
@@ -450,6 +474,8 @@ def parse_params(conf, args=None) -> [NodeConfig]:
 
     if nr_nodes < 2:
         parser.error(f"Need at least two nodes. You specified {nr_nodes}")
+    if bounds_follow_node_config:
+        fit_simulation_bounds_to_node_config(conf, config)
     if parsed_arguments.terrain_srtm and terrain_bbox is None:
         try:
             terrain_bbox = bbox_from_node_config(config, scenario_origin)

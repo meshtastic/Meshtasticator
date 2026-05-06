@@ -248,6 +248,80 @@ class TestLoraMeshCli(unittest.TestCase):
         self.assertEqual([node.hop_limit for node in nodes], [5, 5])
         self.assertEqual((conf.GEO_ORIGIN_LAT, conf.GEO_ORIGIN_LON), (41.625, 41.595))
 
+    def test_parse_params_expands_bounds_for_wide_map_payload(self):
+        conf = Config()
+        payload = [
+            {
+                "latitude": 416200000,
+                "longitude": 414000000,
+                "role": 2,
+            },
+            {
+                "latitude": 416300000,
+                "longitude": 418500000,
+                "role": 0,
+            },
+        ]
+
+        with mock.patch("loraMesh.fetch_map_payload", return_value=payload):
+            nodes, _ = self.parse_quietly(
+                conf,
+                [
+                    "--from-map",
+                    "https://example.test/nodes",
+                    "--map-bbox",
+                    "41.0,41.0,42.0,42.0",
+                    "--no-gui",
+                ],
+            )
+
+        left = conf.OX - conf.XSIZE / 2
+        right = conf.OX + conf.XSIZE / 2
+        bottom = conf.OY - conf.YSIZE / 2
+        top = conf.OY + conf.YSIZE / 2
+        self.assertGreater(conf.XSIZE, 15000)
+        for node in nodes:
+            self.assertGreaterEqual(node.position.x, left)
+            self.assertLessEqual(node.position.x, right)
+            self.assertGreaterEqual(node.position.y, bottom)
+            self.assertLessEqual(node.position.y, top)
+
+    def test_parse_params_preserves_sufficient_caller_bounds_for_map_payload(self):
+        conf = Config()
+        conf.OX = 1000
+        conf.OY = -2000
+        conf.XSIZE = 100000
+        conf.YSIZE = 100000
+        payload = [
+            {
+                "latitude": 416200000,
+                "longitude": 415900000,
+                "role": 2,
+            },
+            {
+                "latitude": 416300000,
+                "longitude": 416000000,
+                "role": 0,
+            },
+        ]
+
+        with mock.patch("loraMesh.fetch_map_payload", return_value=payload):
+            self.parse_quietly(
+                conf,
+                [
+                    "--from-map",
+                    "https://example.test/nodes",
+                    "--map-bbox",
+                    "41.0,41.0,42.0,42.0",
+                    "--no-gui",
+                ],
+            )
+
+        self.assertEqual(conf.OX, 1000)
+        self.assertEqual(conf.OY, -2000)
+        self.assertEqual(conf.XSIZE, 100000)
+        self.assertEqual(conf.YSIZE, 100000)
+
     def test_parse_params_loads_from_nodedb_payload(self):
         conf = Config()
         conf.HM = 2.5
