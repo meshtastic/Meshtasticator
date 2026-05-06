@@ -117,6 +117,24 @@ class TestSrtm(unittest.TestCase):
         self.assertGreater(len(grid.samples), 0)
         self.assertIsNotNone(grid.elevation_at(0, 0))
 
+    def test_terrain_rows_samples_global_edges_from_existing_tiles(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / "cache"
+            cache_dir.mkdir()
+            write_hgt(cache_dir / "N59E179.hgt", [10, 20, 30, 40])
+
+            rows = list(
+                terrain_rows_from_srtm(
+                    (60.0, 179.9, 60.0, 180.0),
+                    step_meters=20000,
+                    cache_dir=cache_dir,
+                    download_missing=False,
+                )
+            )
+
+        self.assertGreater(len(rows), 0)
+        self.assertIn("180.0000000", {row["lon"] for row in rows})
+
     def test_terrain_rows_rejects_non_finite_step(self):
         with self.assertRaises(ValueError):
             list(terrain_rows_from_srtm((41.0, 41.0, 41.1, 41.1), float("nan"), "/tmp"))
