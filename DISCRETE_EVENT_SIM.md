@@ -39,7 +39,13 @@ local scenario you want to simulate:
 You can also import positioned nodes from the NodeDB cached by a local
 Meshtastic device. This uses the Python client `interface.nodesByNum` data that
 backs `meshtastic --nodes`, not the pretty-printed table. Use TCP for a network
-device, or omit `--nodedb-host` to use Meshtastic serial auto-detection:
+device, or omit `--nodedb-host` to use Meshtastic serial auto-detection. For a
+quick local-device run, pass the device address and cap the imported node count:
+
+```python3 loraMesh.py --from-nodedb --nodedb-host 192.168.1.23 --map-limit 50 --no-gui```
+
+NodeDB often contains old or far-away positions. Add `--map-bbox` when you want
+to restrict the run to one local area:
 
 ```python3 loraMesh.py --from-nodedb --nodedb-host 192.168.1.23 --map-bbox 41.50,41.50,41.82,41.86 --map-limit 50 --no-gui```
 
@@ -47,12 +53,19 @@ Imported nodes use the same `HM` antenna height and `hopLimit` defaults as
 generated and file-backed scenarios. Change those config values when the
 position source does not carry the simulation value you want.
 
-Terrain obstruction can be added to map or origin-backed scenario inputs without
-creating a custom terrain file. `--terrain-srtm` downloads missing SRTM HGT
-tiles from Mapzen Terrain Tiles on AWS into a local cache, samples the scenario
-bounding box, and feeds the terrain grid directly into terrain-aware node
-geometry. When publishing screenshots, reports, or derived datasets from this
-terrain source, attribute the terrain data to
+Terrain obstruction can be added to map, NodeDB, or origin-backed scenario inputs
+without creating a custom terrain file. `--terrain-srtm` downloads missing SRTM
+HGT tiles from Mapzen Terrain Tiles on AWS into a local cache and feeds the
+terrain grid directly into terrain-aware node geometry:
+
+```python3 loraMesh.py --from-nodedb --nodedb-host 192.168.1.23 --map-limit 50 --terrain-srtm --no-gui```
+
+With an explicit `--map-bbox`, SRTM samples that whole requested rectangle. When
+the terrain bbox is derived from imported or file-backed nodes, Meshtasticator
+keeps the download smaller: it loads tiles around the selected nodes and along
+flat-link candidate paths, instead of downloading every tile in a large
+edge-to-edge rectangle. When publishing screenshots, reports, or derived
+datasets from this terrain source, attribute the terrain data to
 [Mapzen Terrain Tiles on AWS](https://registry.opendata.aws/terrain-tiles/),
 SRTM/NASA, and their underlying open elevation sources:
 
