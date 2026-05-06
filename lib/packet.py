@@ -61,6 +61,7 @@ class MeshPacket:
         self.LplAtN = [0 for _ in range(self.conf.NR_NODES)]
         self.terrainLossAtN = [0 for _ in range(self.conf.NR_NODES)]
         self.clutterLossAtN = [0 for _ in range(self.conf.NR_NODES)]
+        self.enclosureLossAtN = [0 for _ in range(self.conf.NR_NODES)]
         self.rssiAtN = [0 for _ in range(self.conf.NR_NODES)]
         self.sensedByN = [False for _ in range(self.conf.NR_NODES)] # nodes which may possibly sense this packet
         self.detectedByN = [False for _ in range(self.conf.NR_NODES)]
@@ -131,6 +132,7 @@ class MeshPacket:
             )
             self.terrainLossAtN[rx_node.nodeid] = budget.terrain_loss_db
             self.clutterLossAtN[rx_node.nodeid] = budget.clutter_loss_db
+            self.enclosureLossAtN[rx_node.nodeid] = budget.enclosure_loss_db
             self.LplAtN[rx_node.nodeid] = budget.calibrated_path_loss_db
             self.rssiAtN[rx_node.nodeid] = budget.rssi_dbm
             self.detectedByN[rx_node.nodeid] = self.rssiAtN[rx_node.nodeid] >= self.conf.current_preset["cad_threshold"]

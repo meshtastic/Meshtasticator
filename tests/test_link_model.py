@@ -7,11 +7,12 @@ from lib.terrain import TerrainGrid
 
 
 class DummyNode:
-    def __init__(self, nodeid, x, y, gain=0.0, z=1.5, antenna_height=1.5):
+    def __init__(self, nodeid, x, y, gain=0.0, z=1.5, antenna_height=1.5, enclosure_loss=0.0):
         self.nodeid = nodeid
         self.position = Point(x, y, z)
         self.antennaGain = gain
         self.antennaHeight = antenna_height
+        self.enclosureLossDb = enclosure_loss
 
 
 class TestLinkModel(unittest.TestCase):
@@ -33,6 +34,19 @@ class TestLinkModel(unittest.TestCase):
 
         self.assertAlmostEqual(offset.path_loss_db - baseline.path_loss_db, 4.0)
         self.assertAlmostEqual(baseline.rssi_dbm - offset.rssi_dbm, 4.0)
+
+    def test_endpoint_enclosure_loss_is_generic_path_loss(self):
+        conf = Config()
+        baseline = calculate_link_budget(conf, DummyNode(1, 0, 0), DummyNode(2, 1000, 0))
+        obstructed = calculate_link_budget(
+            conf,
+            DummyNode(1, 0, 0, enclosure_loss=4.0),
+            DummyNode(2, 1000, 0, enclosure_loss=12.0),
+        )
+
+        self.assertEqual(obstructed.enclosure_loss_db, 12.0)
+        self.assertAlmostEqual(obstructed.path_loss_db - baseline.path_loss_db, 12.0)
+        self.assertAlmostEqual(baseline.rssi_dbm - obstructed.rssi_dbm, 12.0)
 
     def test_absolute_node_altitude_is_not_used_as_antenna_height(self):
         conf = Config()
@@ -77,7 +91,10 @@ class TestLinkModel(unittest.TestCase):
         budget = calculate_link_budget(conf, DummyNode(1, 0, 0), DummyNode(2, 1000, 0))
 
         self.assertGreater(budget.terrain_loss_db, 0)
-        self.assertAlmostEqual(budget.path_loss_db, budget.base_path_loss_db + budget.terrain_loss_db)
+        self.assertAlmostEqual(
+            budget.path_loss_db,
+            budget.base_path_loss_db + budget.terrain_loss_db,
+        )
 
 
 if __name__ == "__main__":

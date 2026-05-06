@@ -73,6 +73,18 @@ class TestDynamicCodingRate(unittest.TestCase):
 
         self.assertEqual(decision.cr, CR_NORMAL)
 
+    def test_firmware10359_strategy_matches_current_pr_retries(self):
+        node = FakeNode(util=12.0)
+        node.conf.DCR_STRATEGY = "firmware10359"
+
+        first = choose_dynamic_coding_rate(node, FakePacket(cr=5, retransmissions=3))
+        retry_one = choose_dynamic_coding_rate(node, FakePacket(cr=5, retransmissions=2))
+        retry_two = choose_dynamic_coding_rate(node, FakePacket(cr=5, retransmissions=1))
+
+        self.assertEqual(first.cr, CR_SLIM)
+        self.assertEqual(retry_one.cr, CR_NORMAL)
+        self.assertEqual(retry_two.cr, CR_RESCUE)
+
     def test_busy_user_packet_can_use_compact_cr(self):
         node = FakeNode(util=12.0)
 

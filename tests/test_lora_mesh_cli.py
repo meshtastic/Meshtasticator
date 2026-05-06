@@ -107,7 +107,29 @@ class TestLoraMeshCli(unittest.TestCase):
         )
 
         self.assertTrue(conf.DCR_ENABLED)
+        self.assertEqual(conf.DCR_STRATEGY, "context")
         self.assertIn("Dynamic Coding Rate: enabled", output)
+
+    def test_parse_params_selects_dcr_strategy(self):
+        conf = Config()
+
+        self.parse_quietly(
+            conf,
+            [
+                "2",
+                "--no-gui",
+                "--simtime-seconds",
+                "1",
+                "--period-seconds",
+                "0.5",
+                "--dcr",
+                "--dcr-strategy",
+                "firmware10359",
+            ],
+        )
+
+        self.assertTrue(conf.DCR_ENABLED)
+        self.assertEqual(conf.DCR_STRATEGY, "firmware10359")
 
     def test_parse_params_enables_dtp_with_limits(self):
         conf = Config()

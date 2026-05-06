@@ -64,7 +64,7 @@ class MeshNodeStats:
 class NodeConfig:
     """Specific configuration for a node
     """
-    def __init__(self, node_id: int, position: Point, period: int, tx_power: int = 30, freq: float = 902e6, role: MESHTASTIC_ROLE = MESHTASTIC_ROLE.CLIENT, antenna_gain: float = 0, hop_limit: int = 3, neighbor_info: bool = False, antenna_height=None, absolute_altitude=None, tx_power_dbm=None):
+    def __init__(self, node_id: int, position: Point, period: int, tx_power: int = 30, freq: float = 902e6, role: MESHTASTIC_ROLE = MESHTASTIC_ROLE.CLIENT, antenna_gain: float = 0, hop_limit: int = 3, neighbor_info: bool = False, antenna_height=None, absolute_altitude=None, tx_power_dbm=None, enclosure_loss_db=0.0):
         """Initial configuration of a node
 
         Arguments:
@@ -80,6 +80,7 @@ class NodeConfig:
         antenna_height -- antenna height above local ground. Default: position.z
         absolute_altitude -- optional map-reported absolute altitude in meters
         tx_power_dbm -- optional per-node TX power override.
+        enclosure_loss_db -- per-node enclosure/environment attenuation.
         """
         self.node_id = node_id
         self.position = position.copy() # make sure we keep our own point
@@ -95,10 +96,10 @@ class NodeConfig:
         self.neighbor_info = neighbor_info
         self.antenna_height = position.z if antenna_height is None else antenna_height
         self.absolute_altitude = absolute_altitude
-        self.tx_power_dbm = tx_power_dbm
+        self.enclosure_loss_db = float(enclosure_loss_db)
 
     @classmethod
-    def from_gen_scenario_output(cls, node_id: int, node_dict: {}, period: int, tx_power: int, freq: float):
+    def from_gen_scenario_output(cls, node_id: int, node_dict: {}, period: int, tx_power: int = 30, freq: float = 902e6, use_node_periods: bool = False):
         """create NodeConfig from a node dict as returned from gen_scenario.
         You probably want to iterate over the keys that function gives you
         and pass individual values indexed by them to this method.
@@ -135,7 +136,9 @@ class NodeConfig:
         antenna_height = nd.get("antennaHeight", nd["z"])
         absolute_altitude = nd.get("absoluteAltitude")
         tx_power_dbm = nd.get("txPowerDbm", nd.get("ptx"))
-        return NodeConfig(node_id, position, period, tx_power, freq, role, nd['antennaGain'], nd['hopLimit'], nd['neighborInfo'], antenna_height, absolute_altitude, tx_power_dbm)
+        node_period = nd.get("periodMs", period) if use_node_periods else period
+        enclosure_loss_db = nd.get("enclosureLossDb", nd.get("environmentalAttenuationDb", 0.0))
+        return NodeConfig(node_id, position, node_period, tx_power, freq, role, nd['antennaGain'], nd['hopLimit'], nd['neighborInfo'], antenna_height, absolute_altitude, tx_power_dbm, enclosure_loss_db)
 
     def compute_rssi_and_pathloss_to(self, rx_nodeconf, conf: Config) -> (float, float):
         """Compute RSSI and pathloss from this node config as the transmitting node
@@ -156,7 +159,7 @@ class NodeConfig:
         return budget.rssi_dbm, budget.calibrated_path_loss_db
 
 
-def node_configs_from_yaml(raw_config, period: int, tx_power: int = 30, freq: float = 902e6) -> list[NodeConfig]:
+def node_configs_from_yaml(raw_config, period: int, tx_power: int = 30, freq: float = 902e6, use_node_periods: bool = False) -> list[NodeConfig]:
     """Convert saved node YAML into NodeConfig objects.
 
     The GUI writes a plain `{node_id: node_fields}` map. Real-mesh scenario
@@ -174,7 +177,7 @@ def node_configs_from_yaml(raw_config, period: int, tx_power: int = 30, freq: fl
 
     configs = []
     for sim_node_id, node_dict in enumerate(node_map.values()):
-        configs.append(NodeConfig.from_gen_scenario_output(sim_node_id, node_dict, period, tx_power, freq))
+        configs.append(NodeConfig.from_gen_scenario_output(sim_node_id, node_dict, period, tx_power, freq, use_node_periods))
     return configs
 
 
@@ -257,6 +260,7 @@ class MeshNode:
         self.antennaHeight = self.node_conf.antenna_height
         self.absolute_altitude = self.node_conf.absolute_altitude
         self.txPower = self.node_conf.tx_power
+        self.enclosureLossDb = self.node_conf.enclosure_loss_db
         self.period = self.node_conf.period
 
         # using this more like a struct than a proper object.

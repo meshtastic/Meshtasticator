@@ -50,6 +50,7 @@ class Config:
         # When enabled, the node chooses CR 4/5..4/8 per packet immediately
         # before TX, after queueing and listen-before-talk have settled.
         self.DCR_ENABLED = False
+        self.DCR_STRATEGY = "context"
         self.DCR_MIN_CR = 5
         self.DCR_MAX_CR = 8
         self.DCR_USER_MIN_CR = 5

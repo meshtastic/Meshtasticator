@@ -26,8 +26,10 @@ import loraMesh  # noqa: E402
 
 POLICY_FLAGS = {
     "static": ("static CR with packet loss/capture physics", []),
+    "firmware10359": ("Firmware PR #10359 CR escalation", ["--dcr", "--dcr-strategy", "firmware10359"]),
     "dcr": ("Dynamic Coding Rate", ["--dcr"]),
     "dtp": ("Dynamic TX Power", ["--dtp"]),
+    "dcr_dtp": ("Dynamic Coding Rate + Dynamic TX Power", ["--dcr", "--dtp"]),
 }
 
 
@@ -86,8 +88,8 @@ def parse_args(argv=None):
     parser.add_argument(
         "--policies",
         type=parse_policy_names,
-        default=parse_policy_names("static"),
-        help="Comma-separated policies: static,dcr,dtp",
+        default=parse_policy_names("static,dcr,dcr_dtp"),
+        help="Comma-separated policies: static,firmware10359,dcr,dcr_dtp",
     )
     parser.add_argument(
         "--show-raw-output",

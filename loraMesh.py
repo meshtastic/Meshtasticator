@@ -414,6 +414,11 @@ def parse_params(conf, args=None) -> [NodeConfig]:
         choices=available_presets(),
         help="Load a packaged real-mesh scenario preset.",
     )
+    parser.add_argument(
+        "--use-node-periods",
+        action="store_true",
+        help="Respect per-node periodMs values from YAML/preset inputs instead of the scenario-wide period",
+    )
 
     # the earlier behavior of specifying `router_type` as an optional positional arg with `nr_nodes` is difficult to exactly
     # replicate with argparse, especially since nesting groups was an unintended feature and deprecated.
@@ -426,6 +431,12 @@ def parse_params(conf, args=None) -> [NodeConfig]:
     )
     parser.add_argument(
         "--dcr", action="store_true", help="Enable the Dynamic Coding Rate experiment"
+    )
+    parser.add_argument(
+        "--dcr-strategy",
+        choices=["context", "firmware10359"],
+        default="context",
+        help="DCR policy variant to run when --dcr is enabled",
     )
     parser.add_argument(
         "--dtp", action="store_true", help="Enable the Dynamic TX Power experiment"
@@ -704,7 +715,7 @@ def parse_params(conf, args=None) -> [NodeConfig]:
                 os.path.join("out", parsed_arguments.from_file), "r", encoding="utf-8"
             ) as file:
                 raw_config = yaml.safe_load(file)
-            config = node_configs_from_yaml(raw_config, period, conf.PTX, conf.FREQ)
+            config = node_configs_from_yaml(raw_config, period, conf.PTX, conf.FREQ, parsed_arguments.use_node_periods)
             scenario_origin = origin_from_yaml(raw_config)
             terrain_bbox = srtm_terrain_bbox_or_none(parsed_arguments, terrain_bbox)
         except (OSError, ValueError, yaml.YAMLError) as err:
@@ -713,7 +724,7 @@ def parse_params(conf, args=None) -> [NodeConfig]:
         bounds_follow_node_config = True
     elif parsed_arguments.preset is not None:
         selected_preset = parsed_arguments.preset
-        config = load_preset_node_configs(parsed_arguments.preset, period)
+        config = load_preset_node_configs(parsed_arguments.preset, period, parsed_arguments.use_node_periods)
         scenario_origin = preset_origin(parsed_arguments.preset)
         # Packaged scenarios can carry terrain/clutter grids matched to the
         # node geometry. Use them by default, while still letting explicit CLI
@@ -806,7 +817,10 @@ def parse_params(conf, args=None) -> [NodeConfig]:
 
         reset_simulation_bounds_to_cli_defaults(conf, cli_defaults)
         config_dict = gen_scenario(conf)
-        config = [NodeConfig.from_gen_scenario_output(node_id, cfg, period, conf.PTX, conf.FREQ) for node_id, cfg in config_dict.items()]
+        config = [
+            NodeConfig.from_gen_scenario_output(node_id, cfg, period, conf.PTX, conf.FREQ, parsed_arguments.use_node_periods)
+            for node_id, cfg in config_dict.items()
+        ]
         nr_nodes = len(config)
 
     if nr_nodes < 2:
@@ -872,6 +886,7 @@ def parse_params(conf, args=None) -> [NodeConfig]:
     conf.NR_NODES = nr_nodes
     conf.ENABLE_CONNECTIVITY_MAP = connectivity_map_enabled
     conf.DCR_ENABLED = parsed_arguments.dcr
+    conf.DCR_STRATEGY = parsed_arguments.dcr_strategy
     conf.DTP_ENABLED = parsed_arguments.dtp
     conf.DTP_MAX_POWER_DROP_DB = (
         parsed_arguments.dtp_max_drop_db

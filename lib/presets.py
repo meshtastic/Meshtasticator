@@ -25,6 +25,14 @@ PRESETS = {
         "terrain": PRESET_ROOT / "batumi_terrain.csv",
         "clutter": PRESET_ROOT / "batumi_clutter.csv",
     },
+    "burning_man": {
+        # Deterministic Black Rock City-style event mesh. Geometry is generated
+        # from tools/generate_burning_man_preset.py and consumed by the normal
+        # loraMesh path; the only radio special cases are generic clutter and
+        # per-node enclosure-loss inputs.
+        "nodes": PRESET_ROOT / "burning_man.yaml",
+        "clutter": PRESET_ROOT / "burning_man_clutter.csv",
+    },
 }
 
 RADIO_CALIBRATION_FIELDS = (
@@ -56,8 +64,12 @@ def load_preset_raw(name):
         return yaml.safe_load(fh)
 
 
-def load_preset_node_configs(name, period):
-    return node_configs_from_yaml(load_preset_raw(name), period)
+def load_preset_node_configs(name, period, use_node_periods=False):
+    return node_configs_from_yaml(
+        load_preset_raw(name),
+        period,
+        use_node_periods=use_node_periods,
+    )
 
 
 def preset_radio_calibration(name):
@@ -94,6 +106,8 @@ def apply_preset_radio_calibration(conf, name):
     records only; runtime calibration is never keyed by a specific node pair.
     """
     calibration = preset_radio_calibration(name)
+    raw = load_preset_raw(name)
+    environment = raw.get("radio_environment", {}) if isinstance(raw, dict) else {}
 
     fields = {
         "noise_level": "NOISE_LEVEL",
@@ -118,6 +132,19 @@ def apply_preset_radio_calibration(conf, name):
         conf.LINK_CALIBRATION_SNR_MIN_DB = float(link_model["snr_min_db"])
     if "snr_max_db" in link_model:
         conf.LINK_CALIBRATION_SNR_MAX_DB = float(link_model["snr_max_db"])
+
+    environment_fields = {
+        "clutter_urban_loss_db_per_km": "CLUTTER_URBAN_LOSS_DB_PER_KM",
+        "clutter_suburban_loss_db_per_km": "CLUTTER_SUBURBAN_LOSS_DB_PER_KM",
+        "clutter_forest_loss_db_per_km": "CLUTTER_FOREST_LOSS_DB_PER_KM",
+        "clutter_open_loss_db_per_km": "CLUTTER_OPEN_LOSS_DB_PER_KM",
+        "clutter_water_loss_db_per_km": "CLUTTER_WATER_LOSS_DB_PER_KM",
+        "clutter_urban_endpoint_loss_db": "CLUTTER_URBAN_ENDPOINT_LOSS_DB",
+        "clutter_max_loss_db": "CLUTTER_MAX_LOSS_DB",
+    }
+    for source_name, config_name in environment_fields.items():
+        if source_name in environment:
+            setattr(conf, config_name, float(environment[source_name]))
 
 
 def preset_origin(name):

@@ -162,6 +162,18 @@ def choose_dynamic_coding_rate(node, packet) -> DcrDecision:
     if not node.conf.DCR_ENABLED:
         return DcrDecision(packet.cr, "dcr_off")
 
+    if node.conf.DCR_STRATEGY == "firmware10359":
+        attempt = max(0, node.conf.maxRetransmission - packet.retransmissions)
+        if attempt <= 0:
+            return DcrDecision(packet.cr, "firmware10359_first_attempt")
+        if attempt >= 2:
+            return DcrDecision(_clamp_cr(CR_RESCUE, node.conf.DCR_MIN_CR, node.conf.DCR_MAX_CR), f"firmware10359_retry_{attempt}_cr8")
+        cr = _clamp_cr(packet.cr + 1, node.conf.DCR_MIN_CR, node.conf.DCR_MAX_CR)
+        return DcrDecision(cr, f"firmware10359_retry_{attempt}_base_plus_1")
+
+    if node.conf.DCR_STRATEGY != "context":
+        raise ValueError(f"unknown DCR strategy: {node.conf.DCR_STRATEGY}")
+
     score, reasons = _base_packet_score(packet)
     pressure, util, queue_depth = classify_channel_pressure(node)
 

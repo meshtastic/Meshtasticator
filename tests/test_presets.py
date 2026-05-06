@@ -6,6 +6,7 @@ import yaml
 from lib.config import Config
 from lib.presets import (
     PRESET_ROOT,
+    available_presets,
     apply_preset_radio_calibration,
     load_preset_node_configs,
     preset_calibration_observations,
@@ -36,6 +37,10 @@ class TestPresets(unittest.TestCase):
         self.assertTrue(preset_clutter_grid("batumi").exists())
         self.assertEqual(preset_origin("batumi"), (41.6442879, 41.61536))
 
+    def test_available_presets_include_burning_man(self):
+        self.assertIn("batumi", available_presets())
+        self.assertIn("burning_man", available_presets())
+
     def test_batumi_preset_applies_radio_calibration(self):
         conf = Config()
 
@@ -51,6 +56,23 @@ class TestPresets(unittest.TestCase):
         self.assertEqual(conf.LINK_CALIBRATION_SNR_MAX_DB, 8.25)
         self.assertIn("raw_snr_clip", conf.LINK_CALIBRATION_COEFFICIENTS)
         self.assertEqual(len(preset_calibration_observations("batumi")), 296)
+
+    def test_burning_man_preset_loads_generic_radio_inputs(self):
+        conf = Config()
+        configs = load_preset_node_configs("burning_man", 1000)
+
+        apply_preset_radio_calibration(conf, "burning_man")
+
+        realistic_configs = load_preset_node_configs("burning_man", 1000, use_node_periods=True)
+
+        self.assertEqual(len(configs), 123)
+        self.assertTrue(preset_clutter_grid("burning_man").exists())
+        self.assertEqual(preset_origin("burning_man"), (40.7867, -119.2044))
+        self.assertEqual(sum(1 for config in configs if config.role.name == "ROUTER"), 3)
+        self.assertEqual(conf.CLUTTER_SUBURBAN_LOSS_DB_PER_KM, 7.0)
+        self.assertTrue(any(config.enclosure_loss_db > 0 for config in configs))
+        self.assertTrue(all(config.period == 1000 for config in configs))
+        self.assertTrue(any(config.period != 1000 for config in realistic_configs))
 
     def test_batumi_preset_nodes_are_inside_batumi_georgia_area(self):
         raw = yaml.safe_load((PRESET_ROOT / "batumi.yaml").read_text(encoding="utf-8"))

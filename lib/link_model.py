@@ -22,6 +22,7 @@ class LinkBudget:
     base_path_loss_db: float
     terrain_loss_db: float
     clutter_loss_db: float
+    enclosure_loss_db: float
     offset_db: float
     raw_rssi_dbm: float
     rssi_dbm: float
@@ -30,7 +31,13 @@ class LinkBudget:
 
     @property
     def path_loss_db(self):
-        return self.base_path_loss_db + self.terrain_loss_db + self.clutter_loss_db + self.offset_db
+        return (
+            self.base_path_loss_db
+            + self.terrain_loss_db
+            + self.clutter_loss_db
+            + self.enclosure_loss_db
+            + self.offset_db
+        )
 
     @property
     def calibrated_path_loss_db(self):
@@ -45,6 +52,11 @@ def _antenna_gain(node):
 def _antenna_height(node):
     """Accept runtime and config antenna height above local ground."""
     return getattr(node, "antennaHeight", getattr(node, "antenna_height", node.position.z))
+
+
+def _enclosure_loss(node):
+    """Per-endpoint penetration loss for tents, RVs, vehicles, or containers."""
+    return float(getattr(node, "enclosureLossDb", getattr(node, "enclosure_loss_db", 0.0)))
 
 
 def _link_calibration_features(conf, tx_point, rx_point, raw_snr, terrain_loss, clutter_loss):
@@ -93,8 +105,9 @@ def calculate_link_budget(conf, tx_node, rx_node, offset_db=0.0, tx_power_dbm=No
     base_loss = estimate_path_loss(conf, distance_m, conf.FREQ, _antenna_height(tx_node), _antenna_height(rx_node))
     terrain_loss = terrain_obstruction_loss(conf, tx_point, rx_point, conf.FREQ)
     clutter_loss = clutter_obstruction_loss(conf, tx_point, rx_point)
+    enclosure_loss = max(_enclosure_loss(tx_node), _enclosure_loss(rx_node))
 
-    raw_path_loss = base_loss + terrain_loss + clutter_loss + offset_db
+    raw_path_loss = base_loss + terrain_loss + clutter_loss + enclosure_loss + offset_db
 
     # Keep packet delivery and link-summary statistics on the same budget. The
     # TX endpoint contributes radiated antenna gain, while the RX endpoint
@@ -111,6 +124,7 @@ def calculate_link_budget(conf, tx_node, rx_node, offset_db=0.0, tx_power_dbm=No
         base_path_loss_db=base_loss,
         terrain_loss_db=terrain_loss,
         clutter_loss_db=clutter_loss,
+        enclosure_loss_db=enclosure_loss,
         offset_db=offset_db,
         raw_rssi_dbm=raw_rssi,
         rssi_dbm=rssi,
