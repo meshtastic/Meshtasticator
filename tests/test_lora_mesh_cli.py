@@ -13,6 +13,8 @@ from pathlib import Path
 from unittest import mock
 
 from lib.config import Config
+from lib.node import NodeConfig
+from lib.point import Point
 from lib.srtm import SRTM_DATA_ATTRIBUTION_URL
 from lib.terrain import NODE_Z_REFERENCE_GROUND, NODE_Z_REFERENCE_SEA_LEVEL
 
@@ -470,6 +472,21 @@ class TestLoraMeshCli(unittest.TestCase):
         self.assertEqual([node.node_id for node in nodes], [0, 1])
         self.assertIsNone(conf.GEO_ORIGIN_LAT)
         self.assertIsNone(conf.GEO_ORIGIN_LON)
+
+    def test_auto_srtm_tile_selection_skips_unreachable_link_corridors(self):
+        conf = Config()
+        nodes = [
+            NodeConfig(0, Point(0, 0, conf.HM), conf.PERIOD),
+            NodeConfig(1, Point(300000, 0, conf.HM), conf.PERIOD),
+        ]
+
+        tiles = loraMesh.srtm_tiles_for_node_config_links(
+            conf, nodes, (0.0, 0.0), margin_m=1.0
+        )
+
+        self.assertIn("N00E000", tiles)
+        self.assertIn("N00E002", tiles)
+        self.assertNotIn("N00E001", tiles)
 
     def test_parse_params_rejects_one_node_before_changing_geo_origin(self):
         conf = Config()

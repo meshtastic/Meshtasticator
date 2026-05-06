@@ -135,6 +135,26 @@ class TestSrtm(unittest.TestCase):
         self.assertGreater(len(rows), 0)
         self.assertIn("180.0000000", {row["lon"] for row in rows})
 
+    def test_terrain_rows_can_limit_requested_tiles(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / "cache"
+            cache_dir.mkdir()
+            write_hgt(cache_dir / "N41E041.hgt", [10, 20, 30, 40])
+
+            rows = list(
+                terrain_rows_from_srtm(
+                    (41.0, 41.0, 43.1, 43.1),
+                    step_meters=20000,
+                    cache_dir=cache_dir,
+                    download_missing=False,
+                    tile_names=["N41E041"],
+                )
+            )
+
+        self.assertGreater(len(rows), 0)
+        self.assertEqual({row["lat"][:2] for row in rows}, {"41"})
+        self.assertEqual({row["lon"][:2] for row in rows}, {"41"})
+
     def test_terrain_rows_rejects_non_finite_step(self):
         with self.assertRaises(ValueError):
             list(terrain_rows_from_srtm((41.0, 41.0, 41.1, 41.1), float("nan"), "/tmp"))

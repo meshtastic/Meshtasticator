@@ -74,6 +74,12 @@ def _parse_tile_name(tile_name):
     return (-lat if tile_name[0] == "S" else lat, -lon if tile_name[3] == "W" else lon)
 
 
+def tile_bbox(tile_name):
+    """Return the geographic bbox covered by one SRTM tile."""
+    south, west = _parse_tile_name(tile_name)
+    return south, west, south + 1.0, west + 1.0
+
+
 def tiles_for_bbox(bbox):
     """Return sorted SRTM tile names covering a geographic bounding box."""
     min_lat, min_lon, max_lat, max_lon = bbox
@@ -274,6 +280,7 @@ def terrain_rows_from_srtm(
     cache_dir,
     url_template=DEFAULT_SRTM_URL_TEMPLATE,
     download_missing=True,
+    tile_names=None,
 ):
     """Yield lat/lon/elevation rows sampled from SRTM tiles over `bbox`."""
     if not math.isfinite(step_meters) or step_meters <= 0:
@@ -284,13 +291,51 @@ def terrain_rows_from_srtm(
     lat_step = step_meters / 111320.0
     lon_step = step_meters / (111320.0 * max(math.cos(math.radians(mid_lat)), 0.01))
 
+    requested_tile_names = sorted(set(tile_names or tiles_for_bbox(bbox)))
     tiles = {}
-    for tile_name in tiles_for_bbox(bbox):
+    for tile_name in requested_tile_names:
         path = ensure_hgt_tile(tile_name, cache_dir, url_template, download_missing)
         tiles[tile_name] = SrtmTile.from_hgt(path, tile_name)
 
-    for lat in _coordinate_values(min_lat, max_lat, lat_step):
-        for lon in _coordinate_values(min_lon, max_lon, lon_step):
+    emitted = set()
+    for tile_name, tile in tiles.items():
+        tile_min_lat, tile_min_lon, tile_max_lat, tile_max_lon = tile_bbox(tile_name)
+        sample_min_lat = max(min_lat, tile_min_lat)
+        sample_min_lon = max(min_lon, tile_min_lon)
+        sample_max_lat = min(max_lat, tile_max_lat)
+        sample_max_lon = min(max_lon, tile_max_lon)
+        if sample_min_lat > sample_max_lat or sample_min_lon > sample_max_lon:
+            continue
+
+        for lat in _coordinate_values(sample_min_lat, sample_max_lat, lat_step):
+            for lon in _coordinate_values(sample_min_lon, sample_max_lon, lon_step):
+                sample_key = (round(lat, 7), round(lon, 7))
+                if sample_key in emitted:
+                    continue
+                emitted.add(sample_key)
+
+                sample_tile = tiles.get(_sample_tile_name(lat, lon))
+                if sample_tile is None:
+                    continue
+                elevation = sample_tile.elevation_at(lat, lon)
+                if elevation is None:
+                    continue
+                yield {
+                    "lat": f"{lat:.7f}",
+                    "lon": f"{lon:.7f}",
+                    "elevation_m": f"{elevation:.1f}",
+                }
+
+        for lat, lon in (
+            (sample_min_lat, sample_min_lon),
+            (sample_min_lat, sample_max_lon),
+            (sample_max_lat, sample_min_lon),
+            (sample_max_lat, sample_max_lon),
+        ):
+            sample_key = (round(lat, 7), round(lon, 7))
+            if sample_key in emitted:
+                continue
+            emitted.add(sample_key)
             tile = tiles.get(_sample_tile_name(lat, lon))
             if tile is None:
                 continue
@@ -312,11 +357,12 @@ def terrain_grid_from_srtm(
     origin_lon,
     url_template=DEFAULT_SRTM_URL_TEMPLATE,
     download_missing=True,
+    tile_names=None,
 ):
     """Build an in-memory TerrainGrid from SRTM tiles without writing CSV."""
     samples = []
     for row in terrain_rows_from_srtm(
-        bbox, step_meters, cache_dir, url_template, download_missing
+        bbox, step_meters, cache_dir, url_template, download_missing, tile_names
     ):
         lat = float(row["lat"])
         lon = float(row["lon"])
