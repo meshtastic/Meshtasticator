@@ -232,6 +232,52 @@ class TestLoraMeshCli(unittest.TestCase):
         self.assertEqual([node.hop_limit for node in nodes], [5, 5])
         self.assertEqual((conf.GEO_ORIGIN_LAT, conf.GEO_ORIGIN_LON), (41.625, 41.595))
 
+    def test_parse_params_loads_from_nodedb_payload(self):
+        conf = Config()
+        conf.HM = 2.5
+        conf.hopLimit = 5
+        payload = {
+            "nodesByNum": {
+                1: {
+                    "num": 1,
+                    "user": {"id": "!00000001", "role": "ROUTER"},
+                    "position": {"latitude": 41.62, "longitude": 41.59, "altitude": 120},
+                },
+                2: {
+                    "num": 2,
+                    "user": {"id": "!00000002", "role": "CLIENT"},
+                    "position": {"latitudeI": 416300000, "longitudeI": 416000000},
+                },
+            }
+        }
+
+        with mock.patch("loraMesh.fetch_nodedb_payload", return_value=payload) as fetch_nodedb:
+            nodes, _ = self.parse_quietly(
+                conf,
+                [
+                    "--from-nodedb",
+                    "--nodedb-host",
+                    "192.0.2.10",
+                    "--map-bbox",
+                    "41.0,41.0,42.0,42.0",
+                    "--no-gui",
+                ],
+            )
+
+        fetch_nodedb.assert_called_once_with(host="192.0.2.10", port=None, serial_port=None)
+        self.assertEqual(len(nodes), 2)
+        self.assertEqual([node.position.z for node in nodes], [2.5, 2.5])
+        self.assertEqual([node.antenna_height for node in nodes], [2.5, 2.5])
+        self.assertEqual([node.hop_limit for node in nodes], [5, 5])
+        self.assertEqual((conf.GEO_ORIGIN_LAT, conf.GEO_ORIGIN_LON), (41.625, 41.595))
+
+    def test_parse_params_rejects_nodedb_transport_without_nodedb_source(self):
+        conf = Config()
+
+        error = self.assert_parser_rejects(conf, ["2", "--nodedb-host", "192.0.2.10"])
+
+        self.assertIn("--nodedb-* options require --from-nodedb", error)
+
     def test_parse_params_can_build_srtm_terrain_for_map_payload(self):
         conf = Config()
         payload = [

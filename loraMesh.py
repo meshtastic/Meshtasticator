@@ -10,6 +10,7 @@ import yaml
 
 from lib.config import CONFIG
 from lib.map_input import DEFAULT_MAP_NODES_URL, fetch_map_payload, node_configs_from_map_payload, parse_bbox
+from lib.nodedb_input import fetch_nodedb_payload, node_configs_from_nodedb_payload
 from lib.node import NodeConfig, default_generate_node_list, node_configs_from_yaml, origin_from_yaml
 from lib.srtm import (
     DEFAULT_SRTM_URL_TEMPLATE,
@@ -100,6 +101,7 @@ def parse_params(conf, args=None) -> [NodeConfig]:
     group.add_argument('nr_nodes', nargs='?', type=int, help='Number of nodes to generate. If unspecified, do interactive simulation')
     group.add_argument('--from-file', nargs='?', const='nodeConfig.yaml', type=str, metavar='filename', help='Name of yaml file storing node config under "out/" directory. If unspecified, defaults to "nodeConfig.yaml".')
     group.add_argument('--from-map', nargs='?', const=DEFAULT_MAP_NODES_URL, type=str, metavar='url', help='Fetch node locations from a Meshtastic map /api/v1/nodes endpoint.')
+    group.add_argument('--from-nodedb', action='store_true', help='Fetch positioned nodes from a local Meshtastic device NodeDB.')
 
     # the earlier behavior of specifying `router_type` as an optional positional arg with `nr_nodes` is difficult to exactly
     # replicate with argparse, especially since nesting groups was an unintended feature and deprecated.
@@ -115,8 +117,11 @@ def parse_params(conf, args=None) -> [NodeConfig]:
     parser.add_argument('--terrain-srtm-url-template', default=DEFAULT_SRTM_URL_TEMPLATE, help='SRTM download URL template with {lat_band} and {tile}')
     parser.add_argument('--terrain-srtm-offline', action='store_true', help='use cached SRTM tiles only')
     parser.add_argument('--terrain-profile-samples', type=int, help='number of terrain samples along each TX/RX path')
-    parser.add_argument('--map-bbox', type=str, help='Map import bounding box as min_lat,min_lon,max_lat,max_lon')
-    parser.add_argument('--map-limit', type=int, help='Maximum number of positioned map nodes to import after bbox filtering')
+    parser.add_argument('--map-bbox', type=str, help='Position import bounding box as min_lat,min_lon,max_lat,max_lon')
+    parser.add_argument('--map-limit', type=int, help='Maximum number of positioned imported nodes after bbox filtering')
+    parser.add_argument('--nodedb-host', type=str, help='Hostname or IP of a Meshtastic TCP device for --from-nodedb')
+    parser.add_argument('--nodedb-port', type=int, help='TCP port of a Meshtastic TCP device for --from-nodedb')
+    parser.add_argument('--nodedb-serial-port', type=str, help='Serial device path for --from-nodedb; defaults to Meshtastic auto-detection')
     parser.add_argument('--simtime-seconds', type=float, help='Override simulation duration in seconds')
     parser.add_argument('--period-seconds', type=float, help='Override mean message-generation period in seconds')
     parser.add_argument('--no-gui', action='store_true', help='Run without Tk/Matplotlib graphing or schedule plotting')
@@ -168,8 +173,15 @@ def parse_params(conf, args=None) -> [NodeConfig]:
     if (
         parsed_arguments.from_file is not None
         or parsed_arguments.from_map is not None
+        or parsed_arguments.from_nodedb
     ) and parsed_arguments.router_type is not None:
-        parser.error("Incompatible argument selection. --from-file/--from-map and --router-type can not be used together")
+        parser.error("Incompatible argument selection. --from-file/--from-map/--from-nodedb and --router-type can not be used together")
+    if not parsed_arguments.from_nodedb and (
+        parsed_arguments.nodedb_host is not None
+        or parsed_arguments.nodedb_port is not None
+        or parsed_arguments.nodedb_serial_port is not None
+    ):
+        parser.error("--nodedb-* options require --from-nodedb")
 
     seeded_for_scenario = False
     terrain_bbox = None
@@ -207,6 +219,28 @@ def parse_params(conf, args=None) -> [NodeConfig]:
                 return_origin=True,
             )
             scenario_origin = map_origin
+        except ValueError as err:
+            parser.error(str(err))
+        nr_nodes = len(config)
+    elif parsed_arguments.from_nodedb:
+        try:
+            if parsed_arguments.map_bbox is not None:
+                terrain_bbox = parse_bbox(parsed_arguments.map_bbox)
+            raw_nodedb_payload = fetch_nodedb_payload(
+                host=parsed_arguments.nodedb_host,
+                port=parsed_arguments.nodedb_port,
+                serial_port=parsed_arguments.nodedb_serial_port,
+            )
+            config, nodedb_origin = node_configs_from_nodedb_payload(
+                raw_nodedb_payload,
+                period,
+                bbox=terrain_bbox,
+                limit=parsed_arguments.map_limit,
+                antenna_height=conf.HM,
+                hop_limit=conf.hopLimit,
+                return_origin=True,
+            )
+            scenario_origin = nodedb_origin
         except ValueError as err:
             parser.error(str(err))
         nr_nodes = len(config)
