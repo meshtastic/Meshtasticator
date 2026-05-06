@@ -474,8 +474,6 @@ def parse_params(conf, args=None) -> [NodeConfig]:
 
     if nr_nodes < 2:
         parser.error(f"Need at least two nodes. You specified {nr_nodes}")
-    if bounds_follow_node_config:
-        fit_simulation_bounds_to_node_config(conf, config)
     if parsed_arguments.terrain_srtm and terrain_bbox is None:
         try:
             terrain_bbox = bbox_from_node_config(config, scenario_origin)
@@ -512,6 +510,9 @@ def parse_params(conf, args=None) -> [NodeConfig]:
         # placement, but the later MAC/PHY simulation does. Seed only after all
         # parser rejections so failed inputs leave caller RNG state alone.
         random.seed(conf.SEED)
+
+    if bounds_follow_node_config:
+        fit_simulation_bounds_to_node_config(conf, config)
 
     conf.SIMTIME = simtime
     conf.PERIOD = period
