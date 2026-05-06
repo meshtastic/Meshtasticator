@@ -697,6 +697,10 @@ class TestLoraMeshCli(unittest.TestCase):
         conf.NODE_Z_REFERENCE = NODE_Z_REFERENCE_SEA_LEVEL
         conf.GEO_ORIGIN_LAT = 41.625
         conf.GEO_ORIGIN_LON = 41.595
+        conf.OX = 123
+        conf.OY = 456
+        conf.XSIZE = 789
+        conf.YSIZE = 987
         random.seed(12345)
         state_before = random.getstate()
         payload = [
@@ -737,6 +741,7 @@ class TestLoraMeshCli(unittest.TestCase):
         self.assertEqual(conf.TERRAIN_PROFILE_SAMPLES, 7)
         self.assertEqual(conf.NODE_Z_REFERENCE, NODE_Z_REFERENCE_SEA_LEVEL)
         self.assertEqual((conf.GEO_ORIGIN_LAT, conf.GEO_ORIGIN_LON), (41.625, 41.595))
+        self.assertEqual((conf.OX, conf.OY, conf.XSIZE, conf.YSIZE), (123, 456, 789, 987))
         self.assertEqual(random.getstate(), state_before)
 
     def test_terrain_profile_samples_resets_between_parse_calls(self):
