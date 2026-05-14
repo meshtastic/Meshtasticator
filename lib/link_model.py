@@ -59,6 +59,11 @@ def _enclosure_loss(node):
     return float(getattr(node, "enclosureLossDb", getattr(node, "enclosure_loss_db", 0.0)))
 
 
+def _tx_power(conf, node):
+    """Accept runtime MeshNode.txPower when per-node TX power is configured."""
+    return getattr(node, "txPower", conf.PTX)
+
+
 def _link_calibration_features(conf, tx_point, rx_point, raw_snr, terrain_loss, clutter_loss):
     """Build the reusable feature vector consumed by fitted calibration.
 
@@ -113,7 +118,7 @@ def calculate_link_budget(conf, tx_node, rx_node, offset_db=0.0, tx_power_dbm=No
     # TX endpoint contributes radiated antenna gain, while the RX endpoint
     # contributes receive antenna gain; terrain/clutter/calibration are path
     # properties layered around those endpoint gains.
-    tx_power = conf.PTX if tx_power_dbm is None else tx_power_dbm
+    tx_power = _tx_power(conf, tx_node) if tx_power_dbm is None else tx_power_dbm
     raw_rssi = tx_power + _antenna_gain(tx_node) + _antenna_gain(rx_node) - raw_path_loss
     raw_snr = raw_rssi - conf.NOISE_LEVEL
     features = _link_calibration_features(conf, tx_point, rx_point, raw_snr, terrain_loss, clutter_loss)

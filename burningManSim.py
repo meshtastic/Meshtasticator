@@ -20,7 +20,7 @@ def parse_args(argv=None):
     parser = argparse.ArgumentParser(description="run the Burning Man preset through loraMesh.py")
     parser.add_argument("num_clients", nargs="?", type=int, help="kept for old commands; preset size is fixed")
     parser.add_argument("--plot", action="store_true", help="enable the normal simulator plot")
-    parser.add_argument("--hop-limit", type=int, default=3, help="maximum hop limit")
+    parser.add_argument("--hop-limit", type=int, help="override every preset node's hop limit")
     parser.add_argument("--simtime-seconds", type=float, help="simulation duration")
     parser.add_argument("--period-seconds", type=float, help="mean message-generation period override")
     parser.add_argument("--use-node-periods", action="store_true", help="respect preset per-node periodMs values")
@@ -28,15 +28,15 @@ def parse_args(argv=None):
     parser.add_argument("--dtp", action="store_true", help="enable Dynamic TX Power")
     parser.add_argument("--phy-loss-model", action="store_true", help="enable empirical SNR-to-payload-loss model")
     parser.add_argument("--capture-collision-model", action="store_true", help="enable capture-aware collision model")
-    parser.add_argument("extra_lora_args", nargs=argparse.REMAINDER, help="extra loraMesh.py arguments after --")
-    return parser.parse_args(argv)
+    args, extra_lora_args = parser.parse_known_args(argv)
+    args.extra_lora_args = [arg for arg in extra_lora_args if arg != "--"]
+    return args
 
 
-def main(argv=None):
-    args = parse_args(argv)
-    lora_args = ["--preset", "burning_man", "--no-gui", "--hop-limit", str(args.hop_limit)]
-    if args.plot:
-        lora_args.append("--plot")
+def build_lora_args(args):
+    lora_args = ["--preset", "burning_man"]
+    if not args.plot:
+        lora_args.append("--no-gui")
     if args.simtime_seconds is not None:
         lora_args.extend(["--simtime-seconds", str(args.simtime_seconds)])
     if args.period_seconds is not None:
@@ -51,11 +51,25 @@ def main(argv=None):
         lora_args.append("--phy-loss-model")
     if args.capture_collision_model:
         lora_args.append("--capture-collision-model")
-    if args.extra_lora_args:
-        lora_args.extend(arg for arg in args.extra_lora_args if arg != "--")
+    lora_args.extend(args.extra_lora_args)
+    return lora_args
 
+
+def apply_hop_limit_override(nodes, hop_limit):
+    if hop_limit is None:
+        return
+    for node in nodes:
+        node.hop_limit = hop_limit
+
+
+def main(argv=None):
+    args = parse_args(argv)
     conf = Config()
+    lora_args = build_lora_args(args)
     nodes = loraMesh.parse_params(conf, lora_args)
+    if args.hop_limit is not None:
+        conf.hopLimit = args.hop_limit
+        apply_hop_limit_override(nodes, args.hop_limit)
     if nodes:
         loraMesh.run_simulation(conf, nodes)
 

@@ -25,6 +25,7 @@ from lib.terrain import (
 )
 
 import loraMesh
+import burningManSim
 
 
 def write_hgt(path, values):
@@ -97,6 +98,57 @@ class TestLoraMeshCli(unittest.TestCase):
         self.assertIn("Number of nodes: 2", output)
         self.assertIn("Dynamic Coding Rate: disabled", output)
         self.assertIn("Dynamic TX Power: disabled", output)
+
+    def test_parse_params_restores_preset_radio_environment(self):
+        conf = Config()
+        original_suburban_loss = conf.CLUTTER_SUBURBAN_LOSS_DB_PER_KM
+
+        self.parse_quietly(
+            conf,
+            ["--preset", "burning_man", "--no-gui", "--simtime-seconds", "1", "--period-seconds", "1"],
+        )
+        self.assertEqual(conf.CLUTTER_SUBURBAN_LOSS_DB_PER_KM, 7.0)
+
+        self.parse_quietly(conf, ["2", "--no-gui", "--simtime-seconds", "1", "--period-seconds", "1"])
+
+        self.assertEqual(conf.CLUTTER_SUBURBAN_LOSS_DB_PER_KM, original_suburban_loss)
+
+    def test_burning_man_wrapper_keeps_options_after_legacy_client_count(self):
+        args = burningManSim.parse_args(["5", "--plot", "--simtime-seconds", "1", "--", "--no-clutter"])
+
+        self.assertEqual(args.num_clients, 5)
+        self.assertTrue(args.plot)
+        self.assertEqual(args.simtime_seconds, 1.0)
+        self.assertEqual(args.extra_lora_args, ["--no-clutter"])
+
+        lora_args = burningManSim.build_lora_args(args)
+
+        self.assertNotIn("--no-gui", lora_args)
+        self.assertNotIn("--plot", lora_args)
+        self.assertIn("--no-clutter", lora_args)
+
+    def test_burning_man_wrapper_defaults_to_headless_lora_args(self):
+        args = burningManSim.parse_args(["--simtime-seconds", "1"])
+
+        lora_args = burningManSim.build_lora_args(args)
+
+        self.assertEqual(lora_args[:2], ["--preset", "burning_man"])
+        self.assertIn("--no-gui", lora_args)
+        self.assertIn("--simtime-seconds", lora_args)
+
+    def test_burning_man_wrapper_hop_limit_defaults_to_preset(self):
+        args = burningManSim.parse_args([])
+
+        self.assertIsNone(args.hop_limit)
+
+    def test_burning_man_wrapper_can_override_loaded_hop_limits(self):
+        args = burningManSim.parse_args(["--hop-limit", "1", "--simtime-seconds", "1", "--period-seconds", "1"])
+        conf = Config()
+
+        nodes, _ = self.parse_quietly(conf, burningManSim.build_lora_args(args))
+        burningManSim.apply_hop_limit_override(nodes, args.hop_limit)
+
+        self.assertTrue(all(node.hop_limit == 1 for node in nodes))
 
     def test_parse_params_enables_dcr(self):
         conf = Config()

@@ -7,12 +7,24 @@ from lib.terrain import TerrainGrid
 
 
 class DummyNode:
-    def __init__(self, nodeid, x, y, gain=0.0, z=1.5, antenna_height=1.5, enclosure_loss=0.0):
+    def __init__(
+        self,
+        nodeid,
+        x,
+        y,
+        gain=0.0,
+        z=1.5,
+        antenna_height=1.5,
+        enclosure_loss=0.0,
+        tx_power=None,
+    ):
         self.nodeid = nodeid
         self.position = Point(x, y, z)
         self.antennaGain = gain
         self.antennaHeight = antenna_height
         self.enclosureLossDb = enclosure_loss
+        if tx_power is not None:
+            self.txPower = tx_power
 
 
 class TestLinkModel(unittest.TestCase):
@@ -47,6 +59,27 @@ class TestLinkModel(unittest.TestCase):
         self.assertEqual(obstructed.enclosure_loss_db, 12.0)
         self.assertAlmostEqual(obstructed.path_loss_db - baseline.path_loss_db, 12.0)
         self.assertAlmostEqual(baseline.rssi_dbm - obstructed.rssi_dbm, 12.0)
+
+    def test_runtime_tx_power_is_default_budget_power(self):
+        conf = Config()
+        baseline = calculate_link_budget(conf, DummyNode(1, 0, 0), DummyNode(2, 1000, 0))
+        per_node_power = calculate_link_budget(conf, DummyNode(1, 0, 0, tx_power=20), DummyNode(2, 1000, 0))
+
+        self.assertAlmostEqual(per_node_power.raw_rssi_dbm - baseline.raw_rssi_dbm, 20 - conf.PTX)
+        self.assertAlmostEqual(per_node_power.rssi_dbm - baseline.rssi_dbm, 20 - conf.PTX)
+
+    def test_explicit_tx_power_overrides_runtime_tx_power(self):
+        conf = Config()
+        runtime_power = calculate_link_budget(conf, DummyNode(1, 0, 0, tx_power=20), DummyNode(2, 1000, 0))
+        explicit_power = calculate_link_budget(
+            conf,
+            DummyNode(1, 0, 0, tx_power=20),
+            DummyNode(2, 1000, 0),
+            tx_power_dbm=17,
+        )
+
+        self.assertAlmostEqual(runtime_power.raw_rssi_dbm - explicit_power.raw_rssi_dbm, 3.0)
+        self.assertAlmostEqual(runtime_power.rssi_dbm - explicit_power.rssi_dbm, 3.0)
 
     def test_absolute_node_altitude_is_not_used_as_antenna_height(self):
         conf = Config()
