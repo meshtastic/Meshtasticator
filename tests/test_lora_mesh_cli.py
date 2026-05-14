@@ -1013,6 +1013,28 @@ class TestLoraMeshCli(unittest.TestCase):
 
         self.assertTrue(conf.ENABLE_CONNECTIVITY_MAP)
 
+    def test_terrain_srtm_preset_rejects_before_changing_geo_origin(self):
+        conf = Config()
+        conf.GEO_ORIGIN_LAT = 41.625
+        conf.GEO_ORIGIN_LON = 41.595
+
+        error = self.assert_parser_rejects(
+            conf,
+            [
+                "--preset",
+                "burning_man",
+                "--terrain-srtm",
+                "--terrain-srtm-offline",
+                "--terrain-srtm-cache-dir",
+                "/dev/shm/does-not-exist-mesh",
+                "--no-gui",
+            ],
+        )
+
+        self.assertIn("could not load SRTM terrain", error)
+        self.assertEqual((conf.GEO_ORIGIN_LAT, conf.GEO_ORIGIN_LON), (41.625, 41.595))
+        self.assertFalse(conf.TERRAIN_ENABLED)
+
     def test_terrain_srtm_from_file_rejects_uncovered_bbox_before_config_mutation(self):
         conf = Config()
         conf.TERRAIN_ENABLED = True

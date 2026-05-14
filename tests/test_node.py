@@ -231,10 +231,12 @@ class TestMeshNodeReceive(unittest.TestCase):
         pipe = simpy.Store(env)
         packet = type("Packet", (), {
             "sensedByN": [True],
+            "detectedByN": [True],
             "onAirToN": [True],
             "collidedAtN": [False],
             "phyLostAtN": [False],
             "receivedAtN": [False],
+            "timeOnAir": 1.0,
             "seq": 1,
             "txNodeId": 7,
         })()
@@ -259,6 +261,7 @@ class TestMeshNodeReceive(unittest.TestCase):
         pipe = simpy.Store(env)
         packet = type("Packet", (), {
             "sensedByN": [True],
+            "detectedByN": [True],
             "onAirToN": [True],
             "collidedAtN": [True],
             "phyLostAtN": [False],
@@ -452,6 +455,7 @@ class TestMeshNodeCaptureReceive(unittest.TestCase):
             "txNodeId": 1,
             "genTime": 0,
             "timeOnAir": 10,
+            "detectedByN": [True],
             "sensedByN": [True],
             "onAirToN": [True],
             "collidedAtN": [False],
@@ -469,6 +473,48 @@ class TestMeshNodeCaptureReceive(unittest.TestCase):
         env.run(until=2)
 
         self.assertFalse(packet.sensedByN[0])
+        self.assertFalse(packet.receivedAtN[0])
+
+    def test_capture_mode_tracks_cad_only_packets_as_channel_busy(self):
+        conf = Config()
+        conf.NR_NODES = 1
+        conf.CAPTURE_COLLISION_MODEL_ENABLED = True
+        conf.MOVEMENT_ENABLED = False
+        env = simpy.Environment()
+        sim_state = SimulationState(conf, env)
+        data_tracking = SimulationDataTracking()
+        node = MeshNode(
+            conf,
+            sim_state,
+            data_tracking,
+            NodeConfig(0, Point(0, 0, 1.5), conf.PERIOD, MESHTASTIC_ROLE.REPEATER),
+        )
+        packet = type("Packet", (), {
+            "seq": 1,
+            "txNodeId": 1,
+            "genTime": 0,
+            "timeOnAir": 10,
+            "detectedByN": [True],
+            "sensedByN": [False],
+            "onAirToN": [True],
+            "collidedAtN": [False],
+            "phyLostAtN": [False],
+            "receivedAtN": [False],
+        })()
+        pipe = simpy.Store(env)
+        env.process(node.receive(pipe))
+
+        pipe.put(packet)
+        env.run(until=1)
+
+        self.assertTrue(node.isReceiving)
+        self.assertFalse(packet.receivedAtN[0])
+
+        pipe.put(packet)
+        env.run(until=2)
+
+        self.assertFalse(any(node.isReceiving))
+        self.assertEqual(node.airUtilization, 10)
         self.assertFalse(packet.receivedAtN[0])
 
 

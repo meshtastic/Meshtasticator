@@ -639,7 +639,7 @@ class MeshNode:
             logger.debug(f"{self.env.now:.3f} Node {self.nodeid} fetches packet {packet_log_id} for msg {p.seq} from {p.txNodeId} from bc_pipe: sensed: {p.sensedByN[self.nodeid]} collided: {p.collidedAtN[self.nodeid]} on air: {p.onAirToN[self.nodeid]}")
 
             if self.conf.CAPTURE_COLLISION_MODEL_ENABLED:
-                if p.sensedByN[self.nodeid] and p.onAirToN[self.nodeid]:
+                if p.detectedByN[self.nodeid] and p.onAirToN[self.nodeid]:
                     p.onAirToN[self.nodeid] = False
                     if not self.isTransmitting and not p.collidedAtN[self.nodeid]:
                         logger.debug(f"{self.env.now:.3f} Node {self.nodeid} started receiving packet {packet_log_id} for msg {p.seq} from {p.txNodeId}")
@@ -651,12 +651,15 @@ class MeshNode:
                         logger.debug(f"{self.env.now:.3f} Node {self.nodeid} could not lock packet {packet_log_id} for msg {p.seq}.")
                     continue
 
-                if p.sensedByN[self.nodeid]:
+                if p.detectedByN[self.nodeid]:
                     try:
                         self.isReceiving[self.isReceiving.index(True)] = False
                     except Exception:
                         pass
                     self.airUtilization += p.timeOnAir
+                    if not p.sensedByN[self.nodeid]:
+                        logger.debug(f"{self.env.now:.3f} Node {self.nodeid} detected CAD-only packet {p.seq}.")
+                        continue
                     if p.collidedAtN[self.nodeid]:
                         logger.debug(f"{self.env.now:.3f} Node {self.nodeid} could not decode packet {packet_log_id}.")
                         continue
