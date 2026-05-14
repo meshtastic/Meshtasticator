@@ -29,6 +29,8 @@ class TestMeshPacket(unittest.TestCase):
             PacketNode(1, Point(100, 0, conf.HM)),
             PacketNode(2, Point(1000, 0, conf.HM)),
         ]
+        connectivity_map = {0: {1, 2}, 1: {0, 2}, 2: {0, 1}}
+        baseline_pathloss_matrix = [[None for _ in nodes] for _ in nodes]
 
         packet = MeshPacket(
             conf,
@@ -43,6 +45,8 @@ class TestMeshPacket(unittest.TestCase):
             isAck=False,
             requestId=None,
             now=0,
+            connectivity_map=connectivity_map,
+            baseline_pathloss_matrix=baseline_pathloss_matrix,
         )
 
         self.assertEqual(

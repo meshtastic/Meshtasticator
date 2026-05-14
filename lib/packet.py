@@ -114,6 +114,7 @@ class MeshPacket:
             if (
                 self.conf.ENABLE_CONNECTIVITY_MAP
                 and not self.conf.MOVEMENT_ENABLED
+                and self.txNodeId in self.connectivity_map
                 and rx_node.nodeid not in self.connectivity_map[self.txNodeId]
             ):
                 logger.debug(

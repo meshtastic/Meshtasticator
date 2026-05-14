@@ -450,6 +450,7 @@ class MeshNode:
         messageSeq = self.messageSeq.get()
         self.messages.append(MeshMessage(self.nodeid, destId, self.env.now, messageSeq))
         p = MeshPacket(self.conf, self.nodes, self.nodeid, destId, self.nodeid, self.conf.PACKETLENGTH, messageSeq, self.env.now, True, False, None, self.env.now, self.connectivity_map, self.baseline_pathloss_matrix)
+        p.transmission_started_event = self.env.event()
         logger.debug(f"{self.env.now:.3f} Node {self.nodeid} generated {type} message {p.seq} to {destId}")
         self.packets.append(p)
         self.env.process(self.transmit(p))
@@ -493,6 +494,10 @@ class MeshNode:
     def wait_for_retry_timer_airtime(self, packet):
         """Wait until DCR has selected the airtime used by the retry timer."""
         while self.conf.DCR_ENABLED and packet in self.packets and not packet.retryTimerAirtimeReady:
+            started_event = getattr(packet, "transmission_started_event", None)
+            if started_event is not None and not started_event.triggered:
+                yield started_event
+                continue
             yield self.env.timeout(1)
 
     def generate_message(self):
@@ -532,10 +537,12 @@ class MeshNode:
                     else:
                         if minRetransmissions > 0:  # generate new packet with same sequence number
                             pNew = MeshPacket(self.conf, self.nodes, self.nodeid, p.destId, self.nodeid, p.packetLen, p.seq, p.genTime, p.wantAck, False, None, self.env.now, self.connectivity_map, self.baseline_pathloss_matrix)
+                            pNew.transmission_started_event = self.env.event()
                             pNew.retransmissions = minRetransmissions - 1
                             logger.debug(f"{self.env.now:.3f} Node {self.nodeid} wants to retransmit its generated packet to {destId} with seq.nr. {p.seq} minRetransmissions {minRetransmissions}")
                             self.packets.append(pNew)
                             self.env.process(self.transmit(pNew))
+                            p = pNew
                         else:
                             logger.debug(f"{self.env.now:.3f} Node {self.nodeid} reliable send of {p.seq} failed.")
                             break
@@ -570,6 +577,8 @@ class MeshNode:
                 logger.debug(
                     f"{self.env.now:.3f} Node {self.nodeid} DCR selected CR 4/{packet.cr} for packet {packet.seq}: {decision.reason}"
                 )
+                if hasattr(packet, "transmission_started_event") and not packet.transmission_started_event.triggered:
+                    packet.transmission_started_event.succeed(packet)
 
                 power_decision = choose_dynamic_tx_power(self, packet)
                 if power_decision.tx_power_dbm != packet.txpow:
@@ -607,6 +616,8 @@ class MeshNode:
                 self.isTransmitting = False
             else:  # received ACK: abort transmit, remove from packets generated
                 logger.debug(f"{self.env.now:.3f} Node {self.nodeid} in the meantime received ACK, abort packet with seq. nr {packet.unique_packet_seq} for msg {packet.seq}")
+                if hasattr(packet, "transmission_started_event") and not packet.transmission_started_event.triggered:
+                    packet.transmission_started_event.succeed(packet)
                 self.packets.remove(packet)
 
     def receive(self, in_pipe):
