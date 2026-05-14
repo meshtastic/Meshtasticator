@@ -21,36 +21,31 @@ Run the packaged Batumi/Georgia-area radio scenario headlessly:
 ./loraMesh.py --preset batumi --no-gui --simtime-seconds 60 --period-seconds 5
 ```
 
-Compare the static, Dynamic Coding Rate, and Dynamic Coding Rate + Dynamic TX
-Power policies in one command:
+Run the static radio-physics comparison workflow in one command:
 
 ```bash
 python3 tools/radio_policy_compare.py --simtime-seconds 60 --period-seconds 5
 ```
 
-For CI-style runs, write JSON/Markdown artifacts and make regressions fail the
-job:
+For CI-style runs, write JSON/Markdown artifacts:
 
 ```bash
 python3 tools/radio_policy_compare.py \
   --simtime-seconds 120 \
   --period-seconds 5 \
   --json-output out/radio_policy_compare.json \
-  --markdown-output out/radio_policy_compare.md \
-  --max-reach-drop-pp 1.0 \
-  --max-tx-air-increase-pp 1.0
+  --markdown-output out/radio_policy_compare.md
 ```
 
-For manual Dynamic Coding Rate or Dynamic TX Power experiments, keep the same
-scenario and traffic load while enabling packet loss and capture-aware
-collisions:
+Threshold flags such as `--max-reach-drop-pp` are accepted only when a later
+policy slice adds at least one non-baseline policy to compare against `static`.
+
+For manual radio-physics experiments, keep the same scenario and traffic load
+while enabling packet loss and capture-aware collisions:
 
 ```bash
 ./loraMesh.py --preset batumi --no-gui --simtime-seconds 60 --period-seconds 5 \
-  --phy-loss-model --capture-collision-model --dcr
-
-./loraMesh.py --preset batumi --no-gui --simtime-seconds 60 --period-seconds 5 \
-  --phy-loss-model --capture-collision-model --dcr --dtp
+  --phy-loss-model --capture-collision-model
 ```
 
 See [Radio Physics Quickstart](docs/radio_physics_quickstart.md) for what the

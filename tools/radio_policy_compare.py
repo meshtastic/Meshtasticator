@@ -26,8 +26,6 @@ import loraMesh  # noqa: E402
 
 POLICY_FLAGS = {
     "static": ("static CR with packet loss/capture physics", []),
-    "dcr": ("Dynamic Coding Rate", ["--dcr"]),
-    "dcr_dtp": ("Dynamic Coding Rate + Dynamic TX Power", ["--dcr", "--dtp"]),
 }
 
 
@@ -77,7 +75,7 @@ def parse_args(argv=None):
         epilog="""examples:
   python3 tools/radio_policy_compare.py
   python3 tools/radio_policy_compare.py --simtime-seconds 120 --period-seconds 5
-  python3 tools/radio_policy_compare.py --policies static,dcr -- --no-clutter
+  python3 tools/radio_policy_compare.py --policies static -- --no-clutter
 """,
     )
     parser.add_argument("--preset", default="batumi", help="Packaged scenario preset to run")
@@ -86,8 +84,8 @@ def parse_args(argv=None):
     parser.add_argument(
         "--policies",
         type=parse_policy_names,
-        default=parse_policy_names("static,dcr,dcr_dtp"),
-        help="Comma-separated policies: static,dcr,dcr_dtp",
+        default=parse_policy_names("static"),
+        help="Comma-separated policies: static",
     )
     parser.add_argument(
         "--show-raw-output",
@@ -116,7 +114,18 @@ def parse_args(argv=None):
         nargs=argparse.REMAINDER,
         help="Extra loraMesh.py arguments applied to every run; place them after --",
     )
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if len(args.policies) < 2 and threshold_requested(args):
+        parser.error("--max-* thresholds require at least two policies so there is a baseline and a candidate")
+    return args
+
+
+def threshold_requested(args):
+    return (
+        args.max_reach_drop_pp is not None
+        or args.max_useful_drop_pp is not None
+        or args.max_tx_air_increase_pp is not None
+    )
 
 
 def positive_float(value):
@@ -180,12 +189,19 @@ def summarize_results(policy_name, description, results, output):
         reach_percent=as_percent(results["nodeReach"]),
         useful_percent=as_percent(results["usefulness"]),
         tx_air_percent=as_percent(results["txAirUtilizationRate"]),
-        cr_mix=format_cr_mix(results["dcrTxByCr"]),
-        dtp_power_mix=format_power_mix(results["dtpTxByPower"]),
-        dtp_detected=float(results["dtpMeanDetectedByTx"]),
-        dtp_decodable=float(results["dtpMeanSensedByTx"]),
+        cr_mix=format_cr_mix(result_value(results, "dcrTxByCr", {})),
+        dtp_power_mix=format_power_mix(result_value(results, "dtpTxByPower", {})),
+        dtp_detected=float(result_value(results, "dtpMeanDetectedByTx", 0.0)),
+        dtp_decodable=float(result_value(results, "dtpMeanSensedByTx", 0.0)),
         output=output,
     )
+
+
+def result_value(results, key, default):
+    try:
+        return results[key]
+    except KeyError:
+        return default
 
 
 def as_percent(value):

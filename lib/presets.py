@@ -27,6 +27,17 @@ PRESETS = {
     },
 }
 
+RADIO_CALIBRATION_FIELDS = (
+    "NOISE_LEVEL",
+    "PATH_LOSS_DISTANCE_FLOOR_M",
+    "REPORTED_SNR_MIN_DB",
+    "REPORTED_SNR_MAX_DB",
+    "LINK_CALIBRATION_MODEL_ENABLED",
+    "LINK_CALIBRATION_COEFFICIENTS",
+    "LINK_CALIBRATION_SNR_MIN_DB",
+    "LINK_CALIBRATION_SNR_MAX_DB",
+)
+
 
 def available_presets():
     return sorted(PRESETS.keys())
@@ -57,6 +68,20 @@ def preset_radio_calibration(name):
 def preset_calibration_observations(name):
     raw = load_preset_raw(name)
     return raw.get("calibration_observations", []) if isinstance(raw, dict) else []
+
+
+def snapshot_radio_calibration(conf):
+    """Capture caller-default radio calibration so reusable CLI parses reset cleanly."""
+    snapshot = {}
+    for field in RADIO_CALIBRATION_FIELDS:
+        value = getattr(conf, field)
+        snapshot[field] = value.copy() if isinstance(value, dict) else value
+    return snapshot
+
+
+def restore_radio_calibration(conf, snapshot):
+    for field, value in snapshot.items():
+        setattr(conf, field, value.copy() if isinstance(value, dict) else value)
 
 
 def apply_preset_radio_calibration(conf, name):
