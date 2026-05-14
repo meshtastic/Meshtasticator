@@ -103,12 +103,12 @@ Packaged real-mesh presets can be listed and loaded directly:
 ```python3 loraMesh.py --list-presets```
 
 The `batumi` preset includes sanitized Batumi/Georgia-area node geometry, a
-matching terrain grid, an OpenStreetMap-derived land-cover clutter grid, and an
-aggregate radio calibration over generated path features. Terrain, clutter, and
-the fitted link-calibration model are enabled automatically for the preset
-unless you pass different `--terrain-grid` or `--clutter-grid` inputs; use
-`--no-clutter` for old-style comparison runs. The calibration report is in
-`docs/batumi_radio_calibration.md`.
+matching bundled terrain grid, an OpenStreetMap-derived land-cover clutter grid,
+and an aggregate radio calibration over generated path features. Terrain,
+clutter, and the fitted link-calibration model are enabled automatically for the
+preset; use `--terrain-srtm` for a fresh SRTM terrain sample, `--clutter-grid`
+for a different land-cover grid, or `--no-clutter` for old-style comparison
+runs. The calibration report is in `docs/batumi_radio_calibration.md`.
 
 ```python3 loraMesh.py --preset batumi --no-gui --simtime-seconds 5 --period-seconds 2 --phy-loss-model --capture-collision-model```
 

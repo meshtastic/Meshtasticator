@@ -552,17 +552,21 @@ class MeshNode:
     def receive(self, in_pipe):
         while True:
             p = yield in_pipe.get()
+            packet_log_id = getattr(p, "unique_packet_seq", p.seq)
 
-            logger.debug(f"{self.env.now:.3f} Node {self.nodeid} fetches packet {p.unique_packet_seq} for msg {p.seq} from {p.txNodeId} from bc_pipe: sensed: {p.sensedByN[self.nodeid]} collided: {p.collidedAtN[self.nodeid]} on air: {p.onAirToN[self.nodeid]}")
+            logger.debug(f"{self.env.now:.3f} Node {self.nodeid} fetches packet {packet_log_id} for msg {p.seq} from {p.txNodeId} from bc_pipe: sensed: {p.sensedByN[self.nodeid]} collided: {p.collidedAtN[self.nodeid]} on air: {p.onAirToN[self.nodeid]}")
 
             if self.conf.CAPTURE_COLLISION_MODEL_ENABLED:
                 if p.sensedByN[self.nodeid] and p.onAirToN[self.nodeid]:
                     p.onAirToN[self.nodeid] = False
                     if not self.isTransmitting and not p.collidedAtN[self.nodeid]:
-                        logger.debug(f"{self.env.now:.3f} Node {self.nodeid} started receiving packet {p.unique_packet_seq} for msg {p.seq} from {p.txNodeId}")
+                        logger.debug(f"{self.env.now:.3f} Node {self.nodeid} started receiving packet {packet_log_id} for msg {p.seq} from {p.txNodeId}")
                         self.isReceiving.append(True)
+                    elif self.isTransmitting:
+                        logger.debug(f"{self.env.now:.3f} Node {self.nodeid} could not lock packet {p.seq}.")
+                        p.sensedByN[self.nodeid] = False
                     else:
-                        logger.debug(f"{self.env.now:.3f} Node {self.nodeid} could not lock packet {p.unique_packet_seq} for msg {p.seq}.")
+                        logger.debug(f"{self.env.now:.3f} Node {self.nodeid} could not lock packet {packet_log_id} for msg {p.seq}.")
                     continue
 
                 if p.sensedByN[self.nodeid]:
@@ -572,13 +576,13 @@ class MeshNode:
                         pass
                     self.airUtilization += p.timeOnAir
                     if p.collidedAtN[self.nodeid]:
-                        logger.debug(f"{self.env.now:.3f} Node {self.nodeid} could not decode packet {p.unique_packet_seq}.")
+                        logger.debug(f"{self.env.now:.3f} Node {self.nodeid} could not decode packet {packet_log_id}.")
                         continue
                     if p.phyLostAtN[self.nodeid]:
-                        logger.debug(f"{self.env.now:.3f} Node {self.nodeid} lost packet {p.unique_packet_seq} for msg {p.seq} to weak-link PHY errors.")
+                        logger.debug(f"{self.env.now:.3f} Node {self.nodeid} lost packet {packet_log_id} for msg {p.seq} to weak-link PHY errors.")
                         continue
                     p.receivedAtN[self.nodeid] = True
-                    logger.debug(f"{self.env.now:.3f} Node {self.nodeid} received packet {p.unique_packet_seq} for msg {p.seq} with delay {round(self.env.now - p.genTime, 2)}")
+                    logger.debug(f"{self.env.now:.3f} Node {self.nodeid} received packet {packet_log_id} for msg {p.seq} with delay {round(self.env.now - p.genTime, 2)}")
                     self.handle_received_packet(p)
                 continue
 
@@ -589,11 +593,11 @@ class MeshNode:
                     # processing to the end-of-transmission branch.
                     p.onAirToN[self.nodeid] = False
                 elif not self.isTransmitting:
-                    logger.debug(f"{self.env.now:.3f} Node {self.nodeid} started receiving packet {p.unique_packet_seq} for msg {p.seq} from {p.txNodeId}")
+                    logger.debug(f"{self.env.now:.3f} Node {self.nodeid} started receiving packet {packet_log_id} for msg {p.seq} from {p.txNodeId}")
                     p.onAirToN[self.nodeid] = False
                     self.isReceiving.append(True)
                 else:  # if you were currently transmitting, you could not have sensed it
-                    logger.debug(f"{self.env.now:.3f} Node {self.nodeid} was transmitting, so could not receive packet {p.unique_packet_seq} for msg {p.seq}")
+                    logger.debug(f"{self.env.now:.3f} Node {self.nodeid} was transmitting, so could not receive packet {packet_log_id} for msg {p.seq}")
                     p.sensedByN[self.nodeid] = False
                     p.onAirToN[self.nodeid] = False
             elif p.sensedByN[self.nodeid]:  # end of reception
@@ -604,13 +608,13 @@ class MeshNode:
                 self.airUtilization += p.timeOnAir
                 # begin receiving packet fine, but a collision begins before we finish receiving.
                 if p.collidedAtN[self.nodeid]:
-                    logger.debug(f"{self.env.now:.3f} Node {self.nodeid} could not decode packet {p.unique_packet_seq}.")
+                    logger.debug(f"{self.env.now:.3f} Node {self.nodeid} could not decode packet {packet_log_id}.")
                     continue
                 if p.phyLostAtN[self.nodeid]:
-                    logger.debug(f"{self.env.now:.3f} Node {self.nodeid} lost packet {p.unique_packet_seq} for msg {p.seq} to weak-link PHY errors.")
+                    logger.debug(f"{self.env.now:.3f} Node {self.nodeid} lost packet {packet_log_id} for msg {p.seq} to weak-link PHY errors.")
                     continue
                 p.receivedAtN[self.nodeid] = True
-                logger.debug(f"{self.env.now:.3f} Node {self.nodeid} received packet {p.unique_packet_seq} for msg {p.seq} with delay {round(self.env.now - p.genTime, 2)}") # TODO: better way to calculate delay for log
+                logger.debug(f"{self.env.now:.3f} Node {self.nodeid} received packet {packet_log_id} for msg {p.seq} with delay {round(self.env.now - p.genTime, 2)}") # TODO: better way to calculate delay for log
                 self.handle_received_packet(p)
 
     def handle_received_packet(self, p):

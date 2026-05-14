@@ -202,6 +202,46 @@ class TestDiscreteEventSim(unittest.TestCase):
         for f in facets:
             self.assertEqual(all_results[0][f], all_results[1][f], f'connectivity map optimization is inconsistent for facet {f}')
 
+    def test_phy_loss_counts_only_sensed_non_collided_copies(self):
+        from lib.config import Config
+
+        class MockNode:
+            def __init__(self, nodeid: int):
+                self.nodeid = nodeid
+                self.usefulPackets = 0
+                self.txAirUtilization = 0.0
+                self.droppedByDelay = 0
+                self.isMoving = False
+                self.gpsEnabled = False
+
+        class MockPacket:
+            def __init__(self):
+                self.collidedAtN = [False, True, False]
+                self.sensedByN = [True, True, False]
+                self.receivedAtN = [False, False, False]
+                self.phyLostAtN = [True, True, True]
+                self.collisionReasonAtN = [None, "capture", None]
+                self.terrainLossAtN = [0.0, 0.0, 0.0]
+                self.clutterLossAtN = [0.0, 0.0, 0.0]
+
+        conf = Config()
+        conf.NR_NODES = 3
+        sim_results = lib.discrete_event_sim.SimulationResults({
+            "nodes": [MockNode(0), MockNode(1), MockNode(2)],
+            "packets": [MockPacket()],
+            "delays": [],
+            "messageSeq": 1,
+            "totalPairs": 0,
+            "asymmetricLinks": 0,
+            "symmetricLinks": 0,
+            "noLinks": 0,
+        })
+
+        sim_results.finalize(conf)
+
+        self.assertEqual(sim_results["nrPhyLoss"], 1)
+        self.assertEqual(sim_results["nrCollisions"], 1)
+
     # TODO: add default-skip GUI test?
     def test_discrete_sim_ten_nodes(self):
         import numpy as np

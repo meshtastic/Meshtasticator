@@ -286,6 +286,8 @@ class TestMapInput(unittest.TestCase):
     def test_nodedb_role_defaults_to_client(self):
         self.assertEqual(role_name_for_nodedb_node({}), "CLIENT")
         self.assertEqual(role_name_for_nodedb_node({"user": {"role": "router_client"}}), "ROUTER_CLIENT")
+        self.assertEqual(role_name_for_nodedb_node({"user": {"role": 2}}), "ROUTER")
+        self.assertEqual(role_name_for_nodedb_node({"user": {"role": "12"}}), "CLIENT_BASE")
 
 
 if __name__ == "__main__":

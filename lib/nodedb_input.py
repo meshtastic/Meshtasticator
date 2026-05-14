@@ -1,7 +1,12 @@
 """Input adapter for positions stored in a local Meshtastic device NodeDB."""
 
 from lib.geo import valid_lat_lon
-from lib.map_input import decode_map_altitude, decode_map_coordinate, node_configs_from_positioned_rows
+from lib.map_input import (
+    decode_map_altitude,
+    decode_map_coordinate,
+    node_configs_from_positioned_rows,
+    role_name_for_node,
+)
 
 
 def fetch_nodedb_payload(host=None, port=None, serial_port=None):
@@ -52,10 +57,17 @@ def nodedb_payload_nodes(payload):
 def role_name_for_nodedb_node(node):
     user = node.get("user") if isinstance(node, dict) else None
     if isinstance(user, dict) and user.get("role") is not None:
-        return str(user["role"]).upper()
+        return normalize_nodedb_role(user["role"])
     if isinstance(node, dict) and node.get("role") is not None:
-        return str(node["role"]).upper()
+        return normalize_nodedb_role(node["role"])
     return "CLIENT"
+
+
+def normalize_nodedb_role(raw_role):
+    try:
+        return role_name_for_node({"role": int(raw_role)})
+    except (TypeError, ValueError):
+        return str(raw_role).upper()
 
 
 def positioned_nodedb_nodes(nodes, bbox=None):

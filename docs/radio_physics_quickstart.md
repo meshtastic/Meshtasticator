@@ -42,62 +42,39 @@ python3 tools/radio_policy_compare.py --simtime-seconds 60 --period-seconds 5
 It runs the same preset and traffic load for:
 
 - `static`: static coding rate with packet-loss and capture-collision physics.
-- `dcr`: Dynamic Coding Rate with the same physics.
-- `dcr_dtp`: Dynamic Coding Rate plus Dynamic TX Power with the same physics.
 
 The output is one table with reach, useful traffic, airtime, collisions, PHY
-loss, coding-rate mix, TX-power mix, and deltas versus the first policy.
+loss, and placeholders for future policy counters.
 
-For CI, write durable artifacts and optionally fail the job on regressions:
+For CI, write durable artifacts:
 
 ```bash
 python3 tools/radio_policy_compare.py \
   --simtime-seconds 120 \
   --period-seconds 5 \
   --json-output out/radio_policy_compare.json \
-  --markdown-output out/radio_policy_compare.md \
-  --max-reach-drop-pp 1.0 \
-  --max-useful-drop-pp 2.0 \
-  --max-tx-air-increase-pp 1.0
+  --markdown-output out/radio_policy_compare.md
 ```
 
-Those thresholds compare every non-baseline policy against the first policy in
-`--policies`. With the default order, `static` is the baseline and `dcr` /
-`dcr_dtp` are checked against it. The JSON file is intended for machines; the
-Markdown file is intended for CI summaries, uploaded artifacts, or PR comments.
-
-To compare only two policies:
-
-```bash
-python3 tools/radio_policy_compare.py --policies static,dcr
-```
+Threshold flags such as `--max-reach-drop-pp` compare every non-baseline policy
+against the first policy in `--policies`; they require at least two policies.
+This slice exposes only `static`, so later policy slices can add thresholded CI
+gates once their `loraMesh.py` flags exist. The JSON file is intended for
+machines; the Markdown file is intended for CI summaries, uploaded artifacts, or
+PR comments.
 
 Extra `loraMesh.py` flags can be applied to every run after `--`:
 
 ```bash
-python3 tools/radio_policy_compare.py --policies static,dcr -- --no-clutter
+python3 tools/radio_policy_compare.py --policies static -- --no-clutter
 ```
 
-Enable packet-level loss and capture-aware collisions when testing DCR/DTP.
-Those two flags make weak links and overlapping transmissions matter:
+Enable packet-level loss and capture-aware collisions when testing radio
+physics. Those two flags make weak links and overlapping transmissions matter:
 
 ```bash
 ./loraMesh.py --preset batumi --no-gui --simtime-seconds 60 --period-seconds 5 \
   --phy-loss-model --capture-collision-model
-```
-
-Compare Dynamic Coding Rate against the same baseline:
-
-```bash
-./loraMesh.py --preset batumi --no-gui --simtime-seconds 60 --period-seconds 5 \
-  --phy-loss-model --capture-collision-model --dcr
-```
-
-Compare Dynamic Coding Rate plus Dynamic TX Power:
-
-```bash
-./loraMesh.py --preset batumi --no-gui --simtime-seconds 60 --period-seconds 5 \
-  --phy-loss-model --capture-collision-model --dcr --dtp
 ```
 
 Keep `--simtime-seconds`, `--period-seconds`, preset, and model flags identical
@@ -114,21 +91,6 @@ For policy comparisons, start with these fields:
 - `Average Tx air utilization`: local channel pressure caused by transmissions.
 - `Number of collisions`: overlap pressure before packet-level PHY loss.
 - `Number of packets lost by PHY model`: weak-link packet loss after sensing.
-
-When DCR is enabled, also check:
-
-- `DCR TX packets by CR`: whether the policy mostly stayed compact or spent
-  robust coding rates.
-- `DCR airtime by CR (ms)`: whether robust coding rates consumed too much
-  airtime.
-
-When DTP is enabled, also check:
-
-- `DTP TX packets by power`: whether power was actually reduced.
-- `DTP mean CAD-detected receivers per TX`: whether transmissions became less
-  visible to unrelated receivers.
-- `DTP mean decodable receivers per TX`: whether reduced power is still enough
-  for useful receivers.
 
 Good policy changes should improve reach or useful traffic without causing a
 large airtime or collision regression. A policy that only makes every packet
@@ -151,13 +113,12 @@ benchmarks, and map imports for exploratory placement checks.
 
 ## Common Pitfalls
 
-- `--dcr` and `--dtp` are experiments. They are disabled unless explicitly
-  passed.
 - `--preset batumi` automatically uses its bundled terrain, clutter, and link
   calibration. Add `--no-clutter` only when intentionally comparing against a
   no-clutter run.
 - `--phy-loss-model` and `--capture-collision-model` are separate from terrain
-  and clutter. Use them for DCR/DTP packet-policy comparisons.
+  and clutter. Use them for packet-policy comparisons once more policy flags are
+  available.
 - Short runs are noisy. Use longer runs or repeated runs before claiming that a
   policy is better.
 - Treat CI thresholds as guardrails, not proof of RF truth. A failed threshold

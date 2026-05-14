@@ -1007,6 +1007,43 @@ class TestLoraMeshCli(unittest.TestCase):
         self.assertIn("Clutter model:", output)
         self.assertIn("Link calibration model: enabled", output)
 
+    def test_parse_params_clears_preset_radio_calibration_between_runs(self):
+        conf = Config()
+        default_noise_level = conf.NOISE_LEVEL
+        default_path_loss_floor = conf.PATH_LOSS_DISTANCE_FLOOR_M
+
+        self.parse_quietly(conf, ["--preset", "batumi", "--no-gui"])
+        self.assertTrue(conf.LINK_CALIBRATION_MODEL_ENABLED)
+
+        self.parse_quietly(conf, ["2", "--no-gui"])
+
+        self.assertEqual(conf.NOISE_LEVEL, default_noise_level)
+        self.assertEqual(conf.PATH_LOSS_DISTANCE_FLOOR_M, default_path_loss_floor)
+        self.assertFalse(conf.LINK_CALIBRATION_MODEL_ENABLED)
+        self.assertEqual(conf.LINK_CALIBRATION_COEFFICIENTS, {})
+        self.assertIsNone(conf.LINK_CALIBRATION_SNR_MIN_DB)
+        self.assertIsNone(conf.LINK_CALIBRATION_SNR_MAX_DB)
+
+    def test_parse_params_clears_clutter_profile_samples_between_runs(self):
+        conf = Config()
+        default_samples = conf.CLUTTER_PROFILE_SAMPLES
+
+        self.parse_quietly(
+            conf,
+            [
+                "--preset",
+                "batumi",
+                "--no-gui",
+                "--clutter-profile-samples",
+                "3",
+            ],
+        )
+        self.assertEqual(conf.CLUTTER_PROFILE_SAMPLES, 3)
+
+        self.parse_quietly(conf, ["--preset", "batumi", "--no-gui"])
+
+        self.assertEqual(conf.CLUTTER_PROFILE_SAMPLES, default_samples)
+
     def test_parse_params_can_disable_bundled_preset_clutter(self):
         conf = Config()
 

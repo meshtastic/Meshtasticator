@@ -31,6 +31,8 @@ from lib.presets import (
     preset_clutter_grid,
     preset_origin,
     preset_terrain_grid,
+    restore_radio_calibration,
+    snapshot_radio_calibration,
 )
 from lib.srtm import (
     DEFAULT_SRTM_URL_TEMPLATE,
@@ -71,7 +73,9 @@ def get_cli_defaults(conf):
                 "GUI_ENABLED": conf.GUI_ENABLED,
                 "PLOT": conf.PLOT,
                 "TERRAIN_PROFILE_SAMPLES": conf.TERRAIN_PROFILE_SAMPLES,
+                "CLUTTER_PROFILE_SAMPLES": conf.CLUTTER_PROFILE_SAMPLES,
                 "NODE_Z_REFERENCE": conf.NODE_Z_REFERENCE,
+                "RADIO_CALIBRATION": snapshot_radio_calibration(conf),
             },
         )
     return getattr(conf, CLI_DEFAULT_ATTR)
@@ -651,9 +655,6 @@ def parse_params(conf, args=None) -> [NodeConfig]:
     if bounds_follow_node_config:
         fit_simulation_bounds_to_node_config(conf, config)
 
-    if selected_preset is not None:
-        apply_preset_radio_calibration(conf, selected_preset)
-
     conf.SIMTIME = simtime
     conf.PERIOD = period
     conf.GUI_ENABLED = gui_enabled
@@ -676,8 +677,13 @@ def parse_params(conf, args=None) -> [NodeConfig]:
         conf.CLUTTER_GRID_FILE = None
     if parsed_arguments.clutter_profile_samples is not None:
         conf.CLUTTER_PROFILE_SAMPLES = parsed_arguments.clutter_profile_samples
+    else:
+        conf.CLUTTER_PROFILE_SAMPLES = cli_defaults["CLUTTER_PROFILE_SAMPLES"]
     conf.PHY_LOSS_MODEL_ENABLED = parsed_arguments.phy_loss_model
     conf.CAPTURE_COLLISION_MODEL_ENABLED = parsed_arguments.capture_collision_model
+    restore_radio_calibration(conf, cli_defaults["RADIO_CALIBRATION"])
+    if parsed_arguments.preset is not None:
+        apply_preset_radio_calibration(conf, parsed_arguments.preset)
 
     if parsed_arguments.verbose:
         # Set this logger and lib.* to DEBUG only after the command line has

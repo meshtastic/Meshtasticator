@@ -177,5 +177,83 @@ class TestPacketRxCandidate(unittest.TestCase):
         self.assertFalse(packet_is_rx_candidate(packet, 1, capture_model_enabled=True))
 
 
+class TestMeshNodeReceive(unittest.TestCase):
+    def test_capture_model_does_not_decode_while_transmitting(self):
+        conf = Config()
+        conf.NR_NODES = 1
+        conf.CAPTURE_COLLISION_MODEL_ENABLED = True
+        env = simpy.Environment()
+        node_config = NodeConfig(0, Point(0, 0, 1.5), conf.PERIOD)
+        node = MeshNode(conf, SimulationState(conf, env), SimulationDataTracking(), node_config)
+        node.isTransmitting = True
+        pipe = simpy.Store(env)
+        packet = type("Packet", (), {
+            "sensedByN": [True],
+            "onAirToN": [True],
+            "collidedAtN": [False],
+            "phyLostAtN": [False],
+            "receivedAtN": [False],
+            "seq": 1,
+            "txNodeId": 7,
+        })()
+
+        env.process(node.receive(pipe))
+        pipe.put(packet)
+        env.run(until=0.001)
+        node.isTransmitting = False
+        pipe.put(packet)
+        env.run(until=0.002)
+
+        self.assertFalse(packet.sensedByN[0])
+        self.assertFalse(packet.receivedAtN[0])
+
+    def test_capture_model_preserves_sensed_collision_casualty(self):
+        conf = Config()
+        conf.NR_NODES = 1
+        conf.CAPTURE_COLLISION_MODEL_ENABLED = True
+        env = simpy.Environment()
+        node_config = NodeConfig(0, Point(0, 0, 1.5), conf.PERIOD)
+        node = MeshNode(conf, SimulationState(conf, env), SimulationDataTracking(), node_config)
+        pipe = simpy.Store(env)
+        packet = type("Packet", (), {
+            "sensedByN": [True],
+            "onAirToN": [True],
+            "collidedAtN": [True],
+            "phyLostAtN": [False],
+            "receivedAtN": [False],
+            "timeOnAir": 1.0,
+            "seq": 1,
+            "txNodeId": 7,
+        })()
+
+        env.process(node.receive(pipe))
+        pipe.put(packet)
+        env.run(until=0.001)
+        pipe.put(packet)
+        env.run(until=0.002)
+
+        self.assertTrue(packet.sensedByN[0])
+        self.assertFalse(packet.receivedAtN[0])
+
+
+class TestMeshNodeRandomness(unittest.TestCase):
+    def make_node(self, seed):
+        conf = Config()
+        conf.SEED = seed
+        conf.NR_NODES = 1
+        env = simpy.Environment()
+        node_config = NodeConfig(7, Point(0, 0, 1.5), conf.PERIOD)
+
+        return MeshNode(conf, SimulationState(conf, env), SimulationDataTracking(), node_config)
+
+    def test_rebroadcast_jitter_rng_is_seed_reproducible(self):
+        first = self.make_node(seed=44).rebroadcastRng.random()
+        same_seed = self.make_node(seed=44).rebroadcastRng.random()
+        different_seed = self.make_node(seed=45).rebroadcastRng.random()
+
+        self.assertEqual(first, same_seed)
+        self.assertNotEqual(first, different_seed)
+
+
 if __name__ == "__main__":
     unittest.main()

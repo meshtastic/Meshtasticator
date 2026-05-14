@@ -13,7 +13,15 @@ class TestRadioPolicyCompare(unittest.TestCase):
         with self.assertRaises(argparse.ArgumentTypeError):
             radio_policy_compare.parse_policy_names("static,nope")
 
-    def test_build_lora_args_adds_shared_physics_and_policy_flags(self):
+    def test_parse_policy_names_rejects_future_policy_before_cli_support_exists(self):
+        with self.assertRaises(argparse.ArgumentTypeError):
+            radio_policy_compare.parse_policy_names("static,dcr")
+
+    def test_parse_args_rejects_thresholds_without_candidate_policy(self):
+        with self.assertRaises(SystemExit):
+            radio_policy_compare.parse_args(["--max-reach-drop-pp", "1"])
+
+    def test_build_lora_args_adds_shared_physics_flags(self):
         args = radio_policy_compare.parse_args([
             "--preset",
             "batumi",
@@ -22,19 +30,19 @@ class TestRadioPolicyCompare(unittest.TestCase):
             "--period-seconds",
             "3",
             "--policies",
-            "dcr",
+            "static",
             "--",
             "--no-clutter",
         ])
 
-        lora_args = radio_policy_compare.build_lora_args(args, "dcr")
+        lora_args = radio_policy_compare.build_lora_args(args, "static")
 
         self.assertEqual(lora_args[:2], ["--preset", "batumi"])
         self.assertIn("--no-gui", lora_args)
         self.assertIn("--phy-loss-model", lora_args)
         self.assertIn("--capture-collision-model", lora_args)
-        self.assertIn("--dcr", lora_args)
         self.assertIn("--no-clutter", lora_args)
+        self.assertNotIn("--dcr", lora_args)
         self.assertNotIn("--dtp", lora_args)
         self.assertNotIn("--", lora_args)
 
@@ -88,13 +96,32 @@ class TestRadioPolicyCompare(unittest.TestCase):
         self.assertIn("reach +5.00 pp", deltas)
         self.assertIn("phy_loss -2", deltas)
 
+    def test_summarize_results_tolerates_missing_future_policy_counters(self):
+        summary = radio_policy_compare.summarize_results(
+            "static",
+            "static CR",
+            {
+                "messageSeq": 10,
+                "sent": 100,
+                "nrReceived": 40,
+                "nrCollisions": 5,
+                "nrPhyLoss": 7,
+                "nodeReach": 0.25,
+                "usefulness": 0.5,
+                "txAirUtilizationRate": 0.07,
+            },
+            "raw",
+        )
+
+        self.assertEqual(summary.cr_mix, "n/a")
+        self.assertEqual(summary.dtp_power_mix, "n/a")
+        self.assertEqual(summary.dtp_detected, 0.0)
+        self.assertEqual(summary.dtp_decodable, 0.0)
+
     def test_thresholds_flag_reach_and_airtime_regressions(self):
-        args = radio_policy_compare.parse_args([
-            "--max-reach-drop-pp",
-            "1",
-            "--max-tx-air-increase-pp",
-            "0.5",
-        ])
+        args = radio_policy_compare.parse_args([])
+        args.max_reach_drop_pp = 1
+        args.max_tx_air_increase_pp = 0.5
         baseline = radio_policy_compare.PolicySummary(
             name="static",
             description="static",
@@ -143,12 +170,11 @@ class TestRadioPolicyCompare(unittest.TestCase):
             "--period-seconds",
             "3",
             "--policies",
-            "static,dcr",
-            "--max-reach-drop-pp",
-            "2",
+            "static",
             "--",
             "--no-clutter",
         ])
+        args.max_reach_drop_pp = 2
         baseline = radio_policy_compare.summarize_results(
             "static",
             "static CR",
