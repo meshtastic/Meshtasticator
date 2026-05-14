@@ -904,6 +904,7 @@ def parse_params(conf, args=None) -> [NodeConfig]:
     else:
         conf.CLUTTER_ENABLED = False
         conf.CLUTTER_GRID_FILE = None
+    conf.CLUTTER_PROFILE_SAMPLES = cli_defaults["CLUTTER_PROFILE_SAMPLES"]
     if parsed_arguments.clutter_profile_samples is not None:
         conf.CLUTTER_PROFILE_SAMPLES = parsed_arguments.clutter_profile_samples
     else:

@@ -245,6 +245,49 @@ class TestLoraMeshCli(unittest.TestCase):
         self.assertEqual(conf.PERIOD, 2345)
         self.assertEqual([node.period for node in nodes], [2345, 2345])
 
+    def test_parse_params_reuses_initial_dtp_and_clutter_defaults_after_override_run(self):
+        conf = Config()
+        default_dtp_max_drop = conf.DTP_MAX_POWER_DROP_DB
+        default_dtp_power_step = conf.DTP_POWER_STEP_DB
+        default_dtp_min_power = conf.DTP_MIN_TX_POWER_DBM
+        default_dtp_strong_margin = conf.DTP_STRONG_LINK_MARGIN_DB
+        default_dtp_very_strong_margin = conf.DTP_VERY_STRONG_LINK_MARGIN_DB
+        default_clutter_profile_samples = conf.CLUTTER_PROFILE_SAMPLES
+
+        self.parse_quietly(
+            conf,
+            [
+                "2",
+                "--no-gui",
+                "--dtp",
+                "--dtp-max-drop-db",
+                "3",
+                "--dtp-power-step-db",
+                "1",
+                "--dtp-min-power-dbm",
+                "14",
+                "--dtp-strong-margin-db",
+                "18",
+                "--dtp-very-strong-margin-db",
+                "24",
+                "--clutter-grid",
+                "grid.csv",
+                "--clutter-profile-samples",
+                "1",
+            ],
+        )
+        self.assertEqual(conf.DTP_MAX_POWER_DROP_DB, 3)
+        self.assertEqual(conf.CLUTTER_PROFILE_SAMPLES, 1)
+
+        self.parse_quietly(conf, ["2", "--no-gui", "--dtp"])
+
+        self.assertEqual(conf.DTP_MAX_POWER_DROP_DB, default_dtp_max_drop)
+        self.assertEqual(conf.DTP_POWER_STEP_DB, default_dtp_power_step)
+        self.assertEqual(conf.DTP_MIN_TX_POWER_DBM, default_dtp_min_power)
+        self.assertEqual(conf.DTP_STRONG_LINK_MARGIN_DB, default_dtp_strong_margin)
+        self.assertEqual(conf.DTP_VERY_STRONG_LINK_MARGIN_DB, default_dtp_very_strong_margin)
+        self.assertEqual(conf.CLUTTER_PROFILE_SAMPLES, default_clutter_profile_samples)
+
     def test_parse_params_rejects_sub_centisecond_time_overrides(self):
         conf = Config()
 

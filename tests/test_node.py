@@ -1,4 +1,6 @@
 import unittest
+from dataclasses import dataclass
+from unittest import mock
 
 import lib.node
 import simpy
@@ -329,6 +331,99 @@ class TestMeshNodeRandomness(unittest.TestCase):
 
         self.assertEqual(first, same_seed)
         self.assertNotEqual(first, different_seed)
+
+
+@dataclass
+class DcrDecision:
+    cr: int
+    reason: str
+
+
+class TestMeshNodeRetransmissionTiming(unittest.TestCase):
+    def make_nodes(self, first_role=MESHTASTIC_ROLE.CLIENT):
+        conf = Config()
+        conf.NR_NODES = 2
+        conf.PERIOD = 1
+        conf.SIMTIME = 100000
+        conf.DCR_ENABLED = True
+        conf.MOVEMENT_ENABLED = False
+        conf.LINK_OFFSET = {(0, 1): 0, (1, 0): 0}
+        env = simpy.Environment()
+        sim_state = SimulationState(conf, env)
+        data_tracking = SimulationDataTracking()
+        first = MeshNode(conf, sim_state, data_tracking, NodeConfig(0, Point(0, 0, 1.5), conf.PERIOD, first_role))
+        second = MeshNode(conf, sim_state, data_tracking, NodeConfig(1, Point(10, 0, 1.5), conf.PERIOD))
+        sim_state.nodes.extend([first, second])
+        return env, first
+
+    def test_retransmission_timeout_uses_dcr_finalized_airtime(self):
+        env, node = self.make_nodes()
+        observed = []
+
+        def capture_timeout(_, packet):
+            observed.append((packet.cr, env.now, packet.transmission_started_event.triggered))
+            return 1000000
+
+        with (
+            mock.patch("lib.node.choose_dynamic_coding_rate", return_value=DcrDecision(8, "test_rescue")),
+            mock.patch("lib.node.get_retransmission_msec", side_effect=capture_timeout),
+        ):
+            env.run(until=1000)
+
+        self.assertGreater(len(observed), 0)
+        self.assertEqual(observed[0][0], 8)
+        self.assertTrue(observed[0][2])
+
+    def test_cancelled_transmit_completes_dcr_timeout_waiter(self):
+        env, node = self.make_nodes(first_role=MESHTASTIC_ROLE.REPEATER)
+        env.run(until=1)
+        packet = node.send_packet(0xFFFFFFFF)
+        node.timesReceived[packet.seq] = 3
+
+        env.run(until=packet.transmission_started_event)
+
+        self.assertTrue(packet.transmission_started_event.triggered)
+        self.assertNotIn(packet, node.packets)
+
+
+class TestMeshNodeCaptureReceive(unittest.TestCase):
+    def test_capture_mode_does_not_decode_packet_when_lock_fails_while_transmitting(self):
+        conf = Config()
+        conf.NR_NODES = 1
+        conf.CAPTURE_COLLISION_MODEL_ENABLED = True
+        conf.MOVEMENT_ENABLED = False
+        env = simpy.Environment()
+        sim_state = SimulationState(conf, env)
+        data_tracking = SimulationDataTracking()
+        node = MeshNode(
+            conf,
+            sim_state,
+            data_tracking,
+            NodeConfig(0, Point(0, 0, 1.5), conf.PERIOD, MESHTASTIC_ROLE.REPEATER),
+        )
+        packet = type("Packet", (), {
+            "seq": 1,
+            "txNodeId": 1,
+            "genTime": 0,
+            "timeOnAir": 10,
+            "sensedByN": [True],
+            "onAirToN": [True],
+            "collidedAtN": [False],
+            "phyLostAtN": [False],
+            "receivedAtN": [False],
+        })()
+        pipe = simpy.Store(env)
+        env.process(node.receive(pipe))
+        node.isTransmitting = True
+
+        pipe.put(packet)
+        env.run(until=1)
+        node.isTransmitting = False
+        pipe.put(packet)
+        env.run(until=2)
+
+        self.assertFalse(packet.sensedByN[0])
+        self.assertFalse(packet.receivedAtN[0])
 
 
 if __name__ == "__main__":
