@@ -1,4 +1,5 @@
 import logging
+import math
 import random
 
 from lib.phy import airtime, get_current_slot_time
@@ -10,6 +11,18 @@ logger = logging.getLogger(__name__)
 CWmin = 3
 CWmax = 8
 PROCESSING_TIME_MSEC = 4500
+
+
+def channel_utilization_percent(node):
+    """Return a bounded airtime share for contention-window calculations."""
+    now = getattr(node.env, "now", 0)
+    if now <= 0:
+        return 0.0
+
+    channel_util = node.airUtilization / now * 100
+    if not math.isfinite(channel_util):
+        return 0.0
+    return max(0.0, min(100.0, channel_util))
 
 
 def set_transmit_delay(node, packet):  # from RadioLibInterface::setTransmitDelay
@@ -46,9 +59,7 @@ def get_tx_delay_msec_weighted(node, rssi):  # from RadioInterface::getTxDelayMs
 
 
 def get_tx_delay_msec(node):  # from RadioInterface::getTxDelayMsec
-    # channelUtilizationPercent is actually computed based on the last CHANNEL_UTILIZATION_PERIODS, summing
-    # the utilization of those periods. In v2.7.15.567b8ea this macro is 6, with SECONDS_PER_PERIOD 3600
-    channelUtil = node.airUtilization / node.env.now * 100
+    channelUtil = channel_utilization_percent(node)
     CWsize = int(channelUtil * (CWmax - CWmin) / 100 + CWmin)
     CW = random.randint(0, 2 ** CWsize)
     logger.debug(f'{node.env.now:.3f} Current channel utilization is {channelUtil}, so picked {CWsize=} and {CW=}')
@@ -59,7 +70,7 @@ def get_retransmission_msec(node, packet):  # from RadioInterface::getRetransmis
     # Retransmission timeout has to follow the physical airtime of the packet
     # that was actually sent. With DCR disabled this is still the preset CR.
     packetAirtime = int(airtime(node.conf, packet.sf, packet.cr, packet.packetLen, packet.bw))
-    channelUtil = node.airUtilization / node.env.now * 100
+    channelUtil = channel_utilization_percent(node)
     CWsize = int(channelUtil * (CWmax - CWmin) / 100 + CWmin)
     return 2 * packetAirtime + (2 ** CWsize + 2 * CWmax + 2 ** (int((CWmax + CWmin) / 2))) * get_current_slot_time() + PROCESSING_TIME_MSEC
 
