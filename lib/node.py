@@ -407,7 +407,16 @@ class MeshNode:
                     if rx_node.nodeid == self.nodeid:
                         continue # skip self
 
-                    (rssi, pl) = self.node_conf.compute_rssi_and_pathloss_to(rx_node.node_conf, self.conf)
+                    offset = getattr(self.conf, "LINK_OFFSET", {}).get((self.nodeid, rx_node.nodeid), 0)
+                    budget = calculate_link_budget(
+                        self.conf,
+                        self,
+                        rx_node,
+                        offset,
+                        tx_power_dbm=self.txPower,
+                    )
+                    rssi = budget.rssi_dbm
+                    pl = budget.calibrated_path_loss_db
 
                     # compare with extra margin (set based on 10-node standard test)
                     if rssi + self.conf.CONNECTIVITY_MAP_RSSI_MARGIN > self.conf.current_preset['sensitivity']:

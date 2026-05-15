@@ -7,6 +7,7 @@ import simpy
 
 from lib.config import Config
 from lib.discrete_event_sim_components import SimulationDataTracking, SimulationState
+from lib.link_model import calculate_link_budget
 from lib.node import (
     MESHTASTIC_ROLE,
     MeshNode,
@@ -487,7 +488,7 @@ class TestMeshNodeCaptureReceive(unittest.TestCase):
             conf,
             sim_state,
             data_tracking,
-            NodeConfig(0, Point(0, 0, 1.5), conf.PERIOD, MESHTASTIC_ROLE.REPEATER),
+            NodeConfig(0, Point(0, 0, 1.5), conf.PERIOD, role=MESHTASTIC_ROLE.REPEATER),
         )
         packet = type("Packet", (), {
             "seq": 1,
@@ -516,6 +517,38 @@ class TestMeshNodeCaptureReceive(unittest.TestCase):
         self.assertFalse(any(node.isReceiving))
         self.assertEqual(node.airUtilization, 10)
         self.assertFalse(packet.receivedAtN[0])
+
+    def test_moving_connectivity_uses_live_node_positions(self):
+        conf = Config()
+        conf.NR_NODES = 2
+        conf.MOVEMENT_ENABLED = False
+        conf.ENABLE_CONNECTIVITY_MAP = True
+        conf.LINK_OFFSET = {(0, 1): 0, (1, 0): 0}
+        env = simpy.Environment()
+        sim_state = SimulationState(conf, env)
+        data_tracking = SimulationDataTracking()
+        first = MeshNode(
+            conf,
+            sim_state,
+            data_tracking,
+            NodeConfig(0, Point(0, 0, 1.5), conf.PERIOD, role=MESHTASTIC_ROLE.REPEATER),
+        )
+        second = MeshNode(
+            conf,
+            sim_state,
+            data_tracking,
+            NodeConfig(1, Point(10, 0, 1.5), conf.PERIOD, role=MESHTASTIC_ROLE.REPEATER),
+        )
+        sim_state.nodes.extend([first, second])
+        sim_state.connectivity_map[0] = set()
+        sim_state.connectivity_map[1] = set()
+        first.movementStepSize = 1.0
+
+        with mock.patch("lib.node.calculate_link_budget", wraps=calculate_link_budget) as link_budget:
+            next(first.move_node())
+
+        self.assertIs(link_budget.call_args.args[1], first)
+        self.assertIs(link_budget.call_args.args[2], second)
 
 
 if __name__ == "__main__":
