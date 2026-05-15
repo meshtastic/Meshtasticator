@@ -15,7 +15,11 @@ from lib.phy import check_collision, is_channel_active, airtime
 from lib.packet import NODENUM_BROADCAST, MeshPacket, MeshMessage
 from lib.phy import estimate_path_loss
 from lib.point import Point
-from lib.terrain import NODE_Z_REFERENCE_SEA_LEVEL, apply_terrain_altitude
+from lib.terrain import (
+    NODE_Z_REFERENCE_SEA_LEVEL,
+    apply_terrain_altitude,
+    terrain_obstruction_loss,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +65,7 @@ class MeshNodeStats:
 class NodeConfig:
     """Specific configuration for a node
     """
-    def __init__(self, node_id: int, position: Point, period: int, tx_power: int, freq: float, role: MESHTASTIC_ROLE = MESHTASTIC_ROLE.CLIENT, antenna_gain: float = 0, hop_limit: int = 3, neighbor_info: bool = False, antenna_height=None, absolute_altitude=None):
+    def __init__(self, node_id: int, position: Point, period: int, tx_power: int = 30, freq: float = 902e6, role: MESHTASTIC_ROLE = MESHTASTIC_ROLE.CLIENT, antenna_gain: float = 0, hop_limit: int = 3, neighbor_info: bool = False, antenna_height=None, absolute_altitude=None):
         """Initial configuration of a node
 
         Arguments:
@@ -145,6 +149,7 @@ class NodeConfig:
         # compute path loss
         dist = self.position.euclidean_distance(rx_nodeconf.position)
         pl = estimate_path_loss(conf, dist, self.freq, node_antenna_height(self), node_antenna_height(rx_nodeconf))
+        pl += terrain_obstruction_loss(conf, self.position, rx_nodeconf.position, self.freq)
         rssi = self.tx_power + self.antenna_gain + rx_nodeconf.antenna_gain - pl
 
         return (rssi, pl)

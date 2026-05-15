@@ -37,6 +37,25 @@ class TestNodeConf(unittest.TestCase):
         with self.assertRaises(ValueError, msg="cannot compute rssi/pathloss between the same nodes (by id)"):
             nodeconf.compute_rssi_and_pathloss_to(nodeconf, conf)
 
+    def test_pathloss_includes_configured_terrain_obstruction(self):
+        from lib.config import Config
+        from lib.point import Point
+        from lib.terrain import TerrainGrid
+
+        conf = Config()
+        tx = lib.node.NodeConfig(0, Point(0, 0, 2), 1, conf.PTX, conf.FREQ)
+        rx = lib.node.NodeConfig(1, Point(1000, 0, 2), 1, conf.PTX, conf.FREQ)
+        plain_rssi, plain_loss = tx.compute_rssi_and_pathloss_to(rx, conf)
+
+        conf.TERRAIN_ENABLED = True
+        conf.TERRAIN_GRID = TerrainGrid.from_rows(
+            [(0, 0, 0), (500, 0, 500), (1000, 0, 0)]
+        )
+        terrain_rssi, terrain_loss = tx.compute_rssi_and_pathloss_to(rx, conf)
+
+        self.assertGreater(terrain_loss, plain_loss)
+        self.assertLess(terrain_rssi, plain_rssi)
+
 
 class TestNodeConfigYaml(unittest.TestCase):
     def test_plain_gui_node_map_is_accepted(self):

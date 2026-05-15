@@ -135,8 +135,10 @@ def nodes_have_flat_link_budget(conf, node_a, node_b):
     sensitivity = conf.current_preset["sensitivity"]
     antenna_gain_a = getattr(node_a, "antennaGain", getattr(node_a, "antenna_gain", 0))
     antenna_gain_b = getattr(node_b, "antennaGain", getattr(node_b, "antenna_gain", 0))
-    rssi_ab = conf.PTX + antenna_gain_a - path_loss
-    rssi_ba = conf.PTX + antenna_gain_b - path_loss
+    tx_power_a = getattr(node_a, "tx_power", conf.PTX)
+    tx_power_b = getattr(node_b, "tx_power", conf.PTX)
+    rssi_ab = tx_power_a + antenna_gain_a + antenna_gain_b - path_loss
+    rssi_ba = tx_power_b + antenna_gain_b + antenna_gain_a - path_loss
     return rssi_ab >= sensitivity or rssi_ba >= sensitivity
 
 
@@ -341,11 +343,7 @@ def parse_params(conf, args=None) -> [NodeConfig]:
         gui_enabled = False
         plot_enabled = False
 
-    # enforce defaulting to True
-    if parsed_arguments.disable_connectivity_map:
-        conf.ENABLE_CONNECTIVITY_MAP = False
-    else:
-        conf.ENABLE_CONNECTIVITY_MAP = True
+    connectivity_map_enabled = not parsed_arguments.disable_connectivity_map
 
     if (
         parsed_arguments.from_file is not None
@@ -381,6 +379,8 @@ def parse_params(conf, args=None) -> [NodeConfig]:
         terrain_profile_samples = parsed_arguments.terrain_profile_samples
     if parsed_arguments.from_file is not None:
         try:
+            if parsed_arguments.map_bbox is not None:
+                terrain_bbox = parse_bbox(parsed_arguments.map_bbox)
             with open(
                 os.path.join("out", parsed_arguments.from_file), "r", encoding="utf-8"
             ) as file:
@@ -431,6 +431,8 @@ def parse_params(conf, args=None) -> [NodeConfig]:
                 limit=parsed_arguments.map_limit,
                 antenna_height=conf.HM,
                 hop_limit=conf.hopLimit,
+                tx_power=conf.PTX,
+                freq=conf.FREQ,
                 return_origin=True,
             )
             scenario_origin = nodedb_origin
@@ -486,6 +488,10 @@ def parse_params(conf, args=None) -> [NodeConfig]:
             parser.error(
                 "--terrain-srtm requires --from-map --map-bbox or a scenario file with origin metadata"
             )
+    if parsed_arguments.terrain_srtm and scenario_origin is None:
+        parser.error(
+            "--terrain-srtm requires --from-map/--from-nodedb or a scenario file with origin metadata"
+        )
 
     if parsed_arguments.terrain_srtm:
         try:
@@ -519,6 +525,7 @@ def parse_params(conf, args=None) -> [NodeConfig]:
     conf.GUI_ENABLED = gui_enabled
     conf.PLOT = plot_enabled
     conf.NR_NODES = nr_nodes
+    conf.ENABLE_CONNECTIVITY_MAP = connectivity_map_enabled
     set_geo_origin(conf, scenario_origin)
     conf.TERRAIN_ENABLED = terrain_enabled
     conf.TERRAIN_GRID = terrain_grid
@@ -611,11 +618,7 @@ def run_simulation(conf, node_config):
     print("Number of packets dropped by delay/hop limit:", delayDropped)
 
     if conf.MODEL_ASYMMETRIC_LINKS:
-        asymmetricLinkRate = results["asymmetricLinkRate"]
-        symmetricLinkRate = results["symmetricLinkRate"]
         noLinkRate = results["noLinkRate"]
-        print("Asymmetric links:", round(asymmetricLinkRate * 100, 2), "%")
-        print("Symmetric links:", round(symmetricLinkRate * 100, 2), "%")
         print("No links:", round(noLinkRate * 100, 2), "%")
 
     if conf.MOVEMENT_ENABLED:

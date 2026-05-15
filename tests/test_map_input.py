@@ -240,6 +240,38 @@ class TestMapInput(unittest.TestCase):
         self.assertEqual([config.antenna_height for config in configs], [2.5, 2.5])
         self.assertEqual([config.hop_limit for config in configs], [5, 5])
 
+    def test_nodedb_payload_uses_supplied_radio_defaults(self):
+        payload = [
+            {
+                "num": 1,
+                "user": {"role": "ROUTER"},
+                "position": {
+                    "latitude": 41.62,
+                    "longitude": 41.59,
+                    "altitude": 120,
+                },
+            },
+            {
+                "num": 2,
+                "user": {"role": "CLIENT"},
+                "position": {
+                    "latitude": 41.63,
+                    "longitude": 41.60,
+                    "altitude": 10,
+                },
+            },
+        ]
+
+        configs = node_configs_from_nodedb_payload(
+            payload,
+            1000,
+            tx_power=14,
+            freq=433e6,
+        )
+
+        self.assertEqual([config.tx_power for config in configs], [14, 14])
+        self.assertEqual([config.freq for config in configs], [433e6, 433e6])
+
     def test_nodedb_payload_skips_unpositioned_nodes(self):
         payload = [
             {"num": 1, "position": {"time": 1640206266}},

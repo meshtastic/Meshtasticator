@@ -16,7 +16,7 @@ from lib.config import Config
 from lib.node import NodeConfig
 from lib.point import Point
 from lib.srtm import SRTM_DATA_ATTRIBUTION_URL
-from lib.terrain import NODE_Z_REFERENCE_GROUND, NODE_Z_REFERENCE_SEA_LEVEL
+from lib.terrain import NODE_Z_REFERENCE_GROUND, NODE_Z_REFERENCE_SEA_LEVEL, TerrainGrid
 
 import loraMesh
 
@@ -562,6 +562,27 @@ class TestLoraMeshCli(unittest.TestCase):
         self.assertIn("N00E002", tiles)
         self.assertNotIn("N00E001", tiles)
 
+    def test_flat_link_budget_prefilter_includes_both_antenna_gains(self):
+        conf = Config()
+        node_a = NodeConfig(
+            0,
+            Point(0, 0, conf.HM),
+            conf.PERIOD,
+            conf.PTX,
+            conf.FREQ,
+            antenna_gain=10,
+        )
+        node_b = NodeConfig(
+            1,
+            Point(5000, 0, conf.HM),
+            conf.PERIOD,
+            conf.PTX,
+            conf.FREQ,
+            antenna_gain=10,
+        )
+
+        self.assertTrue(loraMesh.nodes_have_flat_link_budget(conf, node_a, node_b))
+
     def test_parse_params_rejects_one_node_before_changing_geo_origin(self):
         conf = Config()
         conf.GEO_ORIGIN_LAT = 41.625
@@ -630,6 +651,14 @@ class TestLoraMeshCli(unittest.TestCase):
         self.assertFalse(conf.TERRAIN_ENABLED)
         self.assertEqual(random.getstate(), state_before)
 
+    def test_rejected_disable_connectivity_map_keeps_previous_config(self):
+        conf = Config()
+        conf.ENABLE_CONNECTIVITY_MAP = True
+
+        self.assert_parser_rejects(conf, ["2", "--terrain-srtm", "--disable-connectivity-map", "--no-gui"])
+
+        self.assertTrue(conf.ENABLE_CONNECTIVITY_MAP)
+
     def test_terrain_srtm_from_file_rejects_uncovered_bbox_before_config_mutation(self):
         conf = Config()
         conf.TERRAIN_ENABLED = True
@@ -687,6 +716,115 @@ class TestLoraMeshCli(unittest.TestCase):
         self.assertIs(conf.TERRAIN_GRID, terrain_grid)
         self.assertEqual((conf.GEO_ORIGIN_LAT, conf.GEO_ORIGIN_LON), (41.625, 41.595))
         self.assertEqual(random.getstate(), state_before)
+
+    def test_terrain_srtm_from_legacy_file_with_bbox_still_requires_origin(self):
+        conf = Config()
+        scenario = textwrap.dedent(
+            """\
+            0:
+              x: 0
+              y: 0
+              z: 1
+              isRouter: false
+              isRepeater: false
+              isClientMute: false
+              antennaGain: 0
+              hopLimit: 3
+              neighborInfo: false
+            1:
+              x: 10
+              y: 0
+              z: 1
+              isRouter: false
+              isRepeater: false
+              isClientMute: false
+              antennaGain: 0
+              hopLimit: 3
+              neighborInfo: false
+            """
+        )
+
+        os.makedirs("out", exist_ok=True)
+        with tempfile.NamedTemporaryFile(
+            "w", dir="out", suffix=".yaml", delete=False, encoding="utf-8"
+        ) as scenario_file:
+            scenario_file.write(scenario)
+            scenario_filename = os.path.basename(scenario_file.name)
+
+        try:
+            error = self.assert_parser_rejects(
+                conf,
+                [
+                    "--from-file",
+                    scenario_filename,
+                    "--terrain-srtm",
+                    "--map-bbox",
+                    "41.5,41.5,41.8,41.8",
+                    "--no-gui",
+                ],
+            )
+        finally:
+            os.unlink(os.path.join("out", scenario_filename))
+
+        self.assertIn("--terrain-srtm requires", error)
+        self.assertFalse(conf.TERRAIN_ENABLED)
+
+    def test_terrain_srtm_from_file_honors_explicit_bbox(self):
+        conf = Config()
+        scenario = textwrap.dedent(
+            """\
+            origin:
+              lat: 41.62
+              lon: 41.59
+            nodes:
+              0:
+                x: 0
+                y: 0
+                z: 1
+                isRouter: false
+                isRepeater: false
+                isClientMute: false
+                antennaGain: 0
+                hopLimit: 3
+                neighborInfo: false
+              1:
+                x: 10
+                y: 0
+                z: 1
+                isRouter: false
+                isRepeater: false
+                isClientMute: false
+                antennaGain: 0
+                hopLimit: 3
+                neighborInfo: false
+            """
+        )
+
+        os.makedirs("out", exist_ok=True)
+        with tempfile.NamedTemporaryFile(
+            "w", dir="out", suffix=".yaml", delete=False, encoding="utf-8"
+        ) as scenario_file:
+            scenario_file.write(scenario)
+            scenario_filename = os.path.basename(scenario_file.name)
+
+        terrain_grid = TerrainGrid.from_rows([(0, 0, 10), (10, 0, 10)])
+        try:
+            with mock.patch("loraMesh.terrain_grid_from_srtm", return_value=terrain_grid) as terrain_loader:
+                self.parse_quietly(
+                    conf,
+                    [
+                        "--from-file",
+                        scenario_filename,
+                        "--terrain-srtm",
+                        "--map-bbox",
+                        "41.5,41.5,41.8,41.8",
+                        "--no-gui",
+                    ],
+                )
+        finally:
+            os.unlink(os.path.join("out", scenario_filename))
+
+        self.assertEqual(terrain_loader.call_args.args[0], (41.5, 41.5, 41.8, 41.8))
 
     def test_failed_srtm_load_keeps_previous_terrain_config(self):
         conf = Config()

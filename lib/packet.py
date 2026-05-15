@@ -4,6 +4,7 @@ import random
 from lib.common import node_antenna_height
 from lib.discrete_event_sim_components import Counter
 from lib.phy import airtime, estimate_path_loss
+from lib.terrain import terrain_obstruction_loss
 
 NODENUM_BROADCAST = 0xFFFFFFFF
 
@@ -103,6 +104,12 @@ class MeshPacket:
                     self.freq,
                     node_antenna_height(self.tx_node),
                     node_antenna_height(rx_node),
+                )
+                baseline_pathloss += terrain_obstruction_loss(
+                    self.conf,
+                    self.tx_node.position,
+                    rx_node.position,
+                    self.freq,
                 )
 
             if conf.MODEL_ASYMMETRIC_LINKS:

@@ -194,6 +194,8 @@ def node_configs_from_map_payload(
     limit=None,
     antenna_height=1.5,
     hop_limit=3,
+    tx_power=30,
+    freq=902e6,
     origin=None,
     return_origin=False,
 ):
@@ -211,6 +213,8 @@ def node_configs_from_map_payload(
         period,
         antenna_height=antenna_height,
         hop_limit=hop_limit,
+        tx_power=tx_power,
+        freq=freq,
         origin=origin,
         return_origin=return_origin,
     )
