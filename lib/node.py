@@ -232,7 +232,7 @@ class MeshNode:
         # set up internal RNGs
         self.moveRng = random.Random(self.nodeid)
         self.nodeRng = random.Random(self.nodeid)
-        self.rebroadcastRng = random.Random()
+        self.rebroadcastRng = random.Random(f"{self.conf.SEED}:{self.nodeid}:rebroadcast")
 
         # require the user to specify a node configuration now, including position
         self.position = self.node_conf.position # explicitly use position in node_conf
