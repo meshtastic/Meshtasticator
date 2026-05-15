@@ -64,6 +64,7 @@ def setup_asymmetric_links(conf, nodes):
     """updates conf to populate LINK_OFFSET member to simulate asymmetric links
     """
     asymLinkRng = random.Random(conf.SEED)
+    conf.LINK_OFFSET = {}
     totalPairs = 0
     symmetricLinks = 0
     asymmetricLinks = 0
