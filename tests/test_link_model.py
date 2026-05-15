@@ -2,6 +2,7 @@ import unittest
 
 from lib.config import Config
 from lib.link_model import calculate_link_budget
+from lib.node import NodeConfig
 from lib.point import Point
 from lib.terrain import TerrainGrid
 
@@ -64,6 +65,17 @@ class TestLinkModel(unittest.TestCase):
         conf = Config()
         baseline = calculate_link_budget(conf, DummyNode(1, 0, 0), DummyNode(2, 1000, 0))
         per_node_power = calculate_link_budget(conf, DummyNode(1, 0, 0, tx_power=20), DummyNode(2, 1000, 0))
+
+        self.assertAlmostEqual(per_node_power.raw_rssi_dbm - baseline.raw_rssi_dbm, 20 - conf.PTX)
+        self.assertAlmostEqual(per_node_power.rssi_dbm - baseline.rssi_dbm, 20 - conf.PTX)
+
+    def test_node_config_tx_power_feeds_pre_simulation_link_budget(self):
+        conf = Config()
+        baseline = calculate_link_budget(conf, DummyNode(1, 0, 0), DummyNode(2, 1000, 0))
+        tx = NodeConfig(1, Point(0, 0, 1.5), conf.PERIOD, tx_power_dbm=20)
+        rx = NodeConfig(2, Point(1000, 0, 1.5), conf.PERIOD)
+
+        per_node_power = calculate_link_budget(conf, tx, rx)
 
         self.assertAlmostEqual(per_node_power.raw_rssi_dbm - baseline.raw_rssi_dbm, 20 - conf.PTX)
         self.assertAlmostEqual(per_node_power.rssi_dbm - baseline.rssi_dbm, 20 - conf.PTX)

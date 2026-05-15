@@ -60,8 +60,12 @@ def _enclosure_loss(node):
 
 
 def _tx_power(conf, node):
-    """Accept runtime MeshNode.txPower when per-node TX power is configured."""
-    return getattr(node, "txPower", conf.PTX)
+    """Accept runtime MeshNode and pre-simulation NodeConfig TX power."""
+    return getattr(
+        node,
+        "txPower",
+        getattr(node, "tx_power", getattr(node, "tx_power_dbm", conf.PTX)),
+    )
 
 
 def _link_calibration_features(conf, tx_point, rx_point, raw_snr, terrain_loss, clutter_loss):
