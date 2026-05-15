@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from simpy import Environment as SimpyEnvironment
 import numpy as np
 
+from lib.common import setup_asymmetric_links
 from lib.config import Config
 from lib.discrete_event_sim_components import SimulationState, SimulationDataTracking
 from lib.node import MeshNode, NodeConfig
@@ -72,7 +73,10 @@ class SimulationResults:
             1
             for p in packets
             for n in nodes
-            if n.nodeid < len(getattr(p, "phyLostAtN", [])) and p.phyLostAtN[n.nodeid] is True
+            if n.nodeid < len(getattr(p, "phyLostAtN", []))
+            and p.phyLostAtN[n.nodeid] is True
+            and p.sensedByN[n.nodeid] is True
+            and p.collidedAtN[n.nodeid] is False
         ])
         collision_reasons = {}
         for p in packets:
@@ -169,6 +173,7 @@ class DiscreteEventSim:
         # link counts, and thus do an O(n^2) precomputation anyways, just
         # always do this and reserve checking/not checking the map later based
         # on config settings.
+        setup_asymmetric_links(self.conf, self.node_configs)
         self.initialize_connectivity_map()
 
         # node configs provided, create nodes with them
