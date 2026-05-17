@@ -79,10 +79,11 @@ def role_name_for_node(node):
     # Fallback for map rows where the numeric role is known but the name is not
     # populated. Public map rows may carry this as either an integer or a string.
     # Unrecognized roles stay CLIENT-like unless explicitly mapped.
+    raw_role = node.get("role")
     try:
-        role_value = int(node.get("role"))
+        role_value = int(raw_role)
     except (TypeError, ValueError):
-        role_value = node.get("role")
+        return str(raw_role).upper() if raw_role is not None else "CLIENT"
 
     return {
         1: "CLIENT_MUTE",
