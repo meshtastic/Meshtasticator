@@ -13,6 +13,7 @@ ridges matter more than flat-earth distance alone.
 """
 
 import math
+from collections import OrderedDict
 
 
 EARTH_RADIUS_M = 6371000.0
@@ -171,9 +172,13 @@ def terrain_obstruction_loss(conf, tx_point, rx_point, freq):
     # Packet objects are created often and ask for every receiver. In a static
     # topology the terrain term is a pure function of the two endpoint
     # coordinates, so cache it on Config and keep the packet hot path cheap.
+    cache_limit = max(0, int(getattr(conf, "TERRAIN_LOSS_CACHE_MAX_ENTRIES", 16384)))
     cache = getattr(conf, "_terrain_loss_cache", None)
     if cache is None:
-        cache = {}
+        cache = OrderedDict()
+        conf._terrain_loss_cache = cache
+    elif not isinstance(cache, OrderedDict):
+        cache = OrderedDict(cache)
         conf._terrain_loss_cache = cache
 
     cache_key = (
@@ -194,7 +199,9 @@ def terrain_obstruction_loss(conf, tx_point, rx_point, freq):
         conf.TERRAIN_MAX_LOSS_DB,
     )
     if cache_key in cache:
-        return cache[cache_key]
+        loss = cache.pop(cache_key)
+        cache[cache_key] = loss
+        return loss
 
     horizontal_distance = math.hypot(rx_point.x - tx_point.x, rx_point.y - tx_point.y)
     if horizontal_distance <= 0:
@@ -234,5 +241,8 @@ def terrain_obstruction_loss(conf, tx_point, rx_point, freq):
         worst_loss = max(worst_loss, knife_edge_loss_db(v))
 
     loss = min(worst_loss, conf.TERRAIN_MAX_LOSS_DB)
-    cache[cache_key] = loss
+    if cache_limit > 0:
+        cache[cache_key] = loss
+        while len(cache) > cache_limit:
+            cache.popitem(last=False)
     return loss

@@ -322,6 +322,39 @@ class TestLoraMeshCli(unittest.TestCase):
         self.assertEqual(conf.XSIZE, 100000)
         self.assertEqual(conf.YSIZE, 100000)
 
+    def test_generated_parse_resets_bounds_after_imported_map_expands_them(self):
+        conf = Config()
+        baseline_bounds = (conf.OX, conf.OY, conf.XSIZE, conf.YSIZE)
+        payload = [
+            {
+                "latitude": 416200000,
+                "longitude": 414000000,
+                "role": 2,
+            },
+            {
+                "latitude": 416300000,
+                "longitude": 418500000,
+                "role": 0,
+            },
+        ]
+
+        with mock.patch("loraMesh.fetch_map_payload", return_value=payload):
+            self.parse_quietly(
+                conf,
+                [
+                    "--from-map",
+                    "https://example.test/nodes",
+                    "--map-bbox",
+                    "41.0,41.0,42.0,42.0",
+                    "--no-gui",
+                ],
+            )
+        self.assertNotEqual((conf.OX, conf.OY, conf.XSIZE, conf.YSIZE), baseline_bounds)
+
+        self.parse_quietly(conf, ["2", "--no-gui"])
+
+        self.assertEqual((conf.OX, conf.OY, conf.XSIZE, conf.YSIZE), baseline_bounds)
+
     def test_parse_params_loads_from_nodedb_payload(self):
         conf = Config()
         conf.HM = 2.5

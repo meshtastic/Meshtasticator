@@ -160,6 +160,64 @@ class TestTerrain(unittest.TestCase):
 
         self.assertGreater(loss, 0)
 
+    def test_terrain_loss_cache_is_bounded_for_moving_nodes(self):
+        conf = Config()
+        conf.TERRAIN_ENABLED = True
+        conf.TERRAIN_PROFILE_SAMPLES = 4
+        conf.TERRAIN_LOSS_CACHE_MAX_ENTRIES = 3
+        conf.TERRAIN_GRID = TerrainGrid.from_rows([
+            (0, 0, 0),
+            (1000, 0, 80),
+            (2000, 0, 0),
+            (3000, 0, 0),
+            (4000, 0, 0),
+        ])
+
+        first_loss = terrain_obstruction_loss(
+            conf,
+            Point(0, 0, 2),
+            Point(1000, 0, 2),
+            conf.FREQ,
+        )
+        for offset in range(1, 6):
+            terrain_obstruction_loss(
+                conf,
+                Point(offset * 100, 0, 2),
+                Point(1000 + offset * 100, 0, 2),
+                conf.FREQ,
+            )
+
+        self.assertLessEqual(len(conf._terrain_loss_cache), 3)
+        repeated_loss = terrain_obstruction_loss(
+            conf,
+            Point(0, 0, 2),
+            Point(1000, 0, 2),
+            conf.FREQ,
+        )
+        self.assertEqual(repeated_loss, first_loss)
+        self.assertLessEqual(len(conf._terrain_loss_cache), 3)
+
+    def test_zero_terrain_loss_cache_limit_disables_retention(self):
+        conf = Config()
+        conf.TERRAIN_ENABLED = True
+        conf.TERRAIN_PROFILE_SAMPLES = 4
+        conf.TERRAIN_LOSS_CACHE_MAX_ENTRIES = 0
+        conf.TERRAIN_GRID = TerrainGrid.from_rows([
+            (0, 0, 0),
+            (500, 0, 80),
+            (1000, 0, 0),
+        ])
+
+        loss = terrain_obstruction_loss(
+            conf,
+            Point(0, 0, 2),
+            Point(1000, 0, 2),
+            conf.FREQ,
+        )
+
+        self.assertGreaterEqual(loss, 0)
+        self.assertEqual(len(conf._terrain_loss_cache), 0)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -60,11 +60,23 @@ def get_cli_defaults(conf):
                 "PERIOD": conf.PERIOD,
                 "GUI_ENABLED": conf.GUI_ENABLED,
                 "PLOT": conf.PLOT,
+                "OX": conf.OX,
+                "OY": conf.OY,
+                "XSIZE": conf.XSIZE,
+                "YSIZE": conf.YSIZE,
                 "TERRAIN_PROFILE_SAMPLES": conf.TERRAIN_PROFILE_SAMPLES,
                 "NODE_Z_REFERENCE": conf.NODE_Z_REFERENCE,
             },
         )
     return getattr(conf, CLI_DEFAULT_ATTR)
+
+
+def reset_simulation_bounds_to_cli_defaults(conf, cli_defaults):
+    """Restore caller baseline bounds before building a new scenario."""
+    conf.OX = cli_defaults["OX"]
+    conf.OY = cli_defaults["OY"]
+    conf.XSIZE = cli_defaults["XSIZE"]
+    conf.YSIZE = cli_defaults["YSIZE"]
 
 
 def set_geo_origin(conf, origin):
@@ -456,6 +468,7 @@ def parse_params(conf, args=None) -> [NodeConfig]:
             conf.update_router_dependencies()
         # Generated node positions come from the global RNG. Seed immediately
         # before that generation, after every parser-only rejection path above.
+        reset_simulation_bounds_to_cli_defaults(conf, cli_defaults)
         conf.NR_NODES = nr_nodes
         conf.PERIOD = period
         random.seed(conf.SEED)
@@ -470,6 +483,7 @@ def parse_params(conf, args=None) -> [NodeConfig]:
             parser.error("--no-gui requires nr_nodes or --from-file")
         from lib.gui import gen_scenario
 
+        reset_simulation_bounds_to_cli_defaults(conf, cli_defaults)
         config_dict = gen_scenario(conf)
         config = [NodeConfig.from_gen_scenario_output(node_id, cfg, period, conf.PTX, conf.FREQ) for node_id, cfg in config_dict.items()]
         nr_nodes = len(config)
@@ -518,6 +532,7 @@ def parse_params(conf, args=None) -> [NodeConfig]:
         random.seed(conf.SEED)
 
     if bounds_follow_node_config:
+        reset_simulation_bounds_to_cli_defaults(conf, cli_defaults)
         fit_simulation_bounds_to_node_config(conf, config)
 
     conf.SIMTIME = simtime

@@ -422,6 +422,7 @@ class Config:
         self.TERRAIN_EFFECTIVE_EARTH_RADIUS_MULTIPLIER = 4.0 / 3.0
         self.TERRAIN_MIN_ANTENNA_HEIGHT_M = 1.5
         self.TERRAIN_MAX_LOSS_DB = 35.0
+        self.TERRAIN_LOSS_CACHE_MAX_ENTRIES = 16384
 
         # Misc
         self.SEED = 44  # random seed to use
