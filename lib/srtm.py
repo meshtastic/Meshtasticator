@@ -213,17 +213,23 @@ def ensure_hgt_tile(
         cache_dir / f"{tile_name}{''.join(parsed_path.suffixes) or '.download'}"
     )
     partial_hgt_path = cache_dir / f"{tile_name}.hgt.tmp"
+    direct_hgt_download = download_path == hgt_path
+    if direct_hgt_download:
+        download_path = partial_hgt_path
 
     try:
+        download_path.unlink(missing_ok=True)
         with urlopen(url, timeout=60) as response, download_path.open("wb") as out:
             shutil.copyfileobj(response, out)
     except (OSError, urllib.error.URLError) as err:
+        download_path.unlink(missing_ok=True)
         raise ValueError(
             f"could not download SRTM tile {tile_name} from {url}: {err}"
         ) from err
 
     try:
-        partial_hgt_path.unlink(missing_ok=True)
+        if not direct_hgt_download:
+            partial_hgt_path.unlink(missing_ok=True)
         if download_path.suffix == ".gz":
             with (
                 gzip.open(download_path, "rb") as src,
@@ -253,7 +259,8 @@ def ensure_hgt_tile(
                 ):
                     shutil.copyfileobj(src, out)
         else:
-            download_path.replace(partial_hgt_path)
+            if not direct_hgt_download:
+                download_path.replace(partial_hgt_path)
         partial_hgt_path.replace(hgt_path)
     except (OSError, gzip.BadGzipFile, zipfile.BadZipFile, ValueError) as err:
         partial_hgt_path.unlink(missing_ok=True)

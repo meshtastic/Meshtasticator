@@ -355,6 +355,42 @@ class TestLoraMeshCli(unittest.TestCase):
 
         self.assertEqual((conf.OX, conf.OY, conf.XSIZE, conf.YSIZE), baseline_bounds)
 
+    def test_generated_parse_resets_bounds_after_imported_nodedb_expands_them(self):
+        conf = Config()
+        baseline_bounds = (conf.OX, conf.OY, conf.XSIZE, conf.YSIZE)
+        payload = {
+            "nodesByNum": {
+                1: {
+                    "num": 1,
+                    "user": {"id": "!00000001", "role": "ROUTER"},
+                    "position": {"latitudeI": 416200000, "longitudeI": 414000000},
+                },
+                2: {
+                    "num": 2,
+                    "user": {"id": "!00000002", "role": "CLIENT"},
+                    "position": {"latitudeI": 416300000, "longitudeI": 418500000},
+                },
+            }
+        }
+
+        with mock.patch("loraMesh.fetch_nodedb_payload", return_value=payload):
+            self.parse_quietly(
+                conf,
+                [
+                    "--from-nodedb",
+                    "--nodedb-host",
+                    "192.0.2.10",
+                    "--map-bbox",
+                    "41.0,41.0,42.0,42.0",
+                    "--no-gui",
+                ],
+            )
+        self.assertNotEqual((conf.OX, conf.OY, conf.XSIZE, conf.YSIZE), baseline_bounds)
+
+        self.parse_quietly(conf, ["2", "--no-gui"])
+
+        self.assertEqual((conf.OX, conf.OY, conf.XSIZE, conf.YSIZE), baseline_bounds)
+
     def test_parse_params_loads_from_nodedb_payload(self):
         conf = Config()
         conf.HM = 2.5

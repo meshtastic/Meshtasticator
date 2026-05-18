@@ -5,6 +5,7 @@ import unittest
 import zipfile
 from array import array
 from pathlib import Path
+from unittest import mock
 
 from lib.srtm import (
     HGT_VOID,
@@ -242,6 +243,21 @@ class TestSrtm(unittest.TestCase):
                     cache_dir,
                     url_template=f"{source_dir.as_uri()}/{{tile}}.hgt.gz",
                 )
+
+            self.assertFalse((cache_dir / "N41E041.hgt").exists())
+            self.assertFalse((cache_dir / "N41E041.hgt.tmp").exists())
+
+    def test_ensure_hgt_tile_does_not_cache_failed_direct_hgt_download(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / "cache"
+
+            with mock.patch("lib.srtm.urlopen", side_effect=OSError("broken pipe")):
+                with self.assertRaisesRegex(ValueError, "could not download"):
+                    ensure_hgt_tile(
+                        "N41E041",
+                        cache_dir,
+                        url_template="https://example.test/{tile}.hgt",
+                    )
 
             self.assertFalse((cache_dir / "N41E041.hgt").exists())
             self.assertFalse((cache_dir / "N41E041.hgt.tmp").exists())
