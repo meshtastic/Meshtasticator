@@ -15,7 +15,10 @@ from lib.node import MESHTASTIC_ROLE
 class TestMapInput(unittest.TestCase):
     def test_decode_map_coordinate(self):
         self.assertEqual(decode_map_coordinate(416219136), 41.6219136)
+        self.assertEqual(decode_map_coordinate(50), 0.000005)
+        self.assertEqual(decode_map_coordinate("-50"), -0.000005)
         self.assertEqual(decode_map_coordinate(41.6219136), 41.6219136)
+        self.assertEqual(decode_map_coordinate("41.6219136"), 41.6219136)
         self.assertIsNone(decode_map_coordinate(None))
 
     def test_decode_map_altitude_keeps_only_positive_finite_values(self):

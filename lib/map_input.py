@@ -24,6 +24,12 @@ def decode_map_coordinate(value):
     """Decode Meshtastic map integer coordinates into decimal degrees."""
     if value is None:
         return None
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value / 1e7
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped and stripped.lstrip("+-").isdigit():
+            return int(stripped) / 1e7
     coordinate = float(value)
     if abs(coordinate) > 180:
         coordinate /= 1e7
