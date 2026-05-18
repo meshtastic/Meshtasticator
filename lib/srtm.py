@@ -262,7 +262,13 @@ def ensure_hgt_tile(
             if not direct_hgt_download:
                 download_path.replace(partial_hgt_path)
         partial_hgt_path.replace(hgt_path)
-    except (OSError, gzip.BadGzipFile, zipfile.BadZipFile, ValueError) as err:
+    except (
+        EOFError,
+        OSError,
+        gzip.BadGzipFile,
+        zipfile.BadZipFile,
+        ValueError,
+    ) as err:
         partial_hgt_path.unlink(missing_ok=True)
         raise ValueError(f"could not unpack SRTM tile {tile_name}: {err}") from err
 

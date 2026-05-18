@@ -20,13 +20,13 @@ from lib.terrain import latlon_to_xy
 DEFAULT_MAP_NODES_URL = "https://meshtastic.liamcottle.net/api/v1/nodes"
 
 
-def decode_map_coordinate(value):
+def decode_map_coordinate(value, integer_scaled=False):
     """Decode Meshtastic map integer coordinates into decimal degrees."""
     if value is None:
         return None
-    if isinstance(value, int) and not isinstance(value, bool):
+    if integer_scaled and isinstance(value, int) and not isinstance(value, bool):
         return value / 1e7
-    if isinstance(value, str):
+    if integer_scaled and isinstance(value, str):
         stripped = value.strip()
         if stripped and stripped.lstrip("+-").isdigit():
             return int(stripped) / 1e7
@@ -47,7 +47,10 @@ def decode_map_altitude(value):
 
 
 def parse_bbox(value):
-    """Parse `min_lat,min_lon,max_lat,max_lon` into a numeric tuple."""
+    """Parse `min_lat,min_lon,max_lat,max_lon` into a numeric tuple.
+
+    Longitude ranges may cross the antimeridian by using min_lon > max_lon.
+    """
     parts = [part.strip() for part in value.split(",")]
     if len(parts) != 4:
         raise ValueError("map bbox must be min_lat,min_lon,max_lat,max_lon")
@@ -60,9 +63,25 @@ def parse_bbox(value):
         raise ValueError("map bbox values must be finite")
     if not valid_lat_lon(min_lat, min_lon) or not valid_lat_lon(max_lat, max_lon):
         raise ValueError("map bbox values must be valid latitude/longitude degrees")
-    if min_lat > max_lat or min_lon > max_lon:
-        raise ValueError("map bbox minimums must be less than maximums")
+    if min_lat > max_lat:
+        raise ValueError("map bbox minimum latitude must be less than maximum latitude")
     return min_lat, min_lon, max_lat, max_lon
+
+
+def bbox_crosses_antimeridian(bbox):
+    """Return whether a bbox uses wrapped longitudes across the antimeridian."""
+    _, min_lon, _, max_lon = bbox
+    return min_lon > max_lon
+
+
+def bbox_contains_latlon(bbox, lat, lon):
+    """Return whether a lat/lon point is inside a bbox, including wrapped bboxes."""
+    min_lat, min_lon, max_lat, max_lon = bbox
+    if not (min_lat <= lat <= max_lat):
+        return False
+    if bbox_crosses_antimeridian(bbox):
+        return lon >= min_lon or lon <= max_lon
+    return min_lon <= lon <= max_lon
 
 
 def fetch_map_payload(url=DEFAULT_MAP_NODES_URL):
@@ -127,7 +146,11 @@ def filter_positioned_map_nodes(nodes, bbox=None):
 
         try:
             lat = decode_map_coordinate(node.get("latitude"))
+            if lat is None:
+                lat = decode_map_coordinate(node.get("latitudeI"), integer_scaled=True)
             lon = decode_map_coordinate(node.get("longitude"))
+            if lon is None:
+                lon = decode_map_coordinate(node.get("longitudeI"), integer_scaled=True)
         except (TypeError, ValueError):
             continue
         if lat is None or lon is None:
@@ -136,12 +159,20 @@ def filter_positioned_map_nodes(nodes, bbox=None):
             continue
 
         if bbox is not None:
-            min_lat, min_lon, max_lat, max_lon = bbox
-            if not (min_lat <= lat <= max_lat and min_lon <= lon <= max_lon):
+            if not bbox_contains_latlon(bbox, lat, lon):
                 continue
 
         positioned.append((node, lat, lon))
     return positioned
+
+
+def center_longitude(longitudes):
+    """Return an antimeridian-aware center longitude for positioned rows."""
+    sin_sum = sum(math.sin(math.radians(lon)) for lon in longitudes)
+    cos_sum = sum(math.cos(math.radians(lon)) for lon in longitudes)
+    if abs(sin_sum) < 1e-12 and abs(cos_sum) < 1e-12:
+        return statistics.median(longitudes)
+    return math.degrees(math.atan2(sin_sum, cos_sum))
 
 
 def node_configs_from_positioned_rows(
@@ -157,7 +188,7 @@ def node_configs_from_positioned_rows(
     """Build NodeConfig objects from `(node, lat, lon)` positioned rows."""
     if origin is None:
         origin_lat = statistics.median([lat for _, lat, _ in positioned])
-        origin_lon = statistics.median([lon for _, _, lon in positioned])
+        origin_lon = center_longitude([lon for _, _, lon in positioned])
     else:
         try:
             origin_lat, origin_lon = (float(origin[0]), float(origin[1]))

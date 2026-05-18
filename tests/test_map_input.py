@@ -1,6 +1,7 @@
 import unittest
 
 from lib.map_input import (
+    bbox_contains_latlon,
     decode_map_altitude,
     decode_map_coordinate,
     node_configs_from_map_payload,
@@ -15,8 +16,9 @@ from lib.node import MESHTASTIC_ROLE
 class TestMapInput(unittest.TestCase):
     def test_decode_map_coordinate(self):
         self.assertEqual(decode_map_coordinate(416219136), 41.6219136)
-        self.assertEqual(decode_map_coordinate(50), 0.000005)
-        self.assertEqual(decode_map_coordinate("-50"), -0.000005)
+        self.assertEqual(decode_map_coordinate(50), 50.0)
+        self.assertEqual(decode_map_coordinate(50, integer_scaled=True), 0.000005)
+        self.assertEqual(decode_map_coordinate("-50", integer_scaled=True), -0.000005)
         self.assertEqual(decode_map_coordinate(41.6219136), 41.6219136)
         self.assertEqual(decode_map_coordinate("41.6219136"), 41.6219136)
         self.assertIsNone(decode_map_coordinate(None))
@@ -31,6 +33,14 @@ class TestMapInput(unittest.TestCase):
 
     def test_parse_bbox(self):
         self.assertEqual(parse_bbox("41.4,41.0,41.9,42.3"), (41.4, 41.0, 41.9, 42.3))
+
+    def test_parse_bbox_accepts_antimeridian_crossing(self):
+        bbox = parse_bbox("-1,179.5,1,-179.5")
+
+        self.assertEqual(bbox, (-1.0, 179.5, 1.0, -179.5))
+        self.assertTrue(bbox_contains_latlon(bbox, 0.0, 179.9))
+        self.assertTrue(bbox_contains_latlon(bbox, 0.0, -179.9))
+        self.assertFalse(bbox_contains_latlon(bbox, 0.0, 0.0))
 
     def test_parse_bbox_rejects_wrong_order(self):
         with self.assertRaises(ValueError):
@@ -80,6 +90,47 @@ class TestMapInput(unittest.TestCase):
         configs = node_configs_from_map_payload(payload, 1000)
 
         self.assertEqual(len(configs), 1)
+
+    def test_map_payload_accepts_explicit_scaled_integer_coordinates_near_zero(self):
+        payload = [
+            {"latitudeI": 50, "longitudeI": "-50", "role": 0},
+            {"latitude": 41, "longitude": 41, "role": 0},
+        ]
+
+        configs = node_configs_from_map_payload(payload, 1000, origin=(0, 0))
+
+        self.assertEqual(len(configs), 2)
+        self.assertAlmostEqual(configs[0].position.y, 0.56, places=2)
+        self.assertAlmostEqual(configs[0].position.x, -0.56, places=2)
+        self.assertGreater(configs[1].position.x, 4_000_000)
+        self.assertGreater(configs[1].position.y, 4_000_000)
+
+    def test_map_payload_infers_antimeridian_aware_origin(self):
+        payload = [
+            {"latitude": 0.0, "longitude": 179.9, "role": 0},
+            {"latitude": 0.0, "longitude": -179.9, "role": 0},
+        ]
+
+        configs, origin = node_configs_from_map_payload(
+            payload, 1000, return_origin=True
+        )
+
+        self.assertAlmostEqual(abs(origin[1]), 180.0)
+        self.assertLess(abs(configs[0].position.x), 20_000)
+        self.assertLess(abs(configs[1].position.x), 20_000)
+
+    def test_map_payload_filters_antimeridian_crossing_bbox(self):
+        payload = [
+            {"latitude": 0.0, "longitude": 179.9, "role": 0},
+            {"latitude": 0.0, "longitude": -179.9, "role": 0},
+            {"latitude": 0.0, "longitude": 0.0, "role": 0},
+        ]
+
+        configs = node_configs_from_map_payload(
+            payload, 1000, bbox=(-1.0, 179.5, 1.0, -179.5)
+        )
+
+        self.assertEqual(len(configs), 2)
 
     def test_numeric_role_fallback_accepts_string_values(self):
         self.assertEqual(role_name_for_node({"role": "2"}), "ROUTER")
@@ -243,6 +294,19 @@ class TestMapInput(unittest.TestCase):
         self.assertEqual([config.antenna_height for config in configs], [2.5, 2.5])
         self.assertEqual([config.hop_limit for config in configs], [5, 5])
 
+    def test_nodedb_payload_filters_antimeridian_crossing_bbox(self):
+        payload = [
+            {"position": {"latitude": 0.0, "longitude": 179.9}},
+            {"position": {"latitude": 0.0, "longitude": -179.9}},
+            {"position": {"latitude": 0.0, "longitude": 0.0}},
+        ]
+
+        configs = node_configs_from_nodedb_payload(
+            payload, 1000, bbox=(-1.0, 179.5, 1.0, -179.5)
+        )
+
+        self.assertEqual(len(configs), 2)
+
     def test_nodedb_payload_uses_supplied_radio_defaults(self):
         payload = [
             {
@@ -285,6 +349,29 @@ class TestMapInput(unittest.TestCase):
 
         self.assertEqual(len(positioned), 1)
         self.assertEqual(positioned[0][1:], (41.62, 41.59))
+
+    def test_nodedb_payload_decodes_plain_string_and_scaled_integer_coordinates(self):
+        payload = [
+            {
+                "num": 1,
+                "position": {"latitude": "41.62", "longitude": "41.59"},
+            },
+            {
+                "num": 2,
+                "position": {"latitude": 416300000, "longitude": 416000000},
+            },
+            {
+                "num": 3,
+                "position": {"latitude": 41, "longitude": 41},
+            },
+        ]
+
+        positioned = positioned_nodedb_nodes(payload)
+
+        self.assertEqual(
+            [row[1:] for row in positioned],
+            [(41.62, 41.59), (41.63, 41.6), (41.0, 41.0)],
+        )
 
     def test_nodedb_role_defaults_to_client(self):
         self.assertEqual(role_name_for_nodedb_node({}), "CLIENT")

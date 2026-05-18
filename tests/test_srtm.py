@@ -247,6 +247,28 @@ class TestSrtm(unittest.TestCase):
             self.assertFalse((cache_dir / "N41E041.hgt").exists())
             self.assertFalse((cache_dir / "N41E041.hgt.tmp").exists())
 
+    def test_ensure_hgt_tile_converts_truncated_gzip_to_value_error(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source_dir = Path(tmpdir) / "source"
+            cache_dir = Path(tmpdir) / "cache"
+            source_dir.mkdir()
+            raw_hgt = source_dir / "N41E041.hgt"
+            write_hgt(raw_hgt, [1, 2, 3, 4])
+            gzip_path = source_dir / "N41E041.hgt.gz"
+            with gzip.open(gzip_path, "wb") as dst:
+                dst.write(raw_hgt.read_bytes())
+            gzip_path.write_bytes(gzip_path.read_bytes()[:8])
+
+            with self.assertRaisesRegex(ValueError, "could not unpack"):
+                ensure_hgt_tile(
+                    "N41E041",
+                    cache_dir,
+                    url_template=f"{source_dir.as_uri()}/{{tile}}.hgt.gz",
+                )
+
+            self.assertFalse((cache_dir / "N41E041.hgt").exists())
+            self.assertFalse((cache_dir / "N41E041.hgt.tmp").exists())
+
     def test_ensure_hgt_tile_does_not_cache_failed_direct_hgt_download(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             cache_dir = Path(tmpdir) / "cache"

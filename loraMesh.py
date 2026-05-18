@@ -11,6 +11,7 @@ import yaml
 from lib.config import CONFIG
 from lib.map_input import (
     DEFAULT_MAP_NODES_URL,
+    bbox_crosses_antimeridian,
     fetch_map_payload,
     node_configs_from_map_payload,
     parse_bbox,
@@ -26,6 +27,10 @@ from lib.srtm import (
     DEFAULT_SRTM_URL_TEMPLATE,
     SRTM_DATA_ATTRIBUTION,
     SRTM_DATA_ATTRIBUTION_URL,
+    SRTM_MAX_LAT,
+    SRTM_MAX_LON,
+    SRTM_MIN_LAT,
+    SRTM_MIN_LON,
     clamp_bbox_to_srtm_coverage,
     terrain_grid_from_srtm,
     tiles_for_bbox,
@@ -34,6 +39,7 @@ from lib.terrain import (
     NODE_Z_REFERENCE_SEA_LEVEL,
     apply_terrain_altitudes,
     node_antenna_height,
+    normalize_longitude_delta,
     xy_to_latlon,
 )
 from lib.phy import estimate_path_loss
@@ -90,8 +96,43 @@ def set_geo_origin(conf, origin):
 
 def bbox_from_points(points, origin, margin_m=1000.0):
     """Build a geographic bbox around local x/y points when an origin exists."""
-    if origin is None:
+    bboxes = bboxes_from_points(points, origin, margin_m)
+    if not bboxes:
         return None
+    if len(bboxes) == 1:
+        return bboxes[0]
+    return (
+        min(bbox[0] for bbox in bboxes),
+        -180.0,
+        max(bbox[2] for bbox in bboxes),
+        180.0,
+    )
+
+
+def _clamp_bbox_to_srtm_coverage_if_present(bbox):
+    min_lat, min_lon, max_lat, max_lon = bbox
+    if min_lat >= SRTM_MAX_LAT or max_lat <= SRTM_MIN_LAT:
+        raise ValueError("bbox does not overlap SRTM coverage")
+    if min_lon >= SRTM_MAX_LON or max_lon <= SRTM_MIN_LON:
+        return None
+    return clamp_bbox_to_srtm_coverage(bbox)
+
+
+def _clamped_bboxes_from_candidates(candidates):
+    bboxes = []
+    for candidate in candidates:
+        bbox = _clamp_bbox_to_srtm_coverage_if_present(candidate)
+        if bbox is not None:
+            bboxes.append(bbox)
+    if not bboxes:
+        raise ValueError("bbox does not overlap SRTM coverage")
+    return bboxes
+
+
+def bboxes_from_points(points, origin, margin_m=1000.0):
+    """Build one or two geographic bboxes around local x/y points."""
+    if origin is None:
+        return []
     origin_lat, origin_lon = origin
     min_x = min(point.x for point in points) - margin_m
     max_x = max(point.x for point in points) + margin_m
@@ -99,14 +140,29 @@ def bbox_from_points(points, origin, margin_m=1000.0):
     max_y = max(point.y for point in points) + margin_m
     lat_a, lon_a = xy_to_latlon(min_x, min_y, origin_lat, origin_lon)
     lat_b, lon_b = xy_to_latlon(max_x, max_y, origin_lat, origin_lon)
-    return clamp_bbox_to_srtm_coverage(
-        (
-            min(lat_a, lat_b),
-            min(lon_a, lon_b),
-            max(lat_a, lat_b),
-            max(lon_a, lon_b),
+    min_lat = min(lat_a, lat_b)
+    max_lat = max(lat_a, lat_b)
+    lon_delta_a = normalize_longitude_delta(lon_a, origin_lon)
+    lon_delta_b = normalize_longitude_delta(lon_b, origin_lon)
+    min_delta = min(lon_delta_a, lon_delta_b)
+    max_delta = max(lon_delta_a, lon_delta_b)
+    min_lon = origin_lon + min_delta
+    max_lon = origin_lon + max_delta
+    if min_lon < -180.0:
+        return _clamped_bboxes_from_candidates(
+            (
+                (min_lat, min_lon + 360.0, max_lat, 180.0),
+                (min_lat, -180.0, max_lat, max_lon),
+            )
         )
-    )
+    if max_lon > 180.0:
+        return _clamped_bboxes_from_candidates(
+            (
+                (min_lat, min_lon, max_lat, 180.0),
+                (min_lat, -180.0, max_lat, max_lon - 360.0),
+            )
+        )
+    return _clamped_bboxes_from_candidates(((min_lat, min_lon, max_lat, max_lon),))
 
 
 def bbox_from_node_config(node_config, origin, margin_m=1000.0):
@@ -161,17 +217,17 @@ def srtm_tiles_for_node_config_links(conf, node_config, origin, margin_m=1000.0)
 
     tile_names = set()
     for node in node_config:
-        bbox = bbox_from_points([node.position], origin, margin_m)
-        tile_names.update(tiles_for_bbox(bbox))
+        for bbox in bboxes_from_points([node.position], origin, margin_m):
+            tile_names.update(tiles_for_bbox(bbox))
 
     for index, node_a in enumerate(node_config):
         for node_b in node_config[index + 1 :]:
             if not nodes_have_flat_link_budget(conf, node_a, node_b):
                 continue
-            bbox = bbox_from_points(
+            for bbox in bboxes_from_points(
                 [node_a.position, node_b.position], origin, margin_m
-            )
-            tile_names.update(tiles_for_bbox(bbox))
+            ):
+                tile_names.update(tiles_for_bbox(bbox))
 
     return sorted(tile_names)
 
@@ -377,6 +433,8 @@ def parse_params(conf, args=None) -> [NodeConfig]:
         and parsed_arguments.nodedb_host is None
     ):
         parser.error("--nodedb-port requires --nodedb-host")
+    if parsed_arguments.nodedb_port is not None and parsed_arguments.nodedb_port <= 0:
+        parser.error("--nodedb-port must be a positive TCP port")
 
     seeded_for_scenario = False
     bounds_follow_node_config = False
@@ -399,6 +457,12 @@ def parse_params(conf, args=None) -> [NodeConfig]:
                 raw_config = yaml.safe_load(file)
             config = node_configs_from_yaml(raw_config, period, conf.PTX, conf.FREQ)
             scenario_origin = origin_from_yaml(raw_config)
+            if (
+                parsed_arguments.terrain_srtm
+                and terrain_bbox is not None
+                and bbox_crosses_antimeridian(terrain_bbox)
+            ):
+                terrain_bbox = None
         except (OSError, ValueError, yaml.YAMLError) as err:
             parser.error(f"could not load --from-file YAML: {err}")
         nr_nodes = len(config)
@@ -423,6 +487,8 @@ def parse_params(conf, args=None) -> [NodeConfig]:
                 return_origin=True,
             )
             scenario_origin = map_origin
+            if parsed_arguments.terrain_srtm and bbox_crosses_antimeridian(terrain_bbox):
+                terrain_bbox = None
         except ValueError as err:
             parser.error(str(err))
         nr_nodes = len(config)
@@ -448,6 +514,12 @@ def parse_params(conf, args=None) -> [NodeConfig]:
                 return_origin=True,
             )
             scenario_origin = nodedb_origin
+            if (
+                parsed_arguments.terrain_srtm
+                and terrain_bbox is not None
+                and bbox_crosses_antimeridian(terrain_bbox)
+            ):
+                terrain_bbox = None
         except ValueError as err:
             parser.error(str(err))
         nr_nodes = len(config)

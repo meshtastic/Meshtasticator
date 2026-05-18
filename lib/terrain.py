@@ -22,10 +22,21 @@ NODE_Z_REFERENCE_SEA_LEVEL = "sea_level"
 MAX_REASONABLE_STRUCTURE_HEIGHT_M = 850.0
 
 
+def normalize_longitude_delta(lon, origin_lon):
+    """Return shortest signed longitude delta in degrees."""
+    return ((lon - origin_lon + 180.0) % 360.0) - 180.0
+
+
+def normalize_longitude(lon):
+    """Normalize longitude to the conventional [-180, 180] range."""
+    return ((lon + 180.0) % 360.0) - 180.0
+
+
 def latlon_to_xy(lat, lon, origin_lat, origin_lon):
     """Project WGS84 lat/lon to local x/y meters with an equirectangular map."""
     origin_lat_rad = math.radians(origin_lat)
-    x = math.radians(lon - origin_lon) * EARTH_RADIUS_M * math.cos(origin_lat_rad)
+    lon_delta = normalize_longitude_delta(lon, origin_lon)
+    x = math.radians(lon_delta) * EARTH_RADIUS_M * math.cos(origin_lat_rad)
     y = math.radians(lat - origin_lat) * EARTH_RADIUS_M
     return x, y
 
@@ -38,7 +49,7 @@ def xy_to_latlon(x, y, origin_lat, origin_lon):
         raise ValueError("origin latitude is too close to a pole for local x/y projection")
 
     lat = origin_lat + math.degrees(y / EARTH_RADIUS_M)
-    lon = origin_lon + math.degrees(x / (EARTH_RADIUS_M * origin_cos))
+    lon = normalize_longitude(origin_lon + math.degrees(x / (EARTH_RADIUS_M * origin_cos)))
     return lat, lon
 
 

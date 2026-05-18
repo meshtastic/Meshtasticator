@@ -37,6 +37,14 @@ class TestTerrain(unittest.TestCase):
         self.assertAlmostEqual(out_lat, lat)
         self.assertAlmostEqual(out_lon, lon)
 
+    def test_latlon_projection_uses_shortest_antimeridian_delta(self):
+        east_x, _ = latlon_to_xy(0.0, 179.9, 0.0, 180.0)
+        west_x, _ = latlon_to_xy(0.0, -179.9, 0.0, 180.0)
+
+        self.assertLess(abs(east_x), 20_000)
+        self.assertLess(abs(west_x), 20_000)
+        self.assertAlmostEqual(east_x, -west_x)
+
     def test_xy_projection_rejects_polar_origin(self):
         with self.assertRaisesRegex(ValueError, "pole"):
             xy_to_latlon(100, 100, 90.0, 0.0)

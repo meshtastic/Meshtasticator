@@ -16,7 +16,12 @@ from lib.config import Config
 from lib.node import NodeConfig
 from lib.point import Point
 from lib.srtm import SRTM_DATA_ATTRIBUTION_URL
-from lib.terrain import NODE_Z_REFERENCE_GROUND, NODE_Z_REFERENCE_SEA_LEVEL, TerrainGrid
+from lib.terrain import (
+    NODE_Z_REFERENCE_GROUND,
+    NODE_Z_REFERENCE_SEA_LEVEL,
+    TerrainGrid,
+    latlon_to_xy,
+)
 
 import loraMesh
 
@@ -454,6 +459,15 @@ class TestLoraMeshCli(unittest.TestCase):
 
         self.assertIn("--nodedb-port requires --nodedb-host", error)
 
+    def test_parse_params_rejects_non_positive_nodedb_port(self):
+        conf = Config()
+
+        error = self.assert_parser_rejects(
+            conf, ["--from-nodedb", "--nodedb-host", "192.0.2.10", "--nodedb-port", "0"]
+        )
+
+        self.assertIn("--nodedb-port must be a positive TCP port", error)
+
     def test_parse_params_can_build_srtm_terrain_for_map_payload(self):
         conf = Config()
         payload = [
@@ -630,6 +644,23 @@ class TestLoraMeshCli(unittest.TestCase):
         self.assertIn("N00E000", tiles)
         self.assertIn("N00E002", tiles)
         self.assertNotIn("N00E001", tiles)
+
+    def test_auto_srtm_tile_selection_splits_antimeridian_bboxes(self):
+        conf = Config()
+        east_x, east_y = latlon_to_xy(0.0, 179.9, 0.0, 180.0)
+        west_x, west_y = latlon_to_xy(0.0, -179.9, 0.0, 180.0)
+        nodes = [
+            NodeConfig(0, Point(east_x, east_y, conf.HM), conf.PERIOD),
+            NodeConfig(1, Point(west_x, west_y, conf.HM), conf.PERIOD),
+        ]
+
+        tiles = loraMesh.srtm_tiles_for_node_config_links(
+            conf, nodes, (0.0, 180.0), margin_m=1.0
+        )
+
+        self.assertIn("N00E179", tiles)
+        self.assertIn("N00W180", tiles)
+        self.assertNotIn("N00E000", tiles)
 
     def test_flat_link_budget_prefilter_includes_both_antenna_gains(self):
         conf = Config()
@@ -894,6 +925,69 @@ class TestLoraMeshCli(unittest.TestCase):
             os.unlink(os.path.join("out", scenario_filename))
 
         self.assertEqual(terrain_loader.call_args.args[0], (41.5, 41.5, 41.8, 41.8))
+
+    def test_terrain_srtm_from_file_derives_tiles_for_wrapped_bbox(self):
+        conf = Config()
+        east_x, east_y = latlon_to_xy(0.1, 179.9, 0.0, 180.0)
+        west_x, west_y = latlon_to_xy(0.1, -179.9, 0.0, 180.0)
+        scenario = textwrap.dedent(
+            f"""\
+            origin:
+              lat: 0.0
+              lon: 180.0
+            nodes:
+              0:
+                x: {east_x}
+                y: {east_y}
+                z: 1
+                isRouter: false
+                isRepeater: false
+                isClientMute: false
+                antennaGain: 0
+                hopLimit: 3
+                neighborInfo: false
+              1:
+                x: {west_x}
+                y: {west_y}
+                z: 1
+                isRouter: false
+                isRepeater: false
+                isClientMute: false
+                antennaGain: 0
+                hopLimit: 3
+                neighborInfo: false
+            """
+        )
+
+        os.makedirs("out", exist_ok=True)
+        with tempfile.NamedTemporaryFile(
+            "w", dir="out", suffix=".yaml", delete=False, encoding="utf-8"
+        ) as scenario_file:
+            scenario_file.write(scenario)
+            scenario_filename = os.path.basename(scenario_file.name)
+
+        terrain_grid = TerrainGrid.from_rows([(east_x, east_y, 10), (west_x, west_y, 20)])
+        try:
+            with mock.patch(
+                "loraMesh.terrain_grid_from_srtm", return_value=terrain_grid
+            ) as terrain_loader:
+                self.parse_quietly(
+                    conf,
+                    [
+                        "--from-file",
+                        scenario_filename,
+                        "--terrain-srtm",
+                        "--map-bbox=-1,179.5,1,-179.5",
+                        "--no-gui",
+                    ],
+                )
+        finally:
+            os.unlink(os.path.join("out", scenario_filename))
+
+        self.assertEqual(terrain_loader.call_args.args[0][1], -180.0)
+        self.assertEqual(terrain_loader.call_args.args[0][3], 180.0)
+        self.assertIn("N00E179", terrain_loader.call_args.kwargs["tile_names"])
+        self.assertIn("N00W180", terrain_loader.call_args.kwargs["tile_names"])
 
     def test_failed_srtm_load_keeps_previous_terrain_config(self):
         conf = Config()

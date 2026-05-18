@@ -2,6 +2,7 @@
 
 from lib.geo import valid_lat_lon
 from lib.map_input import (
+    bbox_contains_latlon,
     decode_map_altitude,
     decode_map_coordinate,
     node_configs_from_positioned_rows,
@@ -23,7 +24,9 @@ def fetch_nodedb_payload(host=None, port=None, serial_port=None):
         if host is not None:
             from meshtastic import tcp_interface
 
-            iface = tcp_interface.TCPInterface(hostname=host, portNumber=port or 4403)
+            iface = tcp_interface.TCPInterface(
+                hostname=host, portNumber=4403 if port is None else port
+            )
         else:
             from meshtastic import serial_interface
 
@@ -74,12 +77,12 @@ def positioned_nodedb_nodes(nodes, bbox=None):
             continue
 
         try:
-            lat = position.get("latitude")
+            lat = decode_map_coordinate(position.get("latitude"))
             if lat is None:
-                lat = decode_map_coordinate(position.get("latitudeI"))
-            lon = position.get("longitude")
+                lat = decode_map_coordinate(position.get("latitudeI"), integer_scaled=True)
+            lon = decode_map_coordinate(position.get("longitude"))
             if lon is None:
-                lon = decode_map_coordinate(position.get("longitudeI"))
+                lon = decode_map_coordinate(position.get("longitudeI"), integer_scaled=True)
         except (TypeError, ValueError):
             continue
         if lat is None or lon is None:
@@ -88,8 +91,7 @@ def positioned_nodedb_nodes(nodes, bbox=None):
             continue
 
         if bbox is not None:
-            min_lat, min_lon, max_lat, max_lon = bbox
-            if not (min_lat <= lat <= max_lat and min_lon <= lon <= max_lon):
+            if not bbox_contains_latlon(bbox, lat, lon):
                 continue
 
         node = {
