@@ -121,6 +121,8 @@ class MeshPacket:
                     f"{self.now:.3f} skipping {self.txNodeId} -> {rx_node.nodeid} computation. "
                     f"connectivity map: {self.connectivity_map[self.txNodeId]}"
                 )
+                self.rssiAtN[rx_node.nodeid] = float("-inf")
+                self.detectedByN[rx_node.nodeid] = False
                 continue
             budget = calculate_link_budget(
                 self.conf,
