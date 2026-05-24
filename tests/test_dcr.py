@@ -129,6 +129,24 @@ class TestDynamicCodingRate(unittest.TestCase):
 
         self.assertEqual(decision.cr, CR_RESCUE)
 
+    def test_quiet_final_retry_can_use_rescue_cr_on_cold_start(self):
+        node = FakeNode(util=0.0)
+
+        decision = choose_dynamic_coding_rate(node, FakePacket(retransmissions=1))
+
+        self.assertEqual(decision.cr, CR_RESCUE)
+        self.assertNotIn("cr8_budget_clamp", decision.reason)
+
+    def test_rescue_cr_is_clamped_after_budget_is_spent(self):
+        node = FakeNode(util=0.0)
+        node.txAirUtilization = 1000.0
+        node.dcrAirtimeByCr[CR_RESCUE] = 100.0
+
+        decision = choose_dynamic_coding_rate(node, FakePacket(retransmissions=1))
+
+        self.assertEqual(decision.cr, 7)
+        self.assertIn("cr8_budget_clamp", decision.reason)
+
     def test_ack_minimum_is_normal_even_when_busy(self):
         node = FakeNode(util=12.0)
 
