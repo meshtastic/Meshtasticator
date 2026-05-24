@@ -20,6 +20,15 @@ class TestRadioPolicyCompare(unittest.TestCase):
         with self.assertRaises(SystemExit):
             radio_policy_compare.parse_args(["--max-reach-drop-pp", "1"])
 
+    def test_parse_args_rejects_thresholds_without_static_baseline(self):
+        with self.assertRaises(SystemExit):
+            radio_policy_compare.parse_args([
+                "--policies",
+                "dcr,static",
+                "--max-reach-drop-pp",
+                "1",
+            ])
+
     def test_build_lora_args_adds_shared_physics_flags(self):
         args = radio_policy_compare.parse_args([
             "--preset",

@@ -8,7 +8,7 @@ TX power just before it goes on air.
 
 from dataclasses import dataclass
 
-from lib.dcr import CR_RESCUE, classify_channel_pressure
+from lib.dcr import classify_channel_pressure
 from lib.packet import NODENUM_BROADCAST
 
 
@@ -89,8 +89,8 @@ def choose_dynamic_tx_power(node, packet) -> DtpDecision:
       that copy;
     * relay packets may shrink power when channel pressure is high, because
       duplicate rebroadcasts are where harmful overlap accumulates;
-    * final retries and rescue-CR packets stay at full power, because cutting
-      power there fights the reliability lever that DCR just selected.
+    * final retries stay at full power, because cutting power there fights the
+      reliability lever that DCR just selected.
     """
     base_power = int(getattr(packet, "baseTxPower", node.conf.PTX))
     if not node.conf.DTP_ENABLED:
@@ -110,11 +110,11 @@ def choose_dynamic_tx_power(node, packet) -> DtpDecision:
 
     drop_db = 0
 
-    if final_retry or packet.cr >= CR_RESCUE:
-        # DTP should shrink interference, not sabotage the rescue case. CR can
+    if final_retry:
+        # DTP should shrink interference, not sabotage the final retry. CR can
         # help payload reliability, but it cannot recover packets pushed below
         # preamble/header sensitivity by excessive power reduction.
-        reasons.append("max_power_retry_rescue")
+        reasons.append("max_power_final_retry")
     elif packet.isAck:
         if very_strong:
             drop_db = 6 if pressure in ("busy", "congested") else 3
