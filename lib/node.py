@@ -570,6 +570,8 @@ class MeshNode:
                         self.isReceiving.append(True)
                     else:
                         logger.debug(f"{self.env.now:.3f} Node {self.nodeid} could not lock packet {p.unique_packet_seq} for msg {p.seq}.")
+                        if self.isTransmitting:
+                            p.sensedByN[self.nodeid] = False
                     continue
 
                 if p.sensedByN[self.nodeid]:

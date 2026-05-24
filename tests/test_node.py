@@ -171,6 +171,39 @@ class TestMeshNodeTerrain(unittest.TestCase):
         self.assertEqual(node.position.z, 150)
 
 
+class TestMeshNodeReceive(unittest.TestCase):
+    def test_capture_mode_transmitting_receiver_does_not_decode_packet(self):
+        conf = Config()
+        conf.NR_NODES = 2
+        conf.MOVEMENT_ENABLED = False
+        conf.CAPTURE_COLLISION_MODEL_ENABLED = True
+        env = simpy.Environment()
+        sim_state = SimulationState(conf, env)
+        node_config = NodeConfig(1, Point(0, 0, 1.5), conf.PERIOD, conf.PTX, conf.FREQ)
+        node = MeshNode(conf, sim_state, SimulationDataTracking(), node_config)
+        node.isTransmitting = True
+
+        packet = type("Packet", (), {
+            "unique_packet_seq": 1,
+            "seq": 1,
+            "txNodeId": 0,
+            "genTime": 0,
+            "timeOnAir": 1,
+            "sensedByN": [False, True],
+            "onAirToN": [True, True],
+            "collidedAtN": [False, False],
+            "phyLostAtN": [False, False],
+            "receivedAtN": [False, False],
+        })()
+
+        sim_state.bc_pipe.put(packet)
+        env.run(until=2)
+
+        self.assertFalse(packet.sensedByN[node.nodeid])
+        self.assertFalse(packet.receivedAtN[node.nodeid])
+        self.assertEqual(node.airUtilization, 0)
+
+
 class TestPacketRxCandidate(unittest.TestCase):
     def test_legacy_collision_model_tracks_only_decodable_packets(self):
         packet = type("Packet", (), {
