@@ -119,6 +119,8 @@ def parse_args(argv=None):
     args = parser.parse_args(argv)
     if len(args.policies) < 2 and threshold_requested(args):
         parser.error("--max-* thresholds require at least two policies so there is a baseline and a candidate")
+    if threshold_requested(args) and args.policies[0] != "static":
+        parser.error("--max-* thresholds require static as the first policy baseline")
     return args
 
 

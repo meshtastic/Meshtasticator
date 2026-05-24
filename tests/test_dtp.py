@@ -127,15 +127,15 @@ class TestDynamicTxPower(unittest.TestCase):
         )
 
         self.assertEqual(decision.tx_power_dbm, 30)
-        self.assertIn("max_power_retry_rescue", decision.reason)
+        self.assertIn("max_power_final_retry", decision.reason)
 
-    def test_cr8_packet_uses_max_power_even_when_not_retry(self):
+    def test_cr8_relay_packet_can_still_lower_power_when_not_retry(self):
         node = FakeNode(util=20.0)
 
         decision = choose_dynamic_tx_power(node, FakePacket(cr=8, tx_node_id=2, orig_tx_node_id=1, base_power=30))
 
-        self.assertEqual(decision.tx_power_dbm, 30)
-        self.assertIn("max_power_retry_rescue", decision.reason)
+        self.assertEqual(decision.tx_power_dbm, 21)
+        self.assertIn("congested_relay_power_drop", decision.reason)
 
     def test_power_drop_respects_step_and_minimum(self):
         node = FakeNode(util=20.0)
