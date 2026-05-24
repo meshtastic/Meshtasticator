@@ -147,13 +147,12 @@ def _cr8_budget_allows(node, packet, candidate_cr: int) -> bool:
     if candidate_cr != CR_RESCUE:
         return True
 
-    candidate_airtime = packet.airtime_for_cr(candidate_cr)
-    cr8_airtime = node.dcrAirtimeByCr.get(CR_RESCUE, 0.0) + candidate_airtime
-    total_airtime = node.txAirUtilization + candidate_airtime
-
+    total_airtime = node.txAirUtilization
     if total_airtime <= 0:
         return True
 
+    candidate_airtime = packet.airtime_for_cr(candidate_cr)
+    cr8_airtime = node.dcrAirtimeByCr.get(CR_RESCUE, 0.0) + candidate_airtime
     return (cr8_airtime / total_airtime * 100.0) <= node.conf.DCR_CR8_AIRTIME_LIMIT_PERCENT
 
 
