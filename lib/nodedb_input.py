@@ -8,6 +8,7 @@ from lib.map_input import (
     decode_map_altitude,
     decode_map_coordinate,
     node_configs_from_positioned_rows,
+    positioned_row_sort_key,
     role_name_for_node,
 )
 NODEDB_CONNECT_TIMEOUT_S = 10.0
@@ -108,6 +109,7 @@ def positioned_nodedb_nodes(nodes, bbox=None):
                 continue
 
         node = {
+            "node_id": node.get("num"),
             "role_name": role_name_for_nodedb_node(node),
             "altitude": decode_map_altitude(position.get("altitude")),
         }
@@ -129,6 +131,7 @@ def node_configs_from_nodedb_payload(
 ):
     """Build NodeConfig objects from a local Meshtastic NodeDB payload."""
     positioned = positioned_nodedb_nodes(nodedb_payload_nodes(payload), bbox)
+    positioned = sorted(positioned, key=positioned_row_sort_key)
     if limit is not None:
         if limit < 1:
             raise ValueError("map limit must be at least 1")

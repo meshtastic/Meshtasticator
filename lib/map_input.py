@@ -178,6 +178,21 @@ def center_longitude(longitudes):
     return math.degrees(math.atan2(sin_sum, cos_sum))
 
 
+def positioned_row_sort_key(positioned_row):
+    """Return a stable ordering key for map/NodeDB rows before assigning IDs."""
+    node, lat, lon = positioned_row
+    raw_identity = (
+        node.get("node_id_hex")
+        or node.get("node_id")
+        or node.get("num")
+        or node.get("id")
+        or node.get("long_name")
+        or node.get("short_name")
+    )
+    identity = "" if raw_identity is None else str(raw_identity)
+    return (identity, lat, lon, role_name_for_node(node))
+
+
 def node_configs_from_positioned_rows(
     positioned,
     period,
@@ -245,6 +260,7 @@ def node_configs_from_map_payload(
 ):
     """Build NodeConfig objects from a Meshtastic map `/api/v1/nodes` payload."""
     positioned = filter_positioned_map_nodes(payload_nodes(payload), bbox)
+    positioned = sorted(positioned, key=positioned_row_sort_key)
     if limit is not None:
         if limit < 1:
             raise ValueError("map limit must be at least 1")

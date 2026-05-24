@@ -195,6 +195,28 @@ class TestMapInput(unittest.TestCase):
 
         configs = node_configs_from_map_payload(payload, 1000)
 
+    def test_map_payload_sorts_rows_before_applying_limit(self):
+        payload = {
+            "nodes": [
+                {
+                    "node_id_hex": "!00000002",
+                    "latitude": 416300000,
+                    "longitude": 416000000,
+                    "role": 0,
+                },
+                {
+                    "node_id_hex": "!00000001",
+                    "latitude": 416200000,
+                    "longitude": 415900000,
+                    "role": 2,
+                },
+            ],
+        }
+
+        configs = node_configs_from_map_payload(payload, 1000, limit=1)
+
+        self.assertEqual(len(configs), 1)
+        self.assertEqual(configs[0].node_id, 0)
         self.assertEqual(configs[0].role, MESHTASTIC_ROLE.ROUTER)
 
     def test_map_altitude_placeholders_do_not_override_antenna_height(self):
@@ -325,6 +347,27 @@ class TestMapInput(unittest.TestCase):
         )
 
         self.assertEqual(len(configs), 2)
+    def test_nodedb_payload_sorts_rows_before_applying_limit(self):
+        payload = {
+            "nodesByNum": {
+                2: {
+                    "num": 2,
+                    "user": {"role": "CLIENT"},
+                    "position": {"latitude": 41.63, "longitude": 41.60},
+                },
+                1: {
+                    "num": 1,
+                    "user": {"role": "ROUTER"},
+                    "position": {"latitude": 41.62, "longitude": 41.59},
+                },
+            }
+        }
+
+        configs = node_configs_from_nodedb_payload(payload, 1000, limit=1)
+
+        self.assertEqual(len(configs), 1)
+        self.assertEqual(configs[0].node_id, 0)
+        self.assertEqual(configs[0].role, MESHTASTIC_ROLE.ROUTER)
 
     def test_nodedb_payload_uses_supplied_radio_defaults(self):
         payload = [
