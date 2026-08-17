@@ -1,6 +1,7 @@
 import contextlib
 import io
 import logging
+import math
 import os
 import random
 import subprocess
@@ -251,7 +252,10 @@ class TestLoraMeshCli(unittest.TestCase):
         self.assertEqual([node.position.z for node in nodes], [2.5, 2.5])
         self.assertEqual([node.antenna_height for node in nodes], [2.5, 2.5])
         self.assertEqual([node.hop_limit for node in nodes], [5, 5])
-        self.assertEqual((conf.GEO_ORIGIN_LAT, conf.GEO_ORIGIN_LON), (41.625, 41.595))
+        self.assertEqual(conf.GEO_ORIGIN_LAT, 41.625)
+        # The origin longitude goes through radians/atan2/degrees, which libm
+        # builds are not required to reproduce bit-for-bit.
+        self.assertAlmostEqual(conf.GEO_ORIGIN_LON, 41.595)
 
     def test_parse_params_expands_bounds_for_wide_map_payload(self):
         conf = Config()
@@ -441,7 +445,10 @@ class TestLoraMeshCli(unittest.TestCase):
         self.assertEqual([node.position.z for node in nodes], [2.5, 2.5])
         self.assertEqual([node.antenna_height for node in nodes], [2.5, 2.5])
         self.assertEqual([node.hop_limit for node in nodes], [5, 5])
-        self.assertEqual((conf.GEO_ORIGIN_LAT, conf.GEO_ORIGIN_LON), (41.625, 41.595))
+        self.assertEqual(conf.GEO_ORIGIN_LAT, 41.625)
+        # The origin longitude goes through radians/atan2/degrees, which libm
+        # builds are not required to reproduce bit-for-bit.
+        self.assertAlmostEqual(conf.GEO_ORIGIN_LON, 41.595)
 
     def test_parse_params_rejects_nodedb_transport_without_nodedb_source(self):
         conf = Config()
@@ -682,6 +689,22 @@ class TestLoraMeshCli(unittest.TestCase):
         )
 
         self.assertTrue(loraMesh.nodes_have_flat_link_budget(conf, node_a, node_b))
+
+    def test_max_flat_link_distance_bounds_the_pair_prefilter(self):
+        conf = Config()
+        nodes = [
+            NodeConfig(0, Point(0, 0, conf.HM), conf.PERIOD, conf.PTX, conf.FREQ),
+            NodeConfig(1, Point(5000, 0, conf.HM), conf.PERIOD, conf.PTX, conf.FREQ),
+        ]
+
+        bound = loraMesh.max_flat_link_distance(conf, nodes)
+
+        self.assertGreater(bound, 0)
+        self.assertTrue(math.isfinite(bound))
+        far_node = NodeConfig(
+            2, Point(bound + 1000, 0, conf.HM), conf.PERIOD, conf.PTX, conf.FREQ
+        )
+        self.assertFalse(loraMesh.nodes_have_flat_link_budget(conf, nodes[0], far_node))
 
     def test_parse_params_rejects_one_node_before_changing_geo_origin(self):
         conf = Config()

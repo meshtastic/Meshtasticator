@@ -8,6 +8,7 @@ from pathlib import Path
 
 import yaml
 
+from lib.common import node_antenna_height
 from lib.config import CONFIG
 from lib.map_input import (
     DEFAULT_MAP_NODES_URL,
@@ -38,7 +39,6 @@ from lib.srtm import (
 from lib.terrain import (
     NODE_Z_REFERENCE_SEA_LEVEL,
     apply_terrain_altitudes,
-    node_antenna_height,
     normalize_longitude_delta,
     xy_to_latlon,
 )
@@ -190,6 +190,21 @@ def fit_simulation_bounds_to_node_config(conf, node_config, margin_m=1000.0):
     conf.YSIZE = max_y - min_y
 
 
+def srtm_terrain_bbox_or_none(parsed_arguments, terrain_bbox):
+    """Drop a wrapped --map-bbox for SRTM terrain, telling the user why."""
+    if (
+        parsed_arguments.terrain_srtm
+        and terrain_bbox is not None
+        and bbox_crosses_antimeridian(terrain_bbox)
+    ):
+        logger.info(
+            "--map-bbox crosses the antimeridian; deriving the SRTM terrain bbox "
+            "from imported node positions instead"
+        )
+        return None
+    return terrain_bbox
+
+
 def nodes_have_flat_link_budget(conf, node_a, node_b):
     """Return whether two nodes can hear each other before terrain loss."""
     distance = node_a.position.euclidean_distance(node_b.position)
@@ -210,6 +225,57 @@ def nodes_have_flat_link_budget(conf, node_a, node_b):
     return rssi_ab >= sensitivity or rssi_ba >= sensitivity
 
 
+def max_flat_link_distance(conf, node_config, distance_cap_m=40075000.0):
+    """Return a conservative distance bound beyond which no flat link closes.
+
+    Every path-loss model in lib.phy grows monotonically with distance, so a
+    best-case link budget (highest transmit power, two best antenna gains,
+    most favorable antenna heights among the nodes) yields one distance beyond
+    which no node pair can hear each other before terrain loss.
+    """
+    sensitivity = conf.current_preset["sensitivity"]
+    best_tx_power = max(getattr(node, "tx_power", conf.PTX) for node in node_config)
+    gains = sorted(
+        (
+            getattr(node, "antennaGain", getattr(node, "antenna_gain", 0))
+            for node in node_config
+        ),
+        reverse=True,
+    )
+    best_gains = gains[0] + (gains[1] if len(gains) > 1 else gains[0])
+    budget = best_tx_power + best_gains - sensitivity
+
+    heights = [node_antenna_height(node) for node in node_config]
+    height_pairs = {
+        (min(heights), min(heights)),
+        (min(heights), max(heights)),
+        (max(heights), max(heights)),
+    }
+
+    def link_closes(distance, tx_height, rx_height):
+        return budget >= estimate_path_loss(
+            conf, distance, conf.FREQ, tx_height, rx_height
+        )
+
+    bound = 0.0
+    for tx_height, rx_height in height_pairs:
+        if not link_closes(1.0, tx_height, rx_height):
+            continue
+        low, high = 1.0, 1000.0
+        while link_closes(high, tx_height, rx_height):
+            low, high = high, high * 2.0
+            if high >= distance_cap_m:
+                return math.inf
+        while high - low > 1.0:
+            mid = (low + high) / 2.0
+            if link_closes(mid, tx_height, rx_height):
+                low = mid
+            else:
+                high = mid
+        bound = max(bound, high)
+    return bound
+
+
 def srtm_tiles_for_node_config_links(conf, node_config, origin, margin_m=1000.0):
     """Return SRTM tiles around nodes and flat-link candidate paths."""
     if origin is None:
@@ -220,8 +286,13 @@ def srtm_tiles_for_node_config_links(conf, node_config, origin, margin_m=1000.0)
         for bbox in bboxes_from_points([node.position], origin, margin_m):
             tile_names.update(tiles_for_bbox(bbox))
 
+    # The pair loop is quadratic in node count. A cheap distance prefilter
+    # keeps the per-pair path-loss and tile work bounded for broad imports.
+    max_link_distance = max_flat_link_distance(conf, node_config)
     for index, node_a in enumerate(node_config):
         for node_b in node_config[index + 1 :]:
+            if node_a.position.euclidean_distance(node_b.position) > max_link_distance:
+                continue
             if not nodes_have_flat_link_budget(conf, node_a, node_b):
                 continue
             for bbox in bboxes_from_points(
@@ -457,12 +528,7 @@ def parse_params(conf, args=None) -> [NodeConfig]:
                 raw_config = yaml.safe_load(file)
             config = node_configs_from_yaml(raw_config, period, conf.PTX, conf.FREQ)
             scenario_origin = origin_from_yaml(raw_config)
-            if (
-                parsed_arguments.terrain_srtm
-                and terrain_bbox is not None
-                and bbox_crosses_antimeridian(terrain_bbox)
-            ):
-                terrain_bbox = None
+            terrain_bbox = srtm_terrain_bbox_or_none(parsed_arguments, terrain_bbox)
         except (OSError, ValueError, yaml.YAMLError) as err:
             parser.error(f"could not load --from-file YAML: {err}")
         nr_nodes = len(config)
@@ -487,8 +553,7 @@ def parse_params(conf, args=None) -> [NodeConfig]:
                 return_origin=True,
             )
             scenario_origin = map_origin
-            if parsed_arguments.terrain_srtm and bbox_crosses_antimeridian(terrain_bbox):
-                terrain_bbox = None
+            terrain_bbox = srtm_terrain_bbox_or_none(parsed_arguments, terrain_bbox)
         except ValueError as err:
             parser.error(str(err))
         nr_nodes = len(config)
@@ -514,12 +579,7 @@ def parse_params(conf, args=None) -> [NodeConfig]:
                 return_origin=True,
             )
             scenario_origin = nodedb_origin
-            if (
-                parsed_arguments.terrain_srtm
-                and terrain_bbox is not None
-                and bbox_crosses_antimeridian(terrain_bbox)
-            ):
-                terrain_bbox = None
+            terrain_bbox = srtm_terrain_bbox_or_none(parsed_arguments, terrain_bbox)
         except ValueError as err:
             parser.error(str(err))
         nr_nodes = len(config)

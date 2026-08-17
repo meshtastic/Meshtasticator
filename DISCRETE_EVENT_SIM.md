@@ -64,7 +64,9 @@ With an explicit `--map-bbox`, SRTM samples that whole requested rectangle. When
 the terrain bbox is derived from imported or file-backed nodes, Meshtasticator
 keeps the download smaller: it loads tiles around the selected nodes and along
 flat-link candidate paths, instead of downloading every tile in a large
-edge-to-edge rectangle. When publishing screenshots, reports, or derived
+edge-to-edge rectangle. That candidate-path selection scales with the number of
+node pairs, so combine `--terrain-srtm` with `--map-limit` when importing a
+broad map region. When publishing screenshots, reports, or derived
 datasets from this terrain source, attribute the terrain data to
 [Mapzen Terrain Tiles on AWS](https://registry.opendata.aws/terrain-tiles/),
 SRTM/NASA, and their underlying open elevation sources:
