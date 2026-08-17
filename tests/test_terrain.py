@@ -226,6 +226,23 @@ class TestTerrain(unittest.TestCase):
         self.assertGreaterEqual(loss, 0)
         self.assertEqual(len(conf._terrain_loss_cache), 0)
 
+    def test_replacing_the_terrain_grid_does_not_reuse_cached_losses(self):
+        # Cache keys carry a per-grid token instead of id(): a reused object
+        # address must not serve losses computed against an earlier grid.
+        conf = Config()
+        conf.TERRAIN_ENABLED = True
+        conf.TERRAIN_PROFILE_SAMPLES = 10
+        flat_grid = TerrainGrid.from_rows([(0, 0, 0), (500, 0, 0), (1000, 0, 0)])
+        ridge_grid = TerrainGrid.from_rows([(0, 0, 0), (500, 0, 120), (1000, 0, 0)])
+        self.assertNotEqual(flat_grid.cache_token, ridge_grid.cache_token)
+
+        conf.TERRAIN_GRID = flat_grid
+        flat_loss = terrain_obstruction_loss(conf, Point(0, 0, 2), Point(1000, 0, 2), conf.FREQ)
+        conf.TERRAIN_GRID = ridge_grid
+        ridge_loss = terrain_obstruction_loss(conf, Point(0, 0, 2), Point(1000, 0, 2), conf.FREQ)
+
+        self.assertGreater(ridge_loss, flat_loss)
+
 
 if __name__ == "__main__":
     unittest.main()

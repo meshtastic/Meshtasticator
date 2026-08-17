@@ -12,8 +12,12 @@ full ray tracer, but it captures the important Batumi-mesh case where hills and
 ridges matter more than flat-earth distance alone.
 """
 
+import heapq
+import itertools
 import math
 from collections import OrderedDict
+
+from lib.common import node_antenna_height
 
 
 EARTH_RADIUS_M = 6371000.0
@@ -56,8 +60,14 @@ def xy_to_latlon(x, y, origin_lat, origin_lon):
 class TerrainGrid:
     """Small scattered terrain sample grid with inverse-distance interpolation."""
 
+    # Grids are compared by this token in the terrain loss cache key. Object
+    # ids can be reused after garbage collection, so a recycled address must
+    # not revive cache entries computed against an earlier grid.
+    _cache_token_counter = itertools.count(1)
+
     def __init__(self, samples):
         self.samples = samples
+        self.cache_token = next(TerrainGrid._cache_token_counter)
 
     @classmethod
     def from_rows(cls, rows):
@@ -83,10 +93,11 @@ class TerrainGrid:
         weighted_sum = 0.0
         weight_total = 0.0
 
-        nearest = sorted(
+        nearest = heapq.nsmallest(
+            8,
             ((math.hypot(x - sx, y - sy), elevation) for sx, sy, elevation in self.samples),
             key=lambda item: item[0],
-        )[:8]
+        )
 
         for distance, elevation in nearest:
             if distance < 0.01:
@@ -126,15 +137,6 @@ def map_altitude_if_plausible(node, ground):
     if altitude > ground + MAX_REASONABLE_STRUCTURE_HEIGHT_M:
         return None
     return altitude
-
-
-def node_antenna_height(node):
-    """Return node antenna height above ground for config and live node types."""
-    return getattr(
-        node,
-        "antenna_height",
-        getattr(node, "antennaHeight", node.position.z),
-    )
 
 
 def apply_terrain_altitude(terrain_grid, node):
@@ -200,7 +202,7 @@ def terrain_obstruction_loss(conf, tx_point, rx_point, freq):
         round(rx_point.y, 2),
         round(rx_point.z, 2),
         round(freq, 0),
-        id(getattr(conf, "TERRAIN_GRID", None)),
+        getattr(grid, "cache_token", id(grid)),
         conf.GEO_ORIGIN_LAT,
         conf.GEO_ORIGIN_LON,
         conf.TERRAIN_PROFILE_SAMPLES,
