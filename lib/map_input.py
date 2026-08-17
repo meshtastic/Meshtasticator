@@ -40,7 +40,10 @@ def decode_map_altitude(value):
     """Return a finite positive map altitude in meters, or None for placeholders."""
     if value is None:
         return None
-    altitude = float(value)
+    try:
+        altitude = float(value)
+    except (TypeError, ValueError):
+        return None
     if not math.isfinite(altitude) or altitude <= 0:
         return None
     return altitude
@@ -211,7 +214,10 @@ def node_configs_from_positioned_rows(
             # and apply the optional absolute altitude per node.
             "z": antenna_height,
             "absoluteAltitude": decode_map_altitude(node.get("altitude")),
-            "isRouter": role_name in {"ROUTER", "ROUTER_CLIENT", "ROUTER_LATE"},
+            # CLIENT_BASE rebroadcasts like ROUTER_LATE in current firmware, so
+            # simulate it on the router side rather than as a plain client.
+            "isRouter": role_name
+            in {"ROUTER", "ROUTER_CLIENT", "ROUTER_LATE", "CLIENT_BASE"},
             "isRepeater": role_name == "REPEATER",
             "isClientMute": role_name == "CLIENT_MUTE",
             "hopLimit": hop_limit,

@@ -31,6 +31,11 @@ class TestMapInput(unittest.TestCase):
         self.assertIsNone(decode_map_altitude(-1))
         self.assertIsNone(decode_map_altitude(float("inf")))
 
+    def test_decode_map_altitude_treats_unparsable_values_as_absent(self):
+        self.assertIsNone(decode_map_altitude("not a number"))
+        self.assertIsNone(decode_map_altitude([120]))
+        self.assertIsNone(decode_map_altitude({"altitude": 120}))
+
     def test_parse_bbox(self):
         self.assertEqual(parse_bbox("41.4,41.0,41.9,42.3"), (41.4, 41.0, 41.9, 42.3))
 
@@ -181,6 +186,17 @@ class TestMapInput(unittest.TestCase):
         self.assertEqual(configs[0].absolute_altitude, 120)
         self.assertEqual(configs[0].hop_limit, 5)
 
+    def test_client_base_imports_on_the_router_side(self):
+        payload = [{
+            "latitude": 416200000,
+            "longitude": 415900000,
+            "role": 12,
+        }]
+
+        configs = node_configs_from_map_payload(payload, 1000)
+
+        self.assertEqual(configs[0].role, MESHTASTIC_ROLE.ROUTER)
+
     def test_map_altitude_placeholders_do_not_override_antenna_height(self):
         payload = {
             "nodes": [
@@ -231,7 +247,10 @@ class TestMapInput(unittest.TestCase):
         configs, origin = node_configs_from_map_payload(payload, 1000, return_origin=True)
 
         self.assertEqual(len(configs), 1)
-        self.assertEqual(origin, (41.62, 41.59))
+        self.assertEqual(origin[0], 41.62)
+        # The origin longitude goes through radians/atan2/degrees, which libm
+        # builds are not required to reproduce bit-for-bit.
+        self.assertAlmostEqual(origin[1], 41.59)
 
     def test_map_payload_rejects_empty_limit(self):
         payload = {
