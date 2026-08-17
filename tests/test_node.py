@@ -111,6 +111,20 @@ class TestNodeConfigYaml(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "node YAML"):
             node_configs_from_yaml(raw, 1000)
 
+    def test_wrapped_node_map_origin_accepts_long_key_spellings(self):
+        raw = {
+            "origin": {"latitude": 41.64, "longitude": 41.62},
+            "nodes": {"0": sample_node(10)},
+        }
+
+        self.assertEqual(origin_from_yaml(raw), (41.64, 41.62))
+
+    def test_wrapped_node_map_origin_must_not_be_silently_dropped(self):
+        with self.assertRaisesRegex(ValueError, "origin must provide both"):
+            origin_from_yaml({"origin": {"lat": 41.64}, "nodes": {}})
+        with self.assertRaisesRegex(ValueError, "origin must be a map"):
+            origin_from_yaml({"origin": "41.64,41.62", "nodes": {}})
+
     def test_wrapped_node_map_origin_must_be_finite(self):
         raw = {
             "origin": {"lat": "nan", "lon": 41.62},

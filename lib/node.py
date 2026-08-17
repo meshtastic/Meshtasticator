@@ -183,12 +183,19 @@ def origin_from_yaml(raw_config):
         return None
 
     origin = raw_config.get("origin")
-    if not isinstance(origin, dict) or "lat" not in origin or "lon" not in origin:
+    if origin is None:
         return None
+    if not isinstance(origin, dict):
+        raise ValueError("origin must be a map with lat and lon")
+
+    lat_key = "lat" if "lat" in origin else "latitude" if "latitude" in origin else None
+    lon_key = "lon" if "lon" in origin else "longitude" if "longitude" in origin else None
+    if lat_key is None or lon_key is None:
+        raise ValueError("origin must provide both lat and lon")
 
     try:
-        lat = float(origin["lat"])
-        lon = float(origin["lon"])
+        lat = float(origin[lat_key])
+        lon = float(origin[lon_key])
     except (TypeError, ValueError) as err:
         raise ValueError("origin.lat and origin.lon must be finite numbers") from err
 
