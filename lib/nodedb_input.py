@@ -1,5 +1,7 @@
 """Input adapter for positions stored in a local Meshtastic device NodeDB."""
 
+import socket
+
 from lib.geo import valid_lat_lon
 from lib.map_input import (
     bbox_contains_latlon,
@@ -8,6 +10,9 @@ from lib.map_input import (
     node_configs_from_positioned_rows,
     role_name_for_node,
 )
+
+
+NODEDB_CONNECT_TIMEOUT_S = 10.0
 
 
 def fetch_nodedb_payload(host=None, port=None, serial_port=None):
@@ -24,9 +29,12 @@ def fetch_nodedb_payload(host=None, port=None, serial_port=None):
         if host is not None:
             from meshtastic import tcp_interface
 
-            iface = tcp_interface.TCPInterface(
-                hostname=host, portNumber=4403 if port is None else port
-            )
+            tcp_port = 4403 if port is None else port
+            # TCPInterface connects without a socket timeout, so a stale host
+            # would block the CLI indefinitely. Probe reachability first with a
+            # bounded connect so unreachable hosts fail fast and loudly.
+            socket.create_connection((host, tcp_port), timeout=NODEDB_CONNECT_TIMEOUT_S).close()
+            iface = tcp_interface.TCPInterface(hostname=host, portNumber=tcp_port)
         else:
             from meshtastic import serial_interface
 
