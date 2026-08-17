@@ -6,9 +6,11 @@ downloaded HGT tiles.
 
 import gzip
 import math
+import os
 import shutil
 import sys
 import urllib.error
+import uuid
 import zipfile
 from array import array
 from pathlib import Path
@@ -209,16 +211,20 @@ def ensure_hgt_tile(
             "url_template may only use {tile} and {lat_band} placeholders"
         ) from err
     parsed_path = Path(urlparse(url).path)
+    archive_suffixes = "".join(parsed_path.suffixes)
+    # Concurrent runs (batchSim workers, parallel CLI invocations) share this
+    # cache directory. Unique temp names keep two writers of the same tile from
+    # interleaving output; only a fully unpacked tile is renamed into place.
+    unique_suffix = f".{os.getpid()}.{uuid.uuid4().hex}.tmp"
+    partial_hgt_path = cache_dir / f"{tile_name}.hgt{unique_suffix}"
+    direct_hgt_download = archive_suffixes in ("", ".hgt")
     download_path = (
-        cache_dir / f"{tile_name}{''.join(parsed_path.suffixes) or '.download'}"
+        partial_hgt_path
+        if direct_hgt_download
+        else cache_dir / f"{tile_name}{archive_suffixes}{unique_suffix}"
     )
-    partial_hgt_path = cache_dir / f"{tile_name}.hgt.tmp"
-    direct_hgt_download = download_path == hgt_path
-    if direct_hgt_download:
-        download_path = partial_hgt_path
 
     try:
-        download_path.unlink(missing_ok=True)
         with urlopen(url, timeout=60) as response, download_path.open("wb") as out:
             shutil.copyfileobj(response, out)
     except (OSError, urllib.error.URLError) as err:
@@ -228,15 +234,13 @@ def ensure_hgt_tile(
         ) from err
 
     try:
-        if not direct_hgt_download:
-            partial_hgt_path.unlink(missing_ok=True)
-        if download_path.suffix == ".gz":
+        if parsed_path.suffix == ".gz":
             with (
                 gzip.open(download_path, "rb") as src,
                 partial_hgt_path.open("wb") as out,
             ):
                 shutil.copyfileobj(src, out)
-        elif download_path.suffix == ".zip":
+        elif parsed_path.suffix == ".zip":
             with zipfile.ZipFile(download_path) as archive:
                 hgt_members = [
                     name for name in archive.namelist() if name.lower().endswith(".hgt")
@@ -258,9 +262,8 @@ def ensure_hgt_tile(
                     partial_hgt_path.open("wb") as out,
                 ):
                     shutil.copyfileobj(src, out)
-        else:
-            if not direct_hgt_download:
-                download_path.replace(partial_hgt_path)
+        elif not direct_hgt_download:
+            download_path.replace(partial_hgt_path)
         partial_hgt_path.replace(hgt_path)
     except (
         EOFError,
@@ -271,6 +274,9 @@ def ensure_hgt_tile(
     ) as err:
         partial_hgt_path.unlink(missing_ok=True)
         raise ValueError(f"could not unpack SRTM tile {tile_name}: {err}") from err
+    finally:
+        if not direct_hgt_download:
+            download_path.unlink(missing_ok=True)
 
     return hgt_path
 

@@ -181,6 +181,9 @@ class TestSrtm(unittest.TestCase):
 
             self.assertEqual(path.name, "N41E041.hgt")
             self.assertTrue(path.exists())
+            # Downloads use unique temp names so concurrent runs cannot
+            # interleave into one file; nothing temporary may stay behind.
+            self.assertEqual([entry.name for entry in cache_dir.iterdir()], ["N41E041.hgt"])
 
     def test_ensure_hgt_tile_selects_requested_member_from_zip(self):
         with tempfile.TemporaryDirectory() as tmpdir:
