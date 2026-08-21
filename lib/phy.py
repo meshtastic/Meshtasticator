@@ -30,6 +30,9 @@ def get_current_slot_time(): # from RadioInterface::computeSlotTimeMsec
 
 
 def check_collision(conf, env, packet, rx_nodeId, packetsAtN):
+    if conf.CAPTURE_COLLISION_MODEL_ENABLED:
+        return check_capture_collision(conf, packet, rx_nodeId, packetsAtN)
+
     # Check for collisions at rx_node
     col = 0
     if conf.COLLISION_DUE_TO_INTERFERENCE:
@@ -53,18 +56,80 @@ def check_collision(conf, env, packet, rx_nodeId, packetsAtN):
     return 0
 
 
+def check_capture_collision(conf, packet, rx_nodeId, packetsAtN):
+    """Check overlap with a capture-aware same-SF collision model.
+
+    The legacy model is intentionally preserved unless explicitly enabled. This
+    path models the part that matters for real crowded meshes: a receiver can
+    keep a sufficiently stronger packet through a weaker overlap, but equal or
+    stronger interference during the preamble/header lock window destroys it.
+    Later payload-only overlap is tolerated when it is only a short tail.
+    """
+    col = 0
+    if conf.COLLISION_DUE_TO_INTERFERENCE and random.random() < conf.INTERFERENCE_LEVEL:
+        mark_collision(packet, rx_nodeId, "external_interference")
+        col = 1
+
+    for other in packetsAtN[rx_nodeId]:
+        if not intervals_overlap(packet.startTime, packet.endTime, other.startTime, other.endTime):
+            continue
+        if not frequency_collision(packet, other) or not sf_collision(packet, other):
+            continue
+
+        casualties = capture_collision_casualties(conf, packet, other, rx_nodeId)
+        if casualties:
+            logger.debug(
+                f'Packet nr. {packet.seq} from {packet.txNodeId} and packet nr. '
+                f'{other.seq} from {other.txNodeId} overlap at node {rx_nodeId}; '
+                f'capture casualties {[p.seq for p, _ in casualties]}'
+            )
+        for casualty, reason in casualties:
+            mark_collision(casualty, rx_nodeId, reason)
+            if casualty == packet:
+                col = 1
+    return col
+
+
 def frequency_collision(p1, p2):
-    if abs(p1.freq - p2.freq) <= 120 and (p1.bw == 500 or p2.freq == 500):
+    delta_khz = _frequency_delta_khz(p1, p2)
+    p1_bw_khz = _bandwidth_khz(p1)
+    p2_bw_khz = _bandwidth_khz(p2)
+
+    if delta_khz <= 120 and (p1_bw_khz == 500 or p2_bw_khz == 500):
         return True
-    elif abs(p1.freq - p2.freq) <= 60 and (p1.bw == 250 or p2.freq == 250):
+    elif delta_khz <= 60 and (p1_bw_khz == 250 or p2_bw_khz == 250):
         return True
-    elif abs(p1.freq - p2.freq) <= 30:
+    elif delta_khz <= 30:
         return True
     return False
 
 
+def _frequency_delta_khz(p1, p2):
+    """Return center-frequency separation in kHz.
+
+    Meshtasticator stores modem frequencies in Hz. Some small tests and older
+    LoRaSim-derived snippets use MHz-scale values, so normalize both shapes here
+    instead of making the collision predicate depend on caller units.
+    """
+    delta = abs(p1.freq - p2.freq)
+    if max(abs(p1.freq), abs(p2.freq)) > 1e6:
+        return delta / 1000.0
+    return delta * 1000.0
+
+
+def _bandwidth_khz(packet):
+    """Return LoRa bandwidth in kHz for both Hz and kHz-style packet fields."""
+    return packet.bw / 1000.0 if packet.bw > 1000 else packet.bw
+
+
 def sf_collision(p1, p2):
     return p1.sf == p2.sf
+
+
+def mark_collision(packet, rx_nodeId, reason):
+    packet.collidedAtN[rx_nodeId] = True
+    if hasattr(packet, "collisionReasonAtN"):
+        packet.collisionReasonAtN[rx_nodeId] = reason
 
 
 def power_collision(p1, p2, rx_nodeId):
@@ -89,6 +154,74 @@ def timing_collision(conf, env, p1, p2):
     if p1_cs < p2.endTime:  # p1 collided with p2 and lost
         return True
     return False
+
+
+def intervals_overlap(start1, end1, start2, end2):
+    return max(start1, start2) < min(end1, end2)
+
+
+def overlap_ms(p1, p2):
+    return max(0.0, min(p1.endTime, p2.endTime) - max(p1.startTime, p2.startTime))
+
+
+def preamble_lock_window_ms(conf, packet):
+    """Approximate the fragile LoRa preamble/header acquisition interval."""
+    symbols = max(1, conf.NPREAM - 5)
+    return symbols * (2 ** packet.sf) / packet.bw * 1000
+
+
+def overlaps_preamble_lock(conf, victim, interferer):
+    return intervals_overlap(
+        victim.startTime,
+        min(victim.endTime, victim.startTime + preamble_lock_window_ms(conf, victim)),
+        interferer.startTime,
+        interferer.endTime,
+    )
+
+
+def packet_survives_overlap(conf, victim, interferer, rx_nodeId):
+    """Return whether `victim` survives this one overlapping interferer.
+
+    This is still a compact simulator model, not a chip-level LoRa demodulator.
+    It encodes the two big effects the binary model misses: capture by a packet
+    that is at least COLLISION_CAPTURE_THRESHOLD_DB stronger at this receiver,
+    and small late-tail overlap that does not destroy an already-locked packet.
+    """
+    desired_margin_db = victim.rssiAtN[rx_nodeId] - interferer.rssiAtN[rx_nodeId]
+    if desired_margin_db >= conf.COLLISION_CAPTURE_THRESHOLD_DB:
+        return True
+
+    if overlaps_preamble_lock(conf, victim, interferer):
+        return False
+
+    fraction = overlap_ms(victim, interferer) / victim.timeOnAir if victim.timeOnAir > 0 else 1.0
+    if fraction >= conf.COLLISION_PAYLOAD_OVERLAP_LOSS_FRACTION:
+        return False
+
+    return True
+
+
+def capture_collision_casualties(conf, p1, p2, rx_nodeId):
+    casualties = []
+    if _packet_was_decodable_at_rx(p1, rx_nodeId) and not packet_survives_overlap(conf, p1, p2, rx_nodeId):
+        casualties.append((p1, "capture_overlap"))
+    if _packet_was_decodable_at_rx(p2, rx_nodeId) and not packet_survives_overlap(conf, p2, p1, rx_nodeId):
+        casualties.append((p2, "capture_overlap"))
+    return casualties
+
+
+def _packet_was_decodable_at_rx(packet, rx_nodeId):
+    """Return whether collision loss is meaningful for this packet.
+
+    Capture mode tracks CAD-detectable-but-undecodable packets as interference
+    energy. Those packets can jam another packet, but they should not inflate
+    collision counters as failed decodes because they were below the receiver's
+    demodulation threshold before overlap was considered.
+    """
+    sensed_by_node = getattr(packet, "sensedByN", None)
+    if sensed_by_node is None:
+        return True
+    return sensed_by_node[rx_nodeId]
 
 
 def is_channel_active(node, env):
@@ -142,7 +275,12 @@ def estimate_path_loss(conf, dist, freq, txZ=None, rxZ=None, model=None):
         model = conf.MODEL
 
     # With randomized movements we may end up on top of another node which is problematic for log(dist)
-    dist = max(dist, .001)
+    #
+    # Some real-mesh presets can also set a larger floor as an empirical
+    # near-field/clutter calibration. The 3GPP/Hata formulas are not meaningful
+    # at apartment-scale separations, and map node positions are coarse enough
+    # that "two pins are close" does not mean "two antennas have clear 20 m RF".
+    dist = max(dist, conf.PATH_LOSS_DISTANCE_FLOOR_M)
 
     # Log-Distance model
     if model == 0:
