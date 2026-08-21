@@ -2,6 +2,7 @@ import logging
 import random
 
 from lib.common import node_antenna_height
+from lib.clutter import clutter_obstruction_loss
 from lib.discrete_event_sim_components import Counter
 from lib.phy import airtime, estimate_path_loss
 from lib.terrain import terrain_obstruction_loss
@@ -110,6 +111,11 @@ class MeshPacket:
                     self.tx_node.position,
                     rx_node.position,
                     self.freq,
+                )
+                baseline_pathloss += clutter_obstruction_loss(
+                    self.conf,
+                    self.tx_node.position,
+                    rx_node.position,
                 )
 
             if conf.MODEL_ASYMMETRIC_LINKS:
