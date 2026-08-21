@@ -38,7 +38,46 @@ class Config:
         self.SIMTIME = 30 * self.ONE_MIN_INTERVAL  # duration of one simulation in ms
         self.INTERFERENCE_LEVEL = 0.05  # chance that at a given moment there is already a LoRa packet being sent on your channel, outside of the Meshtastic traffic. Given in a ratio from 0 to 1.
         self.COLLISION_DUE_TO_INTERFERENCE = False
+        self.CAPTURE_COLLISION_MODEL_ENABLED = False
+        self.COLLISION_CAPTURE_THRESHOLD_DB = 6.0
+        self.COLLISION_PAYLOAD_OVERLAP_LOSS_FRACTION = 0.15
         self.DMs = False  # Set True for sending DMs (with random destination), False for broadcasts
+
+        #################################################
+        ####### DYNAMIC CODING RATE #####################
+        #################################################
+        # Disabled by default so historical simulations keep the preset CR.
+        # When enabled, the node chooses CR 4/5..4/8 per packet immediately
+        # before TX, after queueing and listen-before-talk have settled.
+        self.DCR_ENABLED = False
+        self.DCR_MIN_CR = 5
+        self.DCR_MAX_CR = 8
+        self.DCR_USER_MIN_CR = 5
+        # Limit non-urgent CR8 airtime as a share of this node's own TX airtime.
+        # This is a mesh-behavior safety rail, separate from region duty cycle.
+        self.DCR_CR8_AIRTIME_LIMIT_PERCENT = 10.0
+        # Local utilization thresholds are deliberately not regulatory limits.
+        # `_selected_region_duty_limit()` in lib.dcr compares against region
+        # duty cycle only when the selected region actually has one.
+        self.DCR_IDLE_UTIL_PERCENT = 2.0
+        self.DCR_BUSY_UTIL_PERCENT = 7.0
+        self.DCR_CONGESTED_UTIL_PERCENT = 17.5
+        self.DCR_BUSY_QUEUE_DEPTH = 3
+        self.DCR_CONGESTED_QUEUE_DEPTH = 6
+
+        #################################################
+        ####### DYNAMIC TX POWER ########################
+        #################################################
+        # Disabled by default. DTP is deliberately a power-reduction policy,
+        # not an alternate way to exceed region limits. PTX remains the maximum;
+        # DTP only lowers individual relay/control packets to shrink their
+        # interference radius in dense capture-collision experiments.
+        self.DTP_ENABLED = False
+        self.DTP_MAX_POWER_DROP_DB = 12
+        self.DTP_POWER_STEP_DB = 3
+        self.DTP_MIN_TX_POWER_DBM = None
+        self.DTP_STRONG_LINK_MARGIN_DB = 20.0
+        self.DTP_VERY_STRONG_LINK_MARGIN_DB = 24.0
         # from firmware RegionInfo regions[] in src/mesh/RadioInterface.cpp
         self.regions = {
             "US": {
@@ -398,8 +437,81 @@ class Config:
         self.GAMMA = 2.08  # PHY parameter
         self.D0 = 40.0  # PHY parameter
         self.LPLD0 = 127.41  # PHY parameter
+        # Optional scenario-level calibration knobs. Defaults preserve the old
+        # simulator behavior; field presets can tighten these to match
+        # aggregate receive observations without changing generic simulations.
+        self.PATH_LOSS_DISTANCE_FLOOR_M = 0.001
+        self.REPORTED_SNR_MIN_DB = None
+        self.REPORTED_SNR_MAX_DB = None
+        self.LINK_CALIBRATION_MODEL_ENABLED = False
+        self.LINK_CALIBRATION_COEFFICIENTS = {}
+        self.LINK_CALIBRATION_SNR_MIN_DB = None
+        self.LINK_CALIBRATION_SNR_MAX_DB = None
         self.NPREAM = 16   # number of preamble symbols from RadioInterface.h
         ### End of PHY parameters ###
+
+        #################################################
+        ####### TERRAIN OBSTRUCTION MODEL ###############
+        #################################################
+        # Disabled by default. When enabled, TERRAIN_GRID holds an in-memory
+        # grid sampled from SRTM HGT tiles.
+        self.TERRAIN_ENABLED = False
+        self.TERRAIN_GRID = None
+        # "ground": Point.z is antenna height above local ground.
+        # "sea_level": Point.z is absolute antenna altitude after adding
+        # terrain ground elevation.
+        self.NODE_Z_REFERENCE = "ground"
+        self.GEO_ORIGIN_LAT = None
+        self.GEO_ORIGIN_LON = None
+        self.TERRAIN_PROFILE_SAMPLES = 24
+        self.TERRAIN_FRESNEL_CLEARANCE = 0.6
+        # Match the common radio-planning 4/3 Earth-radius approximation. The
+        # terrain model uses it as an earth-bulge term so long coastal and ridge
+        # links do not look unrealistically flat.
+        self.TERRAIN_EFFECTIVE_EARTH_RADIUS_MULTIPLIER = 4.0 / 3.0
+        self.TERRAIN_MIN_ANTENNA_HEIGHT_M = 1.5
+        self.TERRAIN_MAX_LOSS_DB = 35.0
+
+        #################################################
+        ####### LAND-COVER CLUTTER MODEL ################
+        #################################################
+        # Optional excess loss from buildings/land use. This is intentionally
+        # separate from terrain: hills can be visible while low urban fabric
+        # still blocks balcony-to-balcony links.
+        self.CLUTTER_ENABLED = False
+        self.CLUTTER_GRID_FILE = None
+        self.CLUTTER_PROFILE_SAMPLES = 16
+        self.CLUTTER_URBAN_LOSS_DB_PER_KM = 4.0
+        self.CLUTTER_SUBURBAN_LOSS_DB_PER_KM = 2.0
+        self.CLUTTER_FOREST_LOSS_DB_PER_KM = 2.5
+        self.CLUTTER_OPEN_LOSS_DB_PER_KM = 0.2
+        self.CLUTTER_WATER_LOSS_DB_PER_KM = 0.0
+        self.CLUTTER_URBAN_ENDPOINT_LOSS_DB = 3.0
+        self.CLUTTER_HIGH_VANTAGE_ELEVATION_M = 120.0
+        self.CLUTTER_HIGH_VANTAGE_LOSS_FACTOR = 0.35
+        self.CLUTTER_COASTAL_PATH_LOSS_FACTOR = 0.25
+        self.CLUTTER_COASTAL_SAMPLE_FRACTION = 0.55
+        self.CLUTTER_MAX_LOSS_DB = 25.0
+
+        #################################################
+        ####### EMPIRICAL PAYLOAD LOSS MODEL ############
+        #################################################
+        # Disabled by default. When enabled, RSSI/sensitivity still decides
+        # whether a packet can be heard; this model only adds a smooth
+        # CR-dependent payload-success probability after that gate.
+        self.PHY_LOSS_MODEL_ENABLED = False
+        self.PHY_LOSS_MODEL_NAME = "snr_payload_v1"
+        self.PHY_LOSS_SNR_P50_BY_CR = {
+            5: -17.0,
+            6: -17.8,
+            7: -18.6,
+            8: -19.4,
+        }
+        self.PHY_LOSS_SNR_TRANSITION_DB = 1.4
+        self.PHY_LOSS_REFERENCE_PACKET_BYTES = 40
+        self.PHY_LOSS_LONG_PACKET_PENALTY_DB_PER_100B = 0.8
+        self.PHY_LOSS_MIN_SUCCESS_PROB = 0.02
+        self.PHY_LOSS_MAX_SUCCESS_PROB = 0.995
 
         # Misc
         self.SEED = 44  # random seed to use
