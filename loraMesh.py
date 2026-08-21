@@ -4,11 +4,57 @@ import logging
 import math
 import os
 import random
+from pathlib import Path
 
 import yaml
 
+from lib.common import node_antenna_height
 from lib.config import CONFIG
-from lib.node import NodeConfig, default_generate_node_list
+from lib.map_input import (
+    DEFAULT_MAP_NODES_URL,
+    bbox_crosses_antimeridian,
+    fetch_map_payload,
+    node_configs_from_map_payload,
+    parse_bbox,
+)
+from lib.nodedb_input import fetch_nodedb_payload, node_configs_from_nodedb_payload
+from lib.node import (
+    NodeConfig,
+    default_generate_node_list,
+    node_configs_from_yaml,
+    origin_from_yaml,
+)
+from lib.presets import (
+    apply_preset_radio_calibration,
+    available_presets,
+    load_preset_raw,
+    load_preset_terrain_grid,
+    load_preset_node_configs,
+    preset_clutter_grid,
+    preset_origin,
+    preset_terrain_grid,
+    restore_radio_calibration,
+    snapshot_radio_calibration,
+)
+from lib.srtm import (
+    DEFAULT_SRTM_URL_TEMPLATE,
+    SRTM_DATA_ATTRIBUTION,
+    SRTM_DATA_ATTRIBUTION_URL,
+    SRTM_MAX_LAT,
+    SRTM_MAX_LON,
+    SRTM_MIN_LAT,
+    SRTM_MIN_LON,
+    clamp_bbox_to_srtm_coverage,
+    terrain_grid_from_srtm,
+    tiles_for_bbox,
+)
+from lib.terrain import (
+    NODE_Z_REFERENCE_SEA_LEVEL,
+    apply_terrain_altitudes,
+    normalize_longitude_delta,
+    xy_to_latlon,
+)
+from lib.phy import estimate_path_loss
 
 conf = CONFIG
 logger = logging.getLogger(__name__)
@@ -18,7 +64,7 @@ CLI_DEFAULT_ATTR = "_lora_mesh_cli_defaults"
 
 def configure_logging():
     """Apply CLI logging defaults without changing logging during module import."""
-    logging.basicConfig(level=logging.INFO) # default log level
+    logging.basicConfig(level=logging.INFO)  # default log level
 
 
 def get_cli_defaults(conf):
@@ -32,9 +78,287 @@ def get_cli_defaults(conf):
                 "PERIOD": conf.PERIOD,
                 "GUI_ENABLED": conf.GUI_ENABLED,
                 "PLOT": conf.PLOT,
+                "OX": conf.OX,
+                "OY": conf.OY,
+                "XSIZE": conf.XSIZE,
+                "YSIZE": conf.YSIZE,
+                "TERRAIN_PROFILE_SAMPLES": conf.TERRAIN_PROFILE_SAMPLES,
+                "CLUTTER_PROFILE_SAMPLES": conf.CLUTTER_PROFILE_SAMPLES,
+                "NODE_Z_REFERENCE": conf.NODE_Z_REFERENCE,
+                "RADIO_CALIBRATION": snapshot_radio_calibration(conf),
+                "DTP_MAX_POWER_DROP_DB": conf.DTP_MAX_POWER_DROP_DB,
+                "DTP_POWER_STEP_DB": conf.DTP_POWER_STEP_DB,
+                "DTP_MIN_TX_POWER_DBM": conf.DTP_MIN_TX_POWER_DBM,
+                "DTP_STRONG_LINK_MARGIN_DB": conf.DTP_STRONG_LINK_MARGIN_DB,
+                "DTP_VERY_STRONG_LINK_MARGIN_DB": conf.DTP_VERY_STRONG_LINK_MARGIN_DB,
             },
         )
     return getattr(conf, CLI_DEFAULT_ATTR)
+
+
+def reset_simulation_bounds_to_cli_defaults(conf, cli_defaults):
+    """Restore caller baseline bounds before building a new scenario."""
+    conf.OX = cli_defaults["OX"]
+    conf.OY = cli_defaults["OY"]
+    conf.XSIZE = cli_defaults["XSIZE"]
+    conf.YSIZE = cli_defaults["YSIZE"]
+
+
+def set_geo_origin(conf, origin):
+    """Use scenario geographic origin for lat/lon terrain grids when available."""
+    if origin is None:
+        conf.GEO_ORIGIN_LAT = None
+        conf.GEO_ORIGIN_LON = None
+        return
+    conf.GEO_ORIGIN_LAT, conf.GEO_ORIGIN_LON = origin
+
+
+def bbox_from_points(points, origin, margin_m=1000.0):
+    """Build a geographic bbox around local x/y points when an origin exists."""
+    bboxes = bboxes_from_points(points, origin, margin_m)
+    if not bboxes:
+        return None
+    if len(bboxes) == 1:
+        return bboxes[0]
+    return (
+        min(bbox[0] for bbox in bboxes),
+        -180.0,
+        max(bbox[2] for bbox in bboxes),
+        180.0,
+    )
+
+
+def _clamp_bbox_to_srtm_coverage_if_present(bbox):
+    min_lat, min_lon, max_lat, max_lon = bbox
+    if min_lat >= SRTM_MAX_LAT or max_lat <= SRTM_MIN_LAT:
+        raise ValueError("bbox does not overlap SRTM coverage")
+    if min_lon >= SRTM_MAX_LON or max_lon <= SRTM_MIN_LON:
+        return None
+    return clamp_bbox_to_srtm_coverage(bbox)
+
+
+def _clamped_bboxes_from_candidates(candidates):
+    bboxes = []
+    for candidate in candidates:
+        bbox = _clamp_bbox_to_srtm_coverage_if_present(candidate)
+        if bbox is not None:
+            bboxes.append(bbox)
+    if not bboxes:
+        raise ValueError("bbox does not overlap SRTM coverage")
+    return bboxes
+
+
+def bboxes_from_points(points, origin, margin_m=1000.0):
+    """Build one or two geographic bboxes around local x/y points."""
+    if origin is None:
+        return []
+    origin_lat, origin_lon = origin
+    min_x = min(point.x for point in points) - margin_m
+    max_x = max(point.x for point in points) + margin_m
+    min_y = min(point.y for point in points) - margin_m
+    max_y = max(point.y for point in points) + margin_m
+    lat_a, lon_a = xy_to_latlon(min_x, min_y, origin_lat, origin_lon)
+    lat_b, lon_b = xy_to_latlon(max_x, max_y, origin_lat, origin_lon)
+    min_lat = min(lat_a, lat_b)
+    max_lat = max(lat_a, lat_b)
+    lon_delta_a = normalize_longitude_delta(lon_a, origin_lon)
+    lon_delta_b = normalize_longitude_delta(lon_b, origin_lon)
+    min_delta = min(lon_delta_a, lon_delta_b)
+    max_delta = max(lon_delta_a, lon_delta_b)
+    min_lon = origin_lon + min_delta
+    max_lon = origin_lon + max_delta
+    if min_lon < -180.0:
+        return _clamped_bboxes_from_candidates(
+            (
+                (min_lat, min_lon + 360.0, max_lat, 180.0),
+                (min_lat, -180.0, max_lat, max_lon),
+            )
+        )
+    if max_lon > 180.0:
+        return _clamped_bboxes_from_candidates(
+            (
+                (min_lat, min_lon, max_lat, 180.0),
+                (min_lat, -180.0, max_lat, max_lon - 360.0),
+            )
+        )
+    return _clamped_bboxes_from_candidates(((min_lat, min_lon, max_lat, max_lon),))
+
+
+def bbox_from_node_config(node_config, origin, margin_m=1000.0):
+    """Build a geographic bbox around local x/y nodes when an origin exists."""
+    return bbox_from_points([node.position for node in node_config], origin, margin_m)
+
+
+def fit_simulation_bounds_to_node_config(conf, node_config, margin_m=1000.0):
+    """Expand movement/GUI bounds so loaded coordinates are not clamped."""
+    min_x = min(node.position.x for node in node_config) - margin_m
+    max_x = max(node.position.x for node in node_config) + margin_m
+    min_y = min(node.position.y for node in node_config) - margin_m
+    max_y = max(node.position.y for node in node_config) + margin_m
+
+    left = conf.OX - conf.XSIZE / 2
+    right = conf.OX + conf.XSIZE / 2
+    bottom = conf.OY - conf.YSIZE / 2
+    top = conf.OY + conf.YSIZE / 2
+    if left <= min_x and max_x <= right and bottom <= min_y and max_y <= top:
+        return
+
+    conf.OX = (min_x + max_x) / 2
+    conf.OY = (min_y + max_y) / 2
+    conf.XSIZE = max_x - min_x
+    conf.YSIZE = max_y - min_y
+
+
+def srtm_terrain_bbox_or_none(parsed_arguments, terrain_bbox):
+    """Drop a wrapped --map-bbox for SRTM terrain, telling the user why."""
+    if (
+        parsed_arguments.terrain_srtm
+        and terrain_bbox is not None
+        and bbox_crosses_antimeridian(terrain_bbox)
+    ):
+        logger.info(
+            "--map-bbox crosses the antimeridian; deriving the SRTM terrain bbox "
+            "from imported node positions instead"
+        )
+        return None
+    return terrain_bbox
+
+
+def nodes_have_flat_link_budget(conf, node_a, node_b):
+    """Return whether two nodes can hear each other before terrain loss."""
+    distance = node_a.position.euclidean_distance(node_b.position)
+    path_loss = estimate_path_loss(
+        conf,
+        distance,
+        conf.FREQ,
+        node_antenna_height(node_a),
+        node_antenna_height(node_b),
+    )
+    sensitivity = conf.current_preset["sensitivity"]
+    antenna_gain_a = getattr(node_a, "antennaGain", getattr(node_a, "antenna_gain", 0))
+    antenna_gain_b = getattr(node_b, "antennaGain", getattr(node_b, "antenna_gain", 0))
+    tx_power_a = getattr(node_a, "tx_power", conf.PTX)
+    tx_power_b = getattr(node_b, "tx_power", conf.PTX)
+    rssi_ab = tx_power_a + antenna_gain_a + antenna_gain_b - path_loss
+    rssi_ba = tx_power_b + antenna_gain_b + antenna_gain_a - path_loss
+    return rssi_ab >= sensitivity or rssi_ba >= sensitivity
+
+
+def max_flat_link_distance(conf, node_config, distance_cap_m=40075000.0):
+    """Return a conservative distance bound beyond which no flat link closes.
+
+    Every path-loss model in lib.phy grows monotonically with distance, so a
+    best-case link budget (highest transmit power, two best antenna gains,
+    most favorable antenna heights among the nodes) yields one distance beyond
+    which no node pair can hear each other before terrain loss.
+    """
+    sensitivity = conf.current_preset["sensitivity"]
+    best_tx_power = max(getattr(node, "tx_power", conf.PTX) for node in node_config)
+    gains = sorted(
+        (
+            getattr(node, "antennaGain", getattr(node, "antenna_gain", 0))
+            for node in node_config
+        ),
+        reverse=True,
+    )
+    best_gains = gains[0] + (gains[1] if len(gains) > 1 else gains[0])
+    budget = best_tx_power + best_gains - sensitivity
+
+    heights = [node_antenna_height(node) for node in node_config]
+    height_pairs = {
+        (min(heights), min(heights)),
+        (min(heights), max(heights)),
+        (max(heights), max(heights)),
+    }
+
+    def link_closes(distance, tx_height, rx_height):
+        return budget >= estimate_path_loss(
+            conf, distance, conf.FREQ, tx_height, rx_height
+        )
+
+    bound = 0.0
+    for tx_height, rx_height in height_pairs:
+        if not link_closes(1.0, tx_height, rx_height):
+            continue
+        low, high = 1.0, 1000.0
+        while link_closes(high, tx_height, rx_height):
+            low, high = high, high * 2.0
+            if high >= distance_cap_m:
+                return math.inf
+        while high - low > 1.0:
+            mid = (low + high) / 2.0
+            if link_closes(mid, tx_height, rx_height):
+                low = mid
+            else:
+                high = mid
+        bound = max(bound, high)
+    return bound
+
+
+def srtm_tiles_for_node_config_links(conf, node_config, origin, margin_m=1000.0):
+    """Return SRTM tiles around nodes and flat-link candidate paths."""
+    if origin is None:
+        return None
+
+    tile_names = set()
+    for node in node_config:
+        for bbox in bboxes_from_points([node.position], origin, margin_m):
+            tile_names.update(tiles_for_bbox(bbox))
+
+    # The pair loop is quadratic in node count. A cheap distance prefilter
+    # keeps the per-pair path-loss and tile work bounded for broad imports.
+    max_link_distance = max_flat_link_distance(conf, node_config)
+    for index, node_a in enumerate(node_config):
+        for node_b in node_config[index + 1 :]:
+            if node_a.position.euclidean_distance(node_b.position) > max_link_distance:
+                continue
+            if not nodes_have_flat_link_budget(conf, node_a, node_b):
+                continue
+            for bbox in bboxes_from_points(
+                [node_a.position, node_b.position], origin, margin_m
+            ):
+                tile_names.update(tiles_for_bbox(bbox))
+
+    return sorted(tile_names)
+
+
+def print_preset_list():
+    """Print packaged scenario presets in a copy-pasteable discovery format."""
+    print("Available scenario presets:")
+    for name in available_presets():
+        raw = load_preset_raw(name)
+        nodes = raw.get("nodes", {}) if isinstance(raw, dict) else {}
+        origin = raw.get("origin", {}) if isinstance(raw, dict) else {}
+        calibration = raw.get("radio_calibration", {}) if isinstance(raw, dict) else {}
+        observations = raw.get("calibration_observations", []) if isinstance(raw, dict) else []
+        terrain = preset_terrain_grid(name) is not None
+        clutter = preset_clutter_grid(name) is not None
+        calibration_enabled = bool(calibration.get("link_calibration_model"))
+        origin_text = "unknown"
+        if "lat" in origin and "lon" in origin:
+            origin_text = f"{origin['lat']:.5f},{origin['lon']:.5f}"
+
+        print(
+            f"  {name}: {len(nodes)} nodes, origin={origin_text}, "
+            f"terrain={'yes' if terrain else 'no'}, "
+            f"clutter={'yes' if clutter else 'no'}, "
+            f"link_calibration={'yes' if calibration_enabled else 'no'}, "
+            f"calibration_edges={len(observations)}"
+        )
+
+
+def print_modem_preset_list(conf):
+    """Print modem presets with the fields users need for comparable runs."""
+    print("Available modem presets:")
+    for name, preset in conf.MODEM_PRESETS.items():
+        default_marker = " (default)" if name == conf.MODEM_PRESET else ""
+        print(
+            f"  {name}{default_marker}: "
+            f"bw={preset['bw'] / 1000:g} kHz, "
+            f"sf={preset['sf']}, "
+            f"cr=4/{preset['cr']}, "
+            f"sensitivity={preset['sensitivity']:g} dBm"
+        )
 
 
 def parse_params(conf, args=None) -> [NodeConfig]:
@@ -46,25 +370,221 @@ def parse_params(conf, args=None) -> [NodeConfig]:
     # loraMesh.py [nr_nodes [router_type]] | [--from-file [file_name]]
     # we'll replicate the intent with argparse, but more strictly, so flags like '--never--from-file' will no longer be accepted
     parser = argparse.ArgumentParser(
-        description='run a single interactive or discrete Meshtastic network simulation'
-        )
+        description="run a single interactive or discrete Meshtastic network simulation",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""examples:
+  loraMesh.py --list-presets
+  loraMesh.py --preset batumi --no-gui --simtime-seconds 60 --period-seconds 5
+  loraMesh.py --preset batumi --no-gui --simtime-seconds 60 --period-seconds 5 --phy-loss-model --capture-collision-model
+  loraMesh.py --from-map 'https://meshtastic.liamcottle.net/api/v1/nodes' --map-bbox 41.50,41.50,41.82,41.86 --map-limit 100 --no-gui
+""",
+    )
 
     # only allow one of --from-file optional, or nr_nodes positional exclusively
     group = parser.add_mutually_exclusive_group()
-    group.add_argument('nr_nodes', nargs='?', type=int, help='Number of nodes to generate. If unspecified, do interactive simulation')
-    group.add_argument('--from-file', nargs='?', const='nodeConfig.yaml', type=str, metavar='filename', help='Name of yaml file storing node config under "out/" directory. If unspecified, defaults to "nodeConfig.yaml".')
+    group.add_argument(
+        "nr_nodes",
+        nargs="?",
+        type=int,
+        help="Number of nodes to generate. If unspecified, do interactive simulation",
+    )
+    group.add_argument(
+        "--from-file",
+        nargs="?",
+        const="nodeConfig.yaml",
+        type=str,
+        metavar="filename",
+        help='Name of yaml file storing node config under "out/" directory. If unspecified, defaults to "nodeConfig.yaml".',
+    )
+    group.add_argument(
+        "--from-map",
+        nargs="?",
+        const=DEFAULT_MAP_NODES_URL,
+        type=str,
+        metavar="url",
+        help="Fetch node locations from a Meshtastic map /api/v1/nodes endpoint.",
+    )
+    group.add_argument(
+        "--from-nodedb",
+        action="store_true",
+        help="Fetch positioned nodes from a local Meshtastic device NodeDB.",
+    )
+    group.add_argument(
+        "--preset",
+        choices=available_presets(),
+        help="Load a packaged real-mesh scenario preset.",
+    )
+    parser.add_argument(
+        "--use-node-periods",
+        action="store_true",
+        help="Respect per-node periodMs values from YAML/preset inputs instead of the scenario-wide period",
+    )
 
     # the earlier behavior of specifying `router_type` as an optional positional arg with `nr_nodes` is difficult to exactly
     # replicate with argparse, especially since nesting groups was an unintended feature and deprecated.
     # Just implement as an optional argument, and manually treat it as incompatible with `--from-file`
-    parser.add_argument('--router-type', type=conf.ROUTER_TYPE, choices=conf.ROUTER_TYPE, help='Router type to use, taken from ROUTER_TYPE enum. Omit the leading "ROUTER_TYPE". Incompatible with --from-file')
-    parser.add_argument('--simtime-seconds', type=float, help='Override simulation duration in seconds')
-    parser.add_argument('--period-seconds', type=float, help='Override mean message-generation period in seconds')
-    parser.add_argument('--no-gui', action='store_true', help='Run without Tk/Matplotlib graphing or schedule plotting')
-    parser.add_argument('--disable-connectivity-map', action='store_true', help='disable the connectivity map optimization. May be faster for some scenarios with many moving nodes and/or a densely connected network.')
-    parser.add_argument('-v', '--verbose', action='store_true', help='enable verbose/debug output')
+    parser.add_argument(
+        "--router-type",
+        type=conf.ROUTER_TYPE,
+        choices=conf.ROUTER_TYPE,
+        help='Router type to use, taken from ROUTER_TYPE enum. Omit the leading "ROUTER_TYPE". Incompatible with --from-file',
+    )
+    parser.add_argument(
+        "--dcr", action="store_true", help="Enable the Dynamic Coding Rate experiment"
+    )
+    parser.add_argument(
+        "--dcr-strategy",
+        choices=["context", "firmware10359"],
+        default="context",
+        help="DCR policy variant to run when --dcr is enabled",
+    )
+    parser.add_argument(
+        "--dtp", action="store_true", help="Enable the Dynamic TX Power experiment"
+    )
+    parser.add_argument(
+        "--dtp-max-drop-db",
+        type=int,
+        help="maximum per-packet TX power reduction for --dtp",
+    )
+    parser.add_argument(
+        "--dtp-power-step-db",
+        type=int,
+        help="TX power quantization step for --dtp reductions",
+    )
+    parser.add_argument(
+        "--dtp-min-power-dbm",
+        type=int,
+        help="minimum TX power that --dtp may select",
+    )
+    parser.add_argument(
+        "--dtp-strong-margin-db",
+        type=float,
+        help="prior-hop sensitivity margin that lets --dtp reduce relay power",
+    )
+    parser.add_argument(
+        "--dtp-very-strong-margin-db",
+        type=float,
+        help="prior-hop sensitivity margin that lets --dtp reduce ACK power more",
+    )
+    parser.add_argument(
+        "--terrain-srtm",
+        action="store_true",
+        help="Build terrain directly from cached/downloaded SRTM tiles for the scenario bbox",
+    )
+    parser.add_argument(
+        "--terrain-srtm-step-meters",
+        type=float,
+        default=1000.0,
+        help="SRTM terrain sample spacing in meters",
+    )
+    parser.add_argument(
+        "--terrain-srtm-cache-dir",
+        default=str(Path.home() / ".cache" / "meshtasticator" / "srtm"),
+        help="where downloaded SRTM .hgt tiles are cached",
+    )
+    parser.add_argument(
+        "--terrain-srtm-url-template",
+        default=DEFAULT_SRTM_URL_TEMPLATE,
+        help="SRTM download URL template with {lat_band} and {tile}",
+    )
+    parser.add_argument(
+        "--terrain-srtm-offline", action="store_true", help="use cached SRTM tiles only"
+    )
+    parser.add_argument(
+        "--terrain-profile-samples",
+        type=int,
+        help="number of terrain samples along each TX/RX path",
+    )
+    parser.add_argument(
+        "--clutter-grid",
+        type=str,
+        help="CSV land-cover clutter grid for optional building/urban excess loss",
+    )
+    parser.add_argument(
+        "--clutter-profile-samples",
+        type=int,
+        help="number of clutter samples along each TX/RX path",
+    )
+    parser.add_argument(
+        "--no-clutter",
+        action="store_true",
+        help="disable land-cover clutter even when a grid is available",
+    )
+    parser.add_argument(
+        "--phy-loss-model",
+        action="store_true",
+        help="enable empirical SNR-to-payload-loss model",
+    )
+    parser.add_argument(
+        "--capture-collision-model",
+        action="store_true",
+        help="enable capture-aware overlap/collision model",
+    )
+    parser.add_argument(
+        "--map-bbox",
+        type=str,
+        help="Position import bounding box as min_lat,min_lon,max_lat,max_lon",
+    )
+    parser.add_argument(
+        "--map-limit",
+        type=int,
+        help="Maximum number of positioned imported nodes after bbox filtering",
+    )
+    parser.add_argument(
+        "--nodedb-host",
+        type=str,
+        help="Hostname or IP of a Meshtastic TCP device for --from-nodedb",
+    )
+    parser.add_argument(
+        "--nodedb-port",
+        type=int,
+        help="TCP port of a Meshtastic TCP device for --from-nodedb",
+    )
+    parser.add_argument(
+        "--nodedb-serial-port",
+        type=str,
+        help="Serial device path for --from-nodedb; defaults to Meshtastic auto-detection",
+    )
+    parser.add_argument(
+        "--simtime-seconds", type=float, help="Override simulation duration in seconds"
+    )
+    parser.add_argument(
+        "--period-seconds",
+        type=float,
+        help="Override mean message-generation period in seconds",
+    )
+    parser.add_argument(
+        "--no-gui",
+        action="store_true",
+        help="Run without Tk/Matplotlib graphing or schedule plotting",
+    )
+    parser.add_argument(
+        "--disable-connectivity-map",
+        action="store_true",
+        help="disable the connectivity map optimization. May be faster for some scenarios with many moving nodes and/or a densely connected network.",
+    )
+    parser.add_argument(
+        "--list-presets",
+        action="store_true",
+        help="List packaged real-mesh scenario presets and exit",
+    )
+    parser.add_argument(
+        "--list-modem-presets",
+        action="store_true",
+        help="List Meshtastic modem presets and exit",
+    )
+    parser.add_argument(
+        "-v", "--verbose", action="store_true", help="enable verbose/debug output"
+    )
 
     parsed_arguments = parser.parse_args(args)
+
+    if parsed_arguments.list_presets:
+        print_preset_list()
+    if parsed_arguments.list_modem_presets:
+        print_modem_preset_list(conf)
+    if parsed_arguments.list_presets or parsed_arguments.list_modem_presets:
+        raise SystemExit(0)
 
     cli_defaults = get_cli_defaults(conf)
     simtime = cli_defaults["SIMTIME"]
@@ -73,14 +593,70 @@ def parse_params(conf, args=None) -> [NodeConfig]:
     plot_enabled = cli_defaults["PLOT"]
 
     if parsed_arguments.simtime_seconds is not None:
-        if not math.isfinite(parsed_arguments.simtime_seconds) or parsed_arguments.simtime_seconds < MIN_TIME_OVERRIDE_SECONDS:
-            parser.error(f"--simtime-seconds must be at least {MIN_TIME_OVERRIDE_SECONDS} seconds")
+        if (
+            not math.isfinite(parsed_arguments.simtime_seconds)
+            or parsed_arguments.simtime_seconds < MIN_TIME_OVERRIDE_SECONDS
+        ):
+            parser.error(
+                f"--simtime-seconds must be at least {MIN_TIME_OVERRIDE_SECONDS} seconds"
+            )
         simtime = int(parsed_arguments.simtime_seconds * conf.ONE_SECOND_INTERVAL)
 
     if parsed_arguments.period_seconds is not None:
-        if not math.isfinite(parsed_arguments.period_seconds) or parsed_arguments.period_seconds < MIN_TIME_OVERRIDE_SECONDS:
-            parser.error(f"--period-seconds must be at least {MIN_TIME_OVERRIDE_SECONDS} seconds")
+        if (
+            not math.isfinite(parsed_arguments.period_seconds)
+            or parsed_arguments.period_seconds < MIN_TIME_OVERRIDE_SECONDS
+        ):
+            parser.error(
+                f"--period-seconds must be at least {MIN_TIME_OVERRIDE_SECONDS} seconds"
+            )
         period = int(parsed_arguments.period_seconds * conf.ONE_SECOND_INTERVAL)
+
+    if parsed_arguments.map_limit is not None and parsed_arguments.map_limit < 1:
+        parser.error("--map-limit must be at least 1")
+    if not math.isfinite(conf.HM) or conf.HM <= 0:
+        parser.error("config HM must be a positive finite antenna height")
+    if conf.hopLimit < 0:
+        parser.error("config hopLimit must be at least 0")
+    if (
+        parsed_arguments.terrain_profile_samples is not None
+        and parsed_arguments.terrain_profile_samples < 2
+    ):
+        parser.error("--terrain-profile-samples must be at least 2")
+    if (
+        not math.isfinite(parsed_arguments.terrain_srtm_step_meters)
+        or parsed_arguments.terrain_srtm_step_meters <= 0
+    ):
+        parser.error("--terrain-srtm-step-meters must be a positive finite number")
+    if parsed_arguments.clutter_profile_samples is not None and parsed_arguments.clutter_profile_samples < 1:
+        parser.error("--clutter-profile-samples must be at least 1")
+    if parsed_arguments.dtp_max_drop_db is not None and parsed_arguments.dtp_max_drop_db < 0:
+        parser.error("--dtp-max-drop-db must be at least 0")
+    if parsed_arguments.dtp_power_step_db is not None and parsed_arguments.dtp_power_step_db < 1:
+        parser.error("--dtp-power-step-db must be at least 1")
+    if (
+        parsed_arguments.dtp_strong_margin_db is not None
+        and (not math.isfinite(parsed_arguments.dtp_strong_margin_db) or parsed_arguments.dtp_strong_margin_db < 0)
+    ):
+        parser.error("--dtp-strong-margin-db must be a non-negative finite number")
+    if (
+        parsed_arguments.dtp_very_strong_margin_db is not None
+        and (not math.isfinite(parsed_arguments.dtp_very_strong_margin_db) or parsed_arguments.dtp_very_strong_margin_db < 0)
+    ):
+        parser.error("--dtp-very-strong-margin-db must be a non-negative finite number")
+
+    dtp_strong_margin = (
+        parsed_arguments.dtp_strong_margin_db
+        if parsed_arguments.dtp_strong_margin_db is not None
+        else cli_defaults["DTP_STRONG_LINK_MARGIN_DB"]
+    )
+    dtp_very_strong_margin = (
+        parsed_arguments.dtp_very_strong_margin_db
+        if parsed_arguments.dtp_very_strong_margin_db is not None
+        else cli_defaults["DTP_VERY_STRONG_LINK_MARGIN_DB"]
+    )
+    if dtp_very_strong_margin < dtp_strong_margin:
+        parser.error("--dtp-very-strong-margin-db must be >= --dtp-strong-margin-db")
 
     if parsed_arguments.no_gui:
         # Headless CI and smoke runs should not pay Tk startup, per-node
@@ -89,28 +665,134 @@ def parse_params(conf, args=None) -> [NodeConfig]:
         gui_enabled = False
         plot_enabled = False
 
-    # enforce defaulting to True
-    if parsed_arguments.disable_connectivity_map:
-        conf.ENABLE_CONNECTIVITY_MAP = False
-    else:
-        conf.ENABLE_CONNECTIVITY_MAP = True
+    connectivity_map_enabled = not parsed_arguments.disable_connectivity_map
 
-    if parsed_arguments.from_file is not None and parsed_arguments.router_type is not None:
-        parser.error("Incompatible argument selection. --from-file and --router-type can not be used together")
+    if (
+        parsed_arguments.from_file is not None
+        or parsed_arguments.from_map is not None
+        or parsed_arguments.from_nodedb
+        or parsed_arguments.preset is not None
+    ) and parsed_arguments.router_type is not None:
+        parser.error(
+            "Incompatible argument selection. --from-file/--from-map/--from-nodedb/--preset and --router-type can not be used together"
+        )
+    if not parsed_arguments.from_nodedb and (
+        parsed_arguments.nodedb_host is not None
+        or parsed_arguments.nodedb_port is not None
+        or parsed_arguments.nodedb_serial_port is not None
+    ):
+        parser.error("--nodedb-* options require --from-nodedb")
+    if (
+        parsed_arguments.from_nodedb
+        and parsed_arguments.nodedb_port is not None
+        and parsed_arguments.nodedb_host is None
+    ):
+        parser.error("--nodedb-port requires --nodedb-host")
+    if parsed_arguments.nodedb_port is not None and parsed_arguments.nodedb_port <= 0:
+        parser.error("--nodedb-port must be a positive TCP port")
+    if parsed_arguments.no_clutter and parsed_arguments.clutter_grid:
+        parser.error("--no-clutter can not be combined with --clutter-grid")
 
     seeded_for_scenario = False
+    bounds_follow_node_config = False
+    terrain_bbox = None
+    terrain_tile_names = None
+    scenario_origin = None
+    terrain_grid = None
+    terrain_enabled = parsed_arguments.terrain_srtm
+    terrain_profile_samples = cli_defaults["TERRAIN_PROFILE_SAMPLES"]
+    node_z_reference = cli_defaults["NODE_Z_REFERENCE"]
+    if parsed_arguments.terrain_profile_samples is not None:
+        terrain_profile_samples = parsed_arguments.terrain_profile_samples
+    bundled_terrain_grid = None
+    bundled_clutter_grid = None
+    selected_preset = None
     if parsed_arguments.from_file is not None:
-        with open(os.path.join("out", parsed_arguments.from_file), 'r', encoding="utf-8") as file:
-            raw_config = yaml.load(file, Loader=yaml.FullLoader)
-        config = [
-            # transmit power and frequency not previously saved. Use defaults from Config.
-            NodeConfig.from_gen_scenario_output(node_id, node_config, period, conf.PTX, conf.FREQ)
-            for node_id, node_config in raw_config.items()
-        ]
+        try:
+            if parsed_arguments.map_bbox is not None:
+                terrain_bbox = parse_bbox(parsed_arguments.map_bbox)
+            with open(
+                os.path.join("out", parsed_arguments.from_file), "r", encoding="utf-8"
+            ) as file:
+                raw_config = yaml.safe_load(file)
+            config = node_configs_from_yaml(raw_config, period, conf.PTX, conf.FREQ, parsed_arguments.use_node_periods)
+            scenario_origin = origin_from_yaml(raw_config)
+            terrain_bbox = srtm_terrain_bbox_or_none(parsed_arguments, terrain_bbox)
+        except (OSError, ValueError, yaml.YAMLError) as err:
+            parser.error(f"could not load --from-file YAML: {err}")
         nr_nodes = len(config)
+        bounds_follow_node_config = True
+    elif parsed_arguments.preset is not None:
+        selected_preset = parsed_arguments.preset
+        config = load_preset_node_configs(parsed_arguments.preset, period, parsed_arguments.use_node_periods)
+        scenario_origin = preset_origin(parsed_arguments.preset)
+        # Packaged scenarios can carry terrain/clutter grids matched to the
+        # node geometry. Use them by default, while still letting explicit CLI
+        # files override them for A/B comparison runs.
+        bundled_terrain_grid = preset_terrain_grid(parsed_arguments.preset)
+        bundled_clutter_grid = preset_clutter_grid(parsed_arguments.preset)
+        nr_nodes = len(config)
+        bounds_follow_node_config = True
+    elif parsed_arguments.from_map is not None:
+        if parsed_arguments.map_bbox is None:
+            parser.error(
+                "--from-map requires --map-bbox min_lat,min_lon,max_lat,max_lon"
+            )
+        try:
+            terrain_bbox = parse_bbox(parsed_arguments.map_bbox)
+            raw_map_payload = fetch_map_payload(parsed_arguments.from_map)
+            config, map_origin = node_configs_from_map_payload(
+                raw_map_payload,
+                period,
+                bbox=terrain_bbox,
+                limit=parsed_arguments.map_limit,
+                antenna_height=conf.HM,
+                hop_limit=conf.hopLimit,
+                tx_power=conf.PTX,
+                freq=conf.FREQ,
+                return_origin=True,
+            )
+            scenario_origin = map_origin
+            terrain_bbox = srtm_terrain_bbox_or_none(parsed_arguments, terrain_bbox)
+        except ValueError as err:
+            parser.error(str(err))
+        nr_nodes = len(config)
+        bounds_follow_node_config = True
+    elif parsed_arguments.from_nodedb:
+        try:
+            if parsed_arguments.map_bbox is not None:
+                terrain_bbox = parse_bbox(parsed_arguments.map_bbox)
+            raw_nodedb_payload = fetch_nodedb_payload(
+                host=parsed_arguments.nodedb_host,
+                port=parsed_arguments.nodedb_port,
+                serial_port=parsed_arguments.nodedb_serial_port,
+            )
+            config, nodedb_origin = node_configs_from_nodedb_payload(
+                raw_nodedb_payload,
+                period,
+                bbox=terrain_bbox,
+                limit=parsed_arguments.map_limit,
+                antenna_height=conf.HM,
+                hop_limit=conf.hopLimit,
+                tx_power=conf.PTX,
+                freq=conf.FREQ,
+                return_origin=True,
+            )
+            scenario_origin = nodedb_origin
+            terrain_bbox = srtm_terrain_bbox_or_none(parsed_arguments, terrain_bbox)
+        except ValueError as err:
+            parser.error(str(err))
+        nr_nodes = len(config)
+        bounds_follow_node_config = True
     elif parsed_arguments.nr_nodes is not None:
+        if parsed_arguments.terrain_srtm:
+            parser.error(
+                "--terrain-srtm requires --from-map --map-bbox or a scenario file with origin metadata"
+            )
         if parsed_arguments.nr_nodes < 2:
-            parser.error(f"Need at least two nodes. You specified {parsed_arguments.nr_nodes}")
+            parser.error(
+                f"Need at least two nodes. You specified {parsed_arguments.nr_nodes}"
+            )
         nr_nodes = parsed_arguments.nr_nodes
         if parsed_arguments.router_type is not None:
             routerType = parsed_arguments.router_type
@@ -118,49 +800,171 @@ def parse_params(conf, args=None) -> [NodeConfig]:
             conf.update_router_dependencies()
         # Generated node positions come from the global RNG. Seed immediately
         # before that generation, after every parser-only rejection path above.
+        reset_simulation_bounds_to_cli_defaults(conf, cli_defaults)
         conf.NR_NODES = nr_nodes
         conf.PERIOD = period
         random.seed(conf.SEED)
         seeded_for_scenario = True
         config = default_generate_node_list(conf)
     else:
+        if parsed_arguments.terrain_srtm:
+            parser.error(
+                "--terrain-srtm requires --from-map --map-bbox or a scenario file with origin metadata"
+            )
         if not gui_enabled:
-            parser.error("--no-gui requires nr_nodes or --from-file")
+            parser.error("--no-gui requires nr_nodes, --from-file, --from-map, or --preset")
         from lib.gui import gen_scenario
 
+        reset_simulation_bounds_to_cli_defaults(conf, cli_defaults)
         config_dict = gen_scenario(conf)
-        config = [NodeConfig.from_gen_scenario_output(node_id, cfg, period, conf.PTX, conf.FREQ) for node_id, cfg in config_dict.items()]
+        config = [
+            NodeConfig.from_gen_scenario_output(node_id, cfg, period, conf.PTX, conf.FREQ, parsed_arguments.use_node_periods)
+            for node_id, cfg in config_dict.items()
+        ]
         nr_nodes = len(config)
 
     if nr_nodes < 2:
         parser.error(f"Need at least two nodes. You specified {nr_nodes}")
+    if parsed_arguments.terrain_srtm and terrain_bbox is None:
+        try:
+            terrain_bbox = bbox_from_node_config(config, scenario_origin)
+            terrain_tile_names = srtm_tiles_for_node_config_links(
+                conf, config, scenario_origin
+            )
+        except ValueError as err:
+            parser.error(f"could not derive SRTM terrain bbox: {err}")
+        if terrain_bbox is None:
+            parser.error(
+                "--terrain-srtm requires --from-map --map-bbox or a scenario file with origin metadata"
+            )
+    if parsed_arguments.terrain_srtm and scenario_origin is None:
+        parser.error(
+            "--terrain-srtm requires --from-map/--from-nodedb or a scenario file with origin metadata"
+        )
+
+    if parsed_arguments.terrain_srtm:
+        try:
+            origin_lat, origin_lon = scenario_origin
+            terrain_grid = terrain_grid_from_srtm(
+                terrain_bbox,
+                parsed_arguments.terrain_srtm_step_meters,
+                parsed_arguments.terrain_srtm_cache_dir,
+                origin_lat,
+                origin_lon,
+                parsed_arguments.terrain_srtm_url_template,
+                download_missing=not parsed_arguments.terrain_srtm_offline,
+                tile_names=terrain_tile_names,
+            )
+            apply_terrain_altitudes(terrain_grid, config)
+            node_z_reference = NODE_Z_REFERENCE_SEA_LEVEL
+        except (OSError, ValueError) as err:
+            parser.error(f"could not load SRTM terrain: {err}")
+    elif bundled_terrain_grid is not None:
+        try:
+            terrain_grid = load_preset_terrain_grid(parsed_arguments.preset)
+            apply_terrain_altitudes(terrain_grid, config)
+            terrain_enabled = True
+            node_z_reference = NODE_Z_REFERENCE_SEA_LEVEL
+        except (OSError, ValueError) as err:
+            parser.error(f"could not load preset terrain: {err}")
+
     if not seeded_for_scenario:
-        # Loaded and interactive scenarios do not need random state for node
-        # placement, but the later MAC/PHY simulation does. Seed only after
-        # successful scenario loading so rejected inputs leave caller RNG state
-        # alone.
+        # File, map, preset, and interactive scenarios do not need random state
+        # for node placement, but the later MAC/PHY simulation does. Seed only
+        # after successful scenario loading so rejected inputs leave caller RNG
+        # state alone.
         random.seed(conf.SEED)
+
+    if bounds_follow_node_config:
+        reset_simulation_bounds_to_cli_defaults(conf, cli_defaults)
+        fit_simulation_bounds_to_node_config(conf, config)
 
     conf.SIMTIME = simtime
     conf.PERIOD = period
     conf.GUI_ENABLED = gui_enabled
     conf.PLOT = plot_enabled
     conf.NR_NODES = nr_nodes
+    conf.ENABLE_CONNECTIVITY_MAP = connectivity_map_enabled
+    conf.DCR_ENABLED = parsed_arguments.dcr
+    conf.DCR_STRATEGY = parsed_arguments.dcr_strategy
+    conf.DTP_ENABLED = parsed_arguments.dtp
+    conf.DTP_MAX_POWER_DROP_DB = (
+        parsed_arguments.dtp_max_drop_db
+        if parsed_arguments.dtp_max_drop_db is not None
+        else cli_defaults["DTP_MAX_POWER_DROP_DB"]
+    )
+    conf.DTP_POWER_STEP_DB = (
+        parsed_arguments.dtp_power_step_db
+        if parsed_arguments.dtp_power_step_db is not None
+        else cli_defaults["DTP_POWER_STEP_DB"]
+    )
+    conf.DTP_MIN_TX_POWER_DBM = (
+        parsed_arguments.dtp_min_power_dbm
+        if parsed_arguments.dtp_min_power_dbm is not None
+        else cli_defaults["DTP_MIN_TX_POWER_DBM"]
+    )
+    conf.DTP_STRONG_LINK_MARGIN_DB = dtp_strong_margin
+    conf.DTP_VERY_STRONG_LINK_MARGIN_DB = dtp_very_strong_margin
+    set_geo_origin(conf, scenario_origin)
+    conf.TERRAIN_ENABLED = terrain_enabled
+    conf.TERRAIN_GRID = terrain_grid
+    conf.TERRAIN_PROFILE_SAMPLES = terrain_profile_samples
+    conf.NODE_Z_REFERENCE = node_z_reference
+    if parsed_arguments.clutter_grid:
+        conf.CLUTTER_ENABLED = True
+        conf.CLUTTER_GRID_FILE = parsed_arguments.clutter_grid
+    elif bundled_clutter_grid is not None and not parsed_arguments.no_clutter:
+        conf.CLUTTER_ENABLED = True
+        conf.CLUTTER_GRID_FILE = str(bundled_clutter_grid)
+    else:
+        conf.CLUTTER_ENABLED = False
+        conf.CLUTTER_GRID_FILE = None
+    conf.CLUTTER_PROFILE_SAMPLES = cli_defaults["CLUTTER_PROFILE_SAMPLES"]
+    if parsed_arguments.clutter_profile_samples is not None:
+        conf.CLUTTER_PROFILE_SAMPLES = parsed_arguments.clutter_profile_samples
+    else:
+        conf.CLUTTER_PROFILE_SAMPLES = cli_defaults["CLUTTER_PROFILE_SAMPLES"]
+    conf.PHY_LOSS_MODEL_ENABLED = parsed_arguments.phy_loss_model
+    conf.CAPTURE_COLLISION_MODEL_ENABLED = parsed_arguments.capture_collision_model
+    restore_radio_calibration(conf, cli_defaults["RADIO_CALIBRATION"])
+    if parsed_arguments.preset is not None:
+        apply_preset_radio_calibration(conf, parsed_arguments.preset)
 
     if parsed_arguments.verbose:
         # Set this logger and lib.* to DEBUG only after the command line has
         # resolved into a usable scenario. Failed parser inputs should not leave
         # imported callers with noisier logging.
         logger.setLevel(logging.DEBUG)
-        lib_logger = logging.getLogger('lib')
+        lib_logger = logging.getLogger("lib")
         lib_logger.setLevel(logging.DEBUG)
         print("verbose output enabled")
 
     print("Number of nodes:", conf.NR_NODES)
     print("Modem:", conf.MODEM_PRESET)
-    print("Simulation time (s):", conf.SIMTIME/1000)
-    print("Period (s):", conf.PERIOD/1000)
+    print("Simulation time (s):", conf.SIMTIME / 1000)
+    print("Period (s):", conf.PERIOD / 1000)
     print("Interference level:", conf.INTERFERENCE_LEVEL)
+    if conf.TERRAIN_ENABLED:
+        print(
+            "Terrain data attribution:",
+            f"{SRTM_DATA_ATTRIBUTION} ({SRTM_DATA_ATTRIBUTION_URL})",
+        )
+    print("Dynamic Coding Rate:", "enabled" if conf.DCR_ENABLED else "disabled")
+    print("Dynamic TX Power:", "enabled" if conf.DTP_ENABLED else "disabled")
+    if conf.DTP_ENABLED:
+        print(
+            "DTP limits:",
+            f"max_drop={conf.DTP_MAX_POWER_DROP_DB}dB",
+            f"step={conf.DTP_POWER_STEP_DB}dB",
+            f"min_power={conf.DTP_MIN_TX_POWER_DBM if conf.DTP_MIN_TX_POWER_DBM is not None else 'none'}",
+            f"strong_margin={conf.DTP_STRONG_LINK_MARGIN_DB:g}dB",
+            f"very_strong_margin={conf.DTP_VERY_STRONG_LINK_MARGIN_DB:g}dB",
+        )
+    print("PHY loss model:", "enabled" if conf.PHY_LOSS_MODEL_ENABLED else "disabled")
+    print("Capture collision model:", "enabled" if conf.CAPTURE_COLLISION_MODEL_ENABLED else "disabled")
+    print("Terrain model:", "enabled" if conf.TERRAIN_ENABLED else "disabled")
+    print("Clutter model:", conf.CLUTTER_GRID_FILE if conf.CLUTTER_ENABLED else "disabled")
+    print("Link calibration model:", "enabled" if conf.LINK_CALIBRATION_MODEL_ENABLED else "disabled")
     return config
 
 
@@ -196,39 +1000,61 @@ def run_simulation(conf, node_config):
     messages = results["messages"]
 
     # collect second-order results from finalized results
-    sent = results['sent']
-    potentialReceivers = results['potentialReceivers']
-    nrCollisions = results['nrCollisions']
-    nrSensed = results['nrSensed']
-    nrReceived = results['nrReceived']
-    meanDelay = results['meanDelay']
-    txAirUtilizationRate = results['txAirUtilizationRate']
-    collisionRate = results['collisionRate']
-    nodeReach = results['nodeReach']
-    usefulness = results['usefulness']
-    delayDropped = results['delayDropped']
+    sent = results["sent"]
+    potentialReceivers = results["potentialReceivers"]
+    nrCollisions = results["nrCollisions"]
+    nrSensed = results["nrSensed"]
+    nrReceived = results["nrReceived"]
+    meanDelay = results["meanDelay"]
+    txAirUtilizationRate = results["txAirUtilizationRate"]
+    collisionRate = results["collisionRate"]
+    nodeReach = results["nodeReach"]
+    usefulness = results["usefulness"]
+    delayDropped = results["delayDropped"]
 
     print("*******************************")
     print(f"\nRouter Type: {conf.SELECTED_ROUTER_TYPE}")
-    print('Number of messages created:', messageSeq)
-    print('Number of packets sent:', sent, 'to', potentialReceivers, 'potential receivers')
+    print("Number of messages created:", messageSeq)
+    print(
+        "Number of packets sent:", sent, "to", potentialReceivers, "potential receivers"
+    )
     print("Number of collisions:", nrCollisions)
     print("Number of packets sensed:", nrSensed)
     print("Number of packets received:", nrReceived)
-    print('Delay average (ms):', round(meanDelay, 2))
-    print('Average Tx air utilization:', round(txAirUtilizationRate * 100, 2), '%')
-    print("Percentage of packets that collided:", round(collisionRate*100, 2))
-    print("Average percentage of nodes reached:", round(nodeReach*100, 2))
-    print("Percentage of received packets containing new message:", round(usefulness*100, 2))
+    print("Delay average (ms):", round(meanDelay, 2))
+    print("Average Tx air utilization:", round(txAirUtilizationRate * 100, 2), "%")
+    print("Percentage of packets that collided:", round(collisionRate * 100, 2))
+    print("Average percentage of nodes reached:", round(nodeReach * 100, 2))
+    print(
+        "Percentage of received packets containing new message:",
+        round(usefulness * 100, 2),
+    )
     print("Number of packets dropped by delay/hop limit:", delayDropped)
 
+    if conf.DCR_ENABLED:
+        print("DCR TX packets by CR:", results["dcrTxByCr"])
+        print("DCR airtime by CR (ms):", {cr: round(ms, 2) for cr, ms in results["dcrAirtimeByCr"].items()})
+
+    if conf.DTP_ENABLED:
+        print("DTP TX packets by power:", results["dtpTxByPower"])
+        print("DTP TX packets by CR@power:", results["dtpTxByCrPower"])
+        print("DTP mean CAD-detected receivers per TX:", round(results["dtpMeanDetectedByTx"], 2))
+        print("DTP mean decodable receivers per TX:", round(results["dtpMeanSensedByTx"], 2))
+
+    if conf.TERRAIN_ENABLED:
+        print("Mean terrain obstruction loss (dB):", round(results["meanTerrainLossDb"], 2))
+        print("Max terrain obstruction loss (dB):", round(results["maxTerrainLossDb"], 2))
+    if conf.CLUTTER_ENABLED:
+        print("Mean clutter loss (dB):", round(results["meanClutterLossDb"], 2))
+        print("Max clutter loss (dB):", round(results["maxClutterLossDb"], 2))
+
     if conf.MODEL_ASYMMETRIC_LINKS:
-        noLinkRate = results['noLinkRate']
-        print("No links:", round(noLinkRate * 100, 2), '%')
+        noLinkRate = results["noLinkRate"]
+        print("No links:", round(noLinkRate * 100, 2), "%")
 
     if conf.MOVEMENT_ENABLED:
-        movingNodes = results['movingNodes']
-        gpsEnabled = results['gpsEnabled']
+        movingNodes = results["movingNodes"]
+        gpsEnabled = results["gpsEnabled"]
         print("Number of moving nodes:", movingNodes)
         print("Number of moving nodes w/ GPS:", gpsEnabled)
 

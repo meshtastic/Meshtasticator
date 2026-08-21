@@ -1,7 +1,9 @@
 import logging
+import math
 import random
 
 from lib.phy import airtime, get_current_slot_time
+from lib.radio_loss import estimate_snr
 
 logger = logging.getLogger(__name__)
 
@@ -9,6 +11,18 @@ logger = logging.getLogger(__name__)
 CWmin = 3
 CWmax = 8
 PROCESSING_TIME_MSEC = 4500
+
+
+def channel_utilization_percent(node):
+    """Return a bounded airtime share for contention-window calculations."""
+    now = getattr(node.env, "now", 0)
+    if now <= 0:
+        return 0.0
+
+    channel_util = node.airUtilization / now * 100
+    if not math.isfinite(channel_util):
+        return 0.0
+    return max(0.0, min(100.0, channel_util))
 
 
 def set_transmit_delay(node, packet):  # from RadioLibInterface::setTransmitDelay
@@ -19,7 +33,9 @@ def set_transmit_delay(node, packet):  # from RadioLibInterface::setTransmitDela
 
 
 def get_tx_delay_msec_weighted(node, rssi):  # from RadioInterface::getTxDelayMsecWeighted
-    snr = rssi - node.conf.NOISE_LEVEL
+    # Use the same reported-SNR estimate as the packet-loss model so calibrated
+    # presets do not drive relay delay from an impossible near-field SNR tail.
+    snr = estimate_snr(node.conf, rssi)
     SNR_MIN = -20
     SNR_MAX = 10
     slot_time_msec = get_current_slot_time()
@@ -43,9 +59,7 @@ def get_tx_delay_msec_weighted(node, rssi):  # from RadioInterface::getTxDelayMs
 
 
 def get_tx_delay_msec(node):  # from RadioInterface::getTxDelayMsec
-    # channelUtilizationPercent is actually computed based on the last CHANNEL_UTILIZATION_PERIODS, summing
-    # the utilization of those periods. In v2.7.15.567b8ea this macro is 6, with SECONDS_PER_PERIOD 3600
-    channelUtil = node.airUtilization / node.env.now * 100
+    channelUtil = channel_utilization_percent(node)
     CWsize = int(channelUtil * (CWmax - CWmin) / 100 + CWmin)
     CW = random.randint(0, 2 ** CWsize)
     logger.debug(f'{node.env.now:.3f} Current channel utilization is {channelUtil}, so picked {CWsize=} and {CW=}')
@@ -53,9 +67,10 @@ def get_tx_delay_msec(node):  # from RadioInterface::getTxDelayMsec
 
 
 def get_retransmission_msec(node, packet):  # from RadioInterface::getRetransmissionMsec
-    preset = node.conf.current_preset
-    packetAirtime = int(airtime(node.conf, preset["sf"], preset["cr"], packet.packetLen, preset["bw"]))
-    channelUtil = node.airUtilization / node.env.now * 100
+    # Retransmission timeout has to follow the physical airtime of the packet
+    # that was actually sent. With DCR disabled this is still the preset CR.
+    packetAirtime = int(airtime(node.conf, packet.sf, packet.cr, packet.packetLen, packet.bw))
+    channelUtil = channel_utilization_percent(node)
     CWsize = int(channelUtil * (CWmax - CWmin) / 100 + CWmin)
     return 2 * packetAirtime + (2 ** CWsize + 2 * CWmax + 2 ** (int((CWmax + CWmin) / 2))) * get_current_slot_time() + PROCESSING_TIME_MSEC
 
