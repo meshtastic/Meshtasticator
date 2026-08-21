@@ -202,6 +202,46 @@ class TestDiscreteEventSim(unittest.TestCase):
         for f in facets:
             self.assertEqual(all_results[0][f], all_results[1][f], f'connectivity map optimization is inconsistent for facet {f}')
 
+    def test_phy_loss_counts_only_sensed_non_collided_copies(self):
+        from lib.config import Config
+
+        class MockNode:
+            def __init__(self, nodeid: int):
+                self.nodeid = nodeid
+                self.usefulPackets = 0
+                self.txAirUtilization = 0.0
+                self.droppedByDelay = 0
+                self.isMoving = False
+                self.gpsEnabled = False
+
+        class MockPacket:
+            def __init__(self):
+                self.collidedAtN = [False, True, False]
+                self.sensedByN = [True, True, False]
+                self.receivedAtN = [False, False, False]
+                self.phyLostAtN = [True, True, True]
+                self.collisionReasonAtN = [None, "capture", None]
+                self.terrainLossAtN = [0.0, 0.0, 0.0]
+                self.clutterLossAtN = [0.0, 0.0, 0.0]
+
+        conf = Config()
+        conf.NR_NODES = 3
+        sim_results = lib.discrete_event_sim.SimulationResults({
+            "nodes": [MockNode(0), MockNode(1), MockNode(2)],
+            "packets": [MockPacket()],
+            "delays": [],
+            "messageSeq": 1,
+            "totalPairs": 0,
+            "asymmetricLinks": 0,
+            "symmetricLinks": 0,
+            "noLinks": 0,
+        })
+
+        sim_results.finalize(conf)
+
+        self.assertEqual(sim_results["nrPhyLoss"], 1)
+        self.assertEqual(sim_results["nrCollisions"], 1)
+
     # TODO: add default-skip GUI test?
     def test_discrete_sim_ten_nodes(self):
         import numpy as np
@@ -248,32 +288,32 @@ class TestDiscreteEventSim(unittest.TestCase):
         # and modify your changes, or to update the hardcoded "known good"
         # simulation results is up to your judgement for which is
         # appropriate. Be cautious!
-        self.assertEqual(messageSeq, 180, "expected number of messages created")
+        self.assertEqual(messageSeq, 185, "expected number of messages created")
         sent = results['sent']
         potentialReceivers = results['potentialReceivers']
-        self.assertEqual(sent, 834, "expected number of packets sent")
-        self.assertEqual(potentialReceivers, 7506, "expected number of potential receivers")
+        self.assertEqual(sent, 821, "expected number of packets sent")
+        self.assertEqual(potentialReceivers, 7389, "expected number of potential receivers")
 
         nrCollisions = results['nrCollisions']
-        self.assertEqual(nrCollisions, 323, "expected number of collisions")
+        self.assertEqual(nrCollisions, 272, "expected number of collisions")
         nrSensed = results['nrSensed']
-        self.assertEqual(nrSensed, 2895, "expected number of packets sensed")
+        self.assertEqual(nrSensed, 2860, "expected number of packets sensed")
 
         nrReceived = results['nrReceived']
-        self.assertEqual(nrReceived, 2573, "expected number of packets received")
+        self.assertEqual(nrReceived, 2588, "expected number of packets received")
         meanDelay = results['meanDelay']
-        self.assertEqual(round(meanDelay, 2), 6403.13, "expected rounded delay average")
+        self.assertEqual(round(meanDelay, 2), 5915.09, "expected rounded delay average")
         txAirUtilizationRate = results['txAirUtilizationRate']
-        self.assertEqual(round(txAirUtilizationRate * 100, 2), 4.83, "expected rounded average tx air utilization")
+        self.assertEqual(round(txAirUtilizationRate * 100, 2), 4.75, "expected rounded average tx air utilization")
 
         nodeReach = results['nodeReach']
-        self.assertEqual(round(nodeReach*100, 2), 79.57, "expected rounded percentage of nodes reached")
+        self.assertEqual(round(nodeReach*100, 2), 80.9, "expected rounded percentage of nodes reached")
 
         usefulness = results['usefulness']
-        self.assertEqual(round(usefulness*100, 2), 50.1, "expected rounded 'usefulness' percentage")
+        self.assertEqual(round(usefulness*100, 2), 52.05, "expected rounded 'usefulness' percentage")
 
         delayDropped = results['delayDropped']
-        self.assertEqual(delayDropped, 1143, "expected number of packets dropped")
+        self.assertEqual(delayDropped, 1125, "expected number of packets dropped")
         # default config has both asymmetric links and movement enabled
         noLinkRate = results['noLinkRate']
         self.assertEqual(round(noLinkRate * 100, 2), 55.56, "expected rounded percentage of 'no' links")

@@ -9,11 +9,14 @@ import simpy
 from lib.common import find_random_position
 from lib.config import Config
 from lib.discrete_event_sim_components import SimulationState, SimulationDataTracking
+from lib.geo import valid_lat_lon
+from lib.link_model import calculate_link_budget
 from lib.mac import set_transmit_delay, get_retransmission_msec
 from lib.phy import check_collision, is_channel_active, airtime
 from lib.packet import NODENUM_BROADCAST, MeshPacket, MeshMessage
-from lib.phy import estimate_path_loss
 from lib.point import Point
+from lib.radio_loss import estimate_snr
+from lib.terrain import NODE_Z_REFERENCE_SEA_LEVEL, apply_terrain_altitude
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +62,7 @@ class MeshNodeStats:
 class NodeConfig:
     """Specific configuration for a node
     """
-    def __init__(self, node_id: int, position: Point, period: int, tx_power: int, freq: float, role: MESHTASTIC_ROLE = MESHTASTIC_ROLE.CLIENT, antenna_gain: float = 0, hop_limit: int = 3, neighbor_info: bool = False):
+    def __init__(self, node_id: int, position: Point, period: int, tx_power: int = 30, freq: float = 902e6, role: MESHTASTIC_ROLE = MESHTASTIC_ROLE.CLIENT, antenna_gain: float = 0, hop_limit: int = 3, neighbor_info: bool = False, antenna_height=None, absolute_altitude=None):
         """Initial configuration of a node
 
         Arguments:
@@ -72,6 +75,8 @@ class NodeConfig:
         antenna_gain -- antenna gain in dBi. Default 0
         hop_limit -- hop limit. Default 3
         neighbor_info -- if neighbor info is enabled. Default False
+        antenna_height -- antenna height above local ground. Default: position.z
+        absolute_altitude -- optional map-reported absolute altitude in meters
         """
         self.node_id = node_id
         self.position = position.copy() # make sure we keep our own point
@@ -82,6 +87,8 @@ class NodeConfig:
         self.antenna_gain = antenna_gain
         self.hop_limit = hop_limit
         self.neighbor_info = neighbor_info
+        self.antenna_height = position.z if antenna_height is None else antenna_height
+        self.absolute_altitude = absolute_altitude
 
     @classmethod
     def from_gen_scenario_output(cls, node_id: int, node_dict: {}, period: int, tx_power: int, freq: float):
@@ -118,7 +125,9 @@ class NodeConfig:
         else:
             role = MESHTASTIC_ROLE.CLIENT
 
-        return NodeConfig(node_id, position, period, tx_power, freq, role, nd['antennaGain'], nd['hopLimit'], nd['neighborInfo'])
+        antenna_height = nd.get("antennaHeight", nd["z"])
+        absolute_altitude = nd.get("absoluteAltitude")
+        return NodeConfig(node_id, position, period, tx_power, freq, role, nd['antennaGain'], nd['hopLimit'], nd['neighborInfo'], antenna_height, absolute_altitude)
 
     def compute_rssi_and_pathloss_to(self, rx_nodeconf, conf: Config) -> (float, float):
         """Compute RSSI and pathloss from this node config as the transmitting node
@@ -134,12 +143,75 @@ class NodeConfig:
         if self.node_id == rx_nodeconf.node_id:
             raise ValueError(f"Calculating rssi/pathloss between identical nodes is invalid. Node ID {self.node_id}")
 
-        # compute path loss
-        dist = self.position.euclidean_distance(rx_nodeconf.position)
-        pl = estimate_path_loss(conf, dist, self.freq, self.position.z, rx_nodeconf.position.z)
-        rssi = self.tx_power + self.antenna_gain + rx_nodeconf.antenna_gain - pl
+        offset = getattr(conf, "LINK_OFFSET", {}).get((self.node_id, rx_nodeconf.node_id), 0)
+        budget = calculate_link_budget(conf, self, rx_nodeconf, offset, tx_power_dbm=self.tx_power)
+        return budget.rssi_dbm, budget.calibrated_path_loss_db
 
-        return (rssi, pl)
+
+def node_configs_from_yaml(raw_config, period: int, tx_power: int = 30, freq: float = 902e6) -> list[NodeConfig]:
+    """Convert saved node YAML into NodeConfig objects.
+
+    The GUI writes a plain `{node_id: node_fields}` map. Real-mesh scenario
+    files may wrap the same map under `nodes` so they can also store geographic
+    origin metadata. Accept both shapes here so saved scenarios can be fed back
+    into the normal simulator CLI.
+    """
+    if isinstance(raw_config, dict) and "nodes" in raw_config:
+        node_map = raw_config["nodes"]
+    else:
+        node_map = raw_config
+
+    if not isinstance(node_map, dict):
+        raise ValueError("node YAML must be a node map or an object with a 'nodes' map")
+
+    configs = []
+    for sim_node_id, node_dict in enumerate(node_map.values()):
+        configs.append(NodeConfig.from_gen_scenario_output(sim_node_id, node_dict, period, tx_power, freq))
+    return configs
+
+
+def origin_from_yaml(raw_config):
+    """Return `(lat, lon)` origin metadata from wrapped scenario YAML if present."""
+    if not isinstance(raw_config, dict):
+        return None
+
+    origin = raw_config.get("origin")
+    if origin is None:
+        return None
+    if not isinstance(origin, dict):
+        raise ValueError("origin must be a map with lat and lon")
+
+    lat_key = "lat" if "lat" in origin else "latitude" if "latitude" in origin else None
+    lon_key = "lon" if "lon" in origin else "longitude" if "longitude" in origin else None
+    if lat_key is None or lon_key is None:
+        raise ValueError("origin must provide both lat and lon")
+
+    try:
+        lat = float(origin[lat_key])
+        lon = float(origin[lon_key])
+    except (TypeError, ValueError) as err:
+        raise ValueError("origin.lat and origin.lon must be finite numbers") from err
+
+    if not math.isfinite(lat) or not math.isfinite(lon):
+        raise ValueError("origin.lat and origin.lon must be finite numbers")
+    if not valid_lat_lon(lat, lon):
+        raise ValueError("origin.lat and origin.lon must be valid latitude/longitude degrees")
+
+    return lat, lon
+
+def packet_is_rx_candidate(packet, rx_node_id: int, capture_model_enabled: bool) -> bool:
+    """Return whether a packet should enter the receiver-side RF timeline.
+
+    Legacy collision accounting only tracked packets above the demodulation
+    sensitivity threshold (`sensedByN`). The capture-aware model needs one more
+    band: CAD-detectable but undecodable packets still occupy the channel and
+    can corrupt another packet's preamble/header. They are interference energy,
+    while the receive path still ignores them because `sensedByN` remains false.
+    """
+    if capture_model_enabled:
+        return packet.detectedByN[rx_node_id]
+    return packet.sensedByN[rx_node_id]
+
 
 class MeshNode:
     """Class containing all the particular state of a MeshNode, references to necessary
@@ -167,13 +239,15 @@ class MeshNode:
         # set up internal RNGs
         self.moveRng = random.Random(self.nodeid)
         self.nodeRng = random.Random(self.nodeid)
-        self.rebroadcastRng = random.Random()
+        self.rebroadcastRng = random.Random(f"{self.conf.SEED}:{self.nodeid}:rebroadcast")
 
         # require the user to specify a node configuration now, including position
         self.position = self.node_conf.position # explicitly use position in node_conf
         self.role = self.node_conf.role
         self.hopLimit = self.node_conf.hop_limit
         self.antennaGain = self.node_conf.antenna_gain
+        self.antennaHeight = self.node_conf.antenna_height
+        self.absolute_altitude = self.node_conf.absolute_altitude
         self.period = self.node_conf.period
 
         # using this more like a struct than a proper object.
@@ -294,6 +368,12 @@ class MeshNode:
 
             # Update node’s position
             self.position.update_xy(new_x, new_y)
+            if (
+                self.conf.TERRAIN_ENABLED
+                and self.conf.TERRAIN_GRID is not None
+                and self.conf.NODE_Z_REFERENCE == NODE_Z_REFERENCE_SEA_LEVEL
+            ):
+                apply_terrain_altitude(self.conf.TERRAIN_GRID, self)
 
             # update connectivity map:
             # - update for this node: we may have gained and lost reachable nodes
@@ -400,7 +480,7 @@ class MeshNode:
                 yield self.env.timeout(nextGen)
 
                 if self.conf.DMs:
-                    destId = self.nodeRng.choice([i for i in range(0, len(self.nodes)) if i is not self.nodeid])
+                    destId = self.nodeRng.choice([i for i in range(0, len(self.nodes)) if i != self.nodeid])
                 else:
                     destId = NODENUM_BROADCAST
 
@@ -455,13 +535,17 @@ class MeshNode:
             if not self.perhaps_cancel_dupe(packet):  # if you did not receive an ACK for this message in the meantime
                 logger.debug(f"{self.env.now:.3f} Node {self.nodeid} started low level send {packet.unique_packet_seq} for msg {packet.seq} hopLimit {packet.hopLimit} original Tx {packet.origTxNodeId}")
                 self.nrPacketsSent += 1
-                for rx_node in self.nodes:
-                    if packet.sensedByN[rx_node.nodeid]:
-                        if check_collision(self.conf, self.env, packet, rx_node.nodeid, self.packetsAtN) == 0:
-                            self.packetsAtN[rx_node.nodeid].append(packet)
-                # packet's collidedAtN field is now computed/valid
                 packet.startTime = self.env.now
                 packet.endTime = self.env.now + packet.timeOnAir
+                for rx_node in self.nodes:
+                    if packet_is_rx_candidate(packet, rx_node.nodeid, self.conf.CAPTURE_COLLISION_MODEL_ENABLED):
+                        collision = check_collision(self.conf, self.env, packet, rx_node.nodeid, self.packetsAtN)
+                        if self.conf.CAPTURE_COLLISION_MODEL_ENABLED:
+                            # Even a packet that cannot be decoded is still RF
+                            # energy on the channel and may jam later packets.
+                            self.packetsAtN[rx_node.nodeid].append(packet)
+                        elif collision == 0:
+                            self.packetsAtN[rx_node.nodeid].append(packet)
                 self.txAirUtilization += packet.timeOnAir
                 self.airUtilization += packet.timeOnAir
                 self.bc_pipe.put(packet) # queue for nodes to receive packet
@@ -475,20 +559,52 @@ class MeshNode:
     def receive(self, in_pipe):
         while True:
             p = yield in_pipe.get()
+            packet_log_id = getattr(p, "unique_packet_seq", p.seq)
 
-            logger.debug(f"{self.env.now:.3f} Node {self.nodeid} fetches packet {p.unique_packet_seq} for msg {p.seq} from {p.txNodeId} from bc_pipe: sensed: {p.sensedByN[self.nodeid]} collided: {p.collidedAtN[self.nodeid]} on air: {p.onAirToN[self.nodeid]}")
+            logger.debug(f"{self.env.now:.3f} Node {self.nodeid} fetches packet {packet_log_id} for msg {p.seq} from {p.txNodeId} from bc_pipe: sensed: {p.sensedByN[self.nodeid]} collided: {p.collidedAtN[self.nodeid]} on air: {p.onAirToN[self.nodeid]}")
+
+            if self.conf.CAPTURE_COLLISION_MODEL_ENABLED:
+                if p.sensedByN[self.nodeid] and p.onAirToN[self.nodeid]:
+                    p.onAirToN[self.nodeid] = False
+                    if not self.isTransmitting and not p.collidedAtN[self.nodeid]:
+                        logger.debug(f"{self.env.now:.3f} Node {self.nodeid} started receiving packet {packet_log_id} for msg {p.seq} from {p.txNodeId}")
+                        self.isReceiving.append(True)
+                    elif self.isTransmitting:
+                        logger.debug(f"{self.env.now:.3f} Node {self.nodeid} could not lock packet {p.seq}.")
+                        p.sensedByN[self.nodeid] = False
+                    else:
+                        logger.debug(f"{self.env.now:.3f} Node {self.nodeid} could not lock packet {packet_log_id} for msg {p.seq}.")
+                    continue
+
+                if p.sensedByN[self.nodeid]:
+                    try:
+                        self.isReceiving[self.isReceiving.index(True)] = False
+                    except Exception:
+                        pass
+                    self.airUtilization += p.timeOnAir
+                    if p.collidedAtN[self.nodeid]:
+                        logger.debug(f"{self.env.now:.3f} Node {self.nodeid} could not decode packet {packet_log_id}.")
+                        continue
+                    if p.phyLostAtN[self.nodeid]:
+                        logger.debug(f"{self.env.now:.3f} Node {self.nodeid} lost packet {packet_log_id} for msg {p.seq} to weak-link PHY errors.")
+                        continue
+                    p.receivedAtN[self.nodeid] = True
+                    logger.debug(f"{self.env.now:.3f} Node {self.nodeid} received packet {packet_log_id} for msg {p.seq} with delay {round(self.env.now - p.genTime, 2)}")
+                    self.handle_received_packet(p)
+                continue
+
             if p.sensedByN[self.nodeid] and p.onAirToN[self.nodeid]:  # start of reception
                 if p.collidedAtN[self.nodeid]:
-                    # this packet collided, so we can sense it but not decode it.
-                    # Mark it as no-longer on air and leave further processing to
-                    # the 'end of transmission' branch
+                    # This packet collided, so we can sense it but not decode
+                    # it. Mark it as no-longer on air and leave further
+                    # processing to the end-of-transmission branch.
                     p.onAirToN[self.nodeid] = False
                 elif not self.isTransmitting:
-                    logger.debug(f"{self.env.now:.3f} Node {self.nodeid} started receiving packet {p.unique_packet_seq} for msg {p.seq} from {p.txNodeId}")
+                    logger.debug(f"{self.env.now:.3f} Node {self.nodeid} started receiving packet {packet_log_id} for msg {p.seq} from {p.txNodeId}")
                     p.onAirToN[self.nodeid] = False
                     self.isReceiving.append(True)
                 else:  # if you were currently transmitting, you could not have sensed it
-                    logger.debug(f"{self.env.now:.3f} Node {self.nodeid} was transmitting, so could not receive packet {p.unique_packet_seq} for msg {p.seq}")
+                    logger.debug(f"{self.env.now:.3f} Node {self.nodeid} was transmitting, so could not receive packet {packet_log_id} for msg {p.seq}")
                     p.sensedByN[self.nodeid] = False
                     p.onAirToN[self.nodeid] = False
             elif p.sensedByN[self.nodeid]:  # end of reception
@@ -499,60 +615,71 @@ class MeshNode:
                 self.airUtilization += p.timeOnAir
                 # begin receiving packet fine, but a collision begins before we finish receiving.
                 if p.collidedAtN[self.nodeid]:
-                    logger.debug(f"{self.env.now:.3f} Node {self.nodeid} could not decode packet {p.unique_packet_seq}.")
+                    logger.debug(f"{self.env.now:.3f} Node {self.nodeid} could not decode packet {packet_log_id}.")
+                    continue
+                if p.phyLostAtN[self.nodeid]:
+                    logger.debug(f"{self.env.now:.3f} Node {self.nodeid} lost packet {packet_log_id} for msg {p.seq} to weak-link PHY errors.")
                     continue
                 p.receivedAtN[self.nodeid] = True
-                logger.debug(f"{self.env.now:.3f} Node {self.nodeid} received packet {p.unique_packet_seq} for msg {p.seq} with delay {round(self.env.now - p.genTime, 2)}") # TODO: better way to calculate delay for log
-                self.delays.append(self.env.now - p.genTime)
+                logger.debug(f"{self.env.now:.3f} Node {self.nodeid} received packet {packet_log_id} for msg {p.seq} with delay {round(self.env.now - p.genTime, 2)}") # TODO: better way to calculate delay for log
+                self.handle_received_packet(p)
 
-                # Update history of received packets
-                self.was_seen_recently(p)
+    def handle_received_packet(self, p):
+        """Handle decoded MeshPacket after RX PHY/collision checks pass."""
+        self.delays.append(self.env.now - p.genTime)
 
-                # check if implicit ACK for own generated message
-                if p.origTxNodeId == self.nodeid:
-                    if p.isAck:
-                        logger.debug(f"Node {self.nodeid} received real ACK on generated message.")
-                    else:
-                        logger.debug(f"Node {self.nodeid} received implicit ACK on message sent.")
-                    p.ackReceived = True
-                    continue
+        # Update history of received packets
+        self.was_seen_recently(p)
 
-                ackReceived = False
-                realAckReceived = False
-                for sentPacket in self.packets:
-                    # check if ACK for message you currently have in queue
-                    if sentPacket.txNodeId == self.nodeid and sentPacket.seq == p.seq:
-                        logger.debug(f"{self.env.now:.3f} Node {self.nodeid} received implicit ACK for message in queue.")
-                        ackReceived = True
-                        sentPacket.ackReceived = True
-                    # check if real ACK for message sent
-                    if sentPacket.origTxNodeId == self.nodeid and p.isAck and sentPacket.seq == p.requestId:
-                        logger.debug(f"{self.env.now:.3f} Node {self.nodeid} received real ACK.")
-                        realAckReceived = True
-                        sentPacket.ackReceived = True
+        # check if implicit ACK for own generated message
+        if p.origTxNodeId == self.nodeid:
+            if p.isAck:
+                logger.debug(f"Node {self.nodeid} received real ACK on generated message.")
+            else:
+                logger.debug(f"Node {self.nodeid} received implicit ACK on message sent.")
+            p.ackReceived = True
+            return
 
-                # send real ACK if you are the destination and you did not yet send the ACK
-                if p.wantAck and p.destId == self.nodeid and not any(pA.requestId == p.seq for pA in self.packets):
-                    logger.debug(f"{self.env.now:.3f} Node {self.nodeid} sends a flooding ACK.")
-                    messageSeq = self.messageSeq.get()
-                    self.messages.append(MeshMessage(self.nodeid, p.origTxNodeId, self.env.now, messageSeq))
-                    pAck = MeshPacket(self.conf, self.nodes, self.nodeid, p.origTxNodeId, self.nodeid, self.conf.ACKLENGTH, messageSeq, self.env.now, False, True, p.seq, self.env.now, self.connectivity_map, self.baseline_pathloss_matrix)
-                    self.packets.append(pAck)
-                    self.env.process(self.transmit(pAck))
-                # Rebroadcasting Logic for received message. This is a broadcast or a DM not meant for us.
-                elif not p.destId == self.nodeid and not ackReceived and not realAckReceived and p.hopLimit > 0:
-                    self.my_stats.packetsHeard += 1 # packets which could potentially be rebroadcast
-                    # FloodingRouter: rebroadcast received packet
-                    if self.conf.SELECTED_ROUTER_TYPE == self.conf.ROUTER_TYPE.MANAGED_FLOOD:
-                        if not self.is_client_mute:
-                            logger.debug(f"{self.env.now:.3f} Node {self.nodeid} schedules rebroadcast for received packet {p.unique_packet_seq} for msg {p.seq}")
-                            self.my_stats.packetsRebroadcast += 1
-                            pNew = MeshPacket(self.conf, self.nodes, p.origTxNodeId, p.destId, self.nodeid, p.packetLen, p.seq, p.genTime, p.wantAck, False, None, self.env.now, self.connectivity_map, self.baseline_pathloss_matrix)
-                            pNew.hopLimit = p.hopLimit - 1
-                            self.packets.append(pNew)
-                            self.env.process(self.transmit(pNew))
-                else:
-                    self.droppedByDelay += 1
+        ackReceived = False
+        realAckReceived = False
+        for sentPacket in self.packets:
+            # check if ACK for message you currently have in queue
+            if sentPacket.txNodeId == self.nodeid and sentPacket.seq == p.seq:
+                logger.debug(f"{self.env.now:.3f} Node {self.nodeid} received implicit ACK for message in queue.")
+                ackReceived = True
+                sentPacket.ackReceived = True
+            # check if real ACK for message sent
+            if sentPacket.origTxNodeId == self.nodeid and p.isAck and sentPacket.seq == p.requestId:
+                logger.debug(f"{self.env.now:.3f} Node {self.nodeid} received real ACK.")
+                realAckReceived = True
+                sentPacket.ackReceived = True
+
+        # send real ACK if you are the destination and you did not yet send the ACK
+        if p.wantAck and p.destId == self.nodeid and not any(pA.requestId == p.seq for pA in self.packets):
+            logger.debug(f"{self.env.now:.3f} Node {self.nodeid} sends a flooding ACK.")
+            messageSeq = self.messageSeq.get()
+            self.messages.append(MeshMessage(self.nodeid, p.origTxNodeId, self.env.now, messageSeq))
+            pAck = MeshPacket(self.conf, self.nodes, self.nodeid, p.origTxNodeId, self.nodeid, self.conf.ACKLENGTH, messageSeq, self.env.now, False, True, p.seq, self.env.now, self.connectivity_map, self.baseline_pathloss_matrix)
+            pAck.priorHopRssi = p.rssiAtN[self.nodeid]
+            pAck.priorHopSnr = estimate_snr(self.conf, pAck.priorHopRssi)
+            self.packets.append(pAck)
+            self.env.process(self.transmit(pAck))
+        # Rebroadcasting Logic for received message. This is a broadcast or a DM not meant for us.
+        elif not p.destId == self.nodeid and not ackReceived and not realAckReceived and p.hopLimit > 0:
+            self.my_stats.packetsHeard += 1 # packets which could potentially be rebroadcast
+            # FloodingRouter: rebroadcast received packet
+            if self.conf.SELECTED_ROUTER_TYPE == self.conf.ROUTER_TYPE.MANAGED_FLOOD:
+                if not self.is_client_mute:
+                    logger.debug(f"{self.env.now:.3f} Node {self.nodeid} schedules rebroadcast for received packet {p.unique_packet_seq} for msg {p.seq}")
+                    self.my_stats.packetsRebroadcast += 1
+                    pNew = MeshPacket(self.conf, self.nodes, p.origTxNodeId, p.destId, self.nodeid, p.packetLen, p.seq, p.genTime, p.wantAck, False, None, self.env.now, self.connectivity_map, self.baseline_pathloss_matrix)
+                    pNew.hopLimit = p.hopLimit - 1
+                    pNew.priorHopRssi = p.rssiAtN[self.nodeid]
+                    pNew.priorHopSnr = estimate_snr(self.conf, pNew.priorHopRssi)
+                    self.packets.append(pNew)
+                    self.env.process(self.transmit(pNew))
+        else:
+            self.droppedByDelay += 1
 
     def get_stats(self) -> MeshNodeStats:
         """Get internally-tracked statistics/data. Only valid after the sim ends.
@@ -579,12 +706,6 @@ def default_generate_node_list(conf: Config) -> [NodeConfig]:
 
         # role
         isRouter = conf.router
-        isRepeater = False
-        isClientMute = False
-
-        # other default values
-        hopLimit = conf.hopLimit
-        antennaGain = conf.GL
 
         # map misc. booleans into single role
         if isRouter:
