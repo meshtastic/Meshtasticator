@@ -13,7 +13,6 @@ from dataclasses import dataclass
 from lib.clutter import clutter_obstruction_loss, clutter_path_features
 from lib.phy import estimate_path_loss
 from lib.radio_loss import apply_link_calibration, estimate_snr
-from lib.terrain import terrain_ground_elevation, terrain_obstruction_loss
 
 
 @dataclass(frozen=True)
@@ -78,6 +77,8 @@ def _link_calibration_features(conf, tx_point, rx_point, raw_snr, terrain_loss, 
     horizontal_distance_m = max(1.0, math.hypot(rx_point.x - tx_point.x, rx_point.y - tx_point.y))
     log_distance_km = math.log10(horizontal_distance_m / 1000.0)
 
+    from lib.terrain import terrain_ground_elevation
+
     tx_ground = terrain_ground_elevation(conf, tx_point)
     rx_ground = terrain_ground_elevation(conf, rx_point)
     grounds = [ground for ground in (tx_ground, rx_ground) if ground is not None]
@@ -112,6 +113,8 @@ def calculate_link_budget(conf, tx_node, rx_node, offset_db=0.0, tx_power_dbm=No
     rx_point = rx_node.position
     distance_m = tx_point.euclidean_distance(rx_point)
     base_loss = estimate_path_loss(conf, distance_m, conf.FREQ, _antenna_height(tx_node), _antenna_height(rx_node))
+    from lib.terrain import terrain_obstruction_loss
+
     terrain_loss = terrain_obstruction_loss(conf, tx_point, rx_point, conf.FREQ)
     clutter_loss = clutter_obstruction_loss(conf, tx_point, rx_point)
     enclosure_loss = max(_enclosure_loss(tx_node), _enclosure_loss(rx_node))
