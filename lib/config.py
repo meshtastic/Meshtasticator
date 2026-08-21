@@ -401,6 +401,50 @@ class Config:
         self.NPREAM = 16   # number of preamble symbols from RadioInterface.h
         ### End of PHY parameters ###
 
+        #################################################
+        ####### TERRAIN OBSTRUCTION MODEL ###############
+        #################################################
+        # Disabled by default. When enabled, TERRAIN_GRID holds an in-memory
+        # grid sampled from SRTM HGT tiles.
+        self.TERRAIN_ENABLED = False
+        self.TERRAIN_GRID = None
+        # "ground": Point.z is antenna height above local ground.
+        # "sea_level": Point.z is absolute antenna altitude after adding
+        # terrain ground elevation.
+        self.NODE_Z_REFERENCE = "ground"
+        self.GEO_ORIGIN_LAT = None
+        self.GEO_ORIGIN_LON = None
+        self.TERRAIN_PROFILE_SAMPLES = 24
+        self.TERRAIN_FRESNEL_CLEARANCE = 0.6
+        # Match the common radio-planning 4/3 Earth-radius approximation. The
+        # terrain model uses it as an earth-bulge term so long coastal and ridge
+        # links do not look unrealistically flat.
+        self.TERRAIN_EFFECTIVE_EARTH_RADIUS_MULTIPLIER = 4.0 / 3.0
+        self.TERRAIN_MIN_ANTENNA_HEIGHT_M = 1.5
+        self.TERRAIN_MAX_LOSS_DB = 35.0
+        self.TERRAIN_LOSS_CACHE_MAX_ENTRIES = 16384
+
+        #################################################
+        ####### LAND-COVER CLUTTER MODEL ################
+        #################################################
+        # Optional excess loss from buildings/land use. This is intentionally
+        # separate from terrain: hills can be visible while low urban fabric
+        # still blocks balcony-to-balcony links.
+        self.CLUTTER_ENABLED = False
+        self.CLUTTER_GRID_FILE = None
+        self.CLUTTER_PROFILE_SAMPLES = 16
+        self.CLUTTER_URBAN_LOSS_DB_PER_KM = 4.0
+        self.CLUTTER_SUBURBAN_LOSS_DB_PER_KM = 2.0
+        self.CLUTTER_FOREST_LOSS_DB_PER_KM = 2.5
+        self.CLUTTER_OPEN_LOSS_DB_PER_KM = 0.2
+        self.CLUTTER_WATER_LOSS_DB_PER_KM = 0.0
+        self.CLUTTER_URBAN_ENDPOINT_LOSS_DB = 3.0
+        self.CLUTTER_HIGH_VANTAGE_ELEVATION_M = 120.0
+        self.CLUTTER_HIGH_VANTAGE_LOSS_FACTOR = 0.35
+        self.CLUTTER_COASTAL_PATH_LOSS_FACTOR = 0.25
+        self.CLUTTER_COASTAL_SAMPLE_FRACTION = 0.55
+        self.CLUTTER_MAX_LOSS_DB = 25.0
+
         # Misc
         self.SEED = 44  # random seed to use
         # End of misc

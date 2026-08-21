@@ -9,7 +9,7 @@ To start one simulation with the default configurations, run:
 
 ```python3 loraMesh.py [nr_nodes]```
 
-If no argument is given, you first have to place the nodes on a plot. After you place a node, you can change its [role](https://meshtastic.org/docs/settings/config/device#role), hopLimit, height (elevation) and antenna gain. These settings will automatically save when you place a new node or when you start the simulation.
+If no argument is given, you first have to place the nodes on a plot. After you place a node, you can change its [role](https://meshtastic.org/docs/settings/config/device#role), hopLimit, antenna height above local ground, and antenna gain. These settings will automatically save when you place a new node or when you start the simulation.
 
 ![](/img/configNode.png)
 
@@ -22,6 +22,73 @@ For non-interactive smoke tests or CI runs, pass `--no-gui` together with either
 Short deterministic smoke runs can also override the configured duration and message period from the command line:
 
 ```python3 loraMesh.py 2 --no-gui --simtime-seconds 5 --period-seconds 0.5```
+
+The same headless path can import positioned real-mesh nodes. `--from-map`
+reads a Meshtastic map `/api/v1/nodes` JSON endpoint; the public default is
+`https://meshtastic.liamcottle.net/api/v1/nodes`, but you can pass another
+compatible endpoint URL. These map endpoints usually return a broad node list,
+so pass a local area-of-interest bounding box. `--map-bbox` uses the common
+`min_lat,min_lon,max_lat,max_lon` order that most GIS tools call
+`south,west,north,east`; you can copy those four numbers from OpenStreetMap's
+Export panel, geojson.io's bbox readout, QGIS, or any other tool that shows the
+extent of the map view or selected polygon. Keep the box tight enough for the
+local scenario you want to simulate:
+
+```python3 loraMesh.py --from-map https://meshtastic.liamcottle.net/api/v1/nodes --map-bbox 41.50,41.50,41.82,41.86 --map-limit 50 --no-gui```
+
+You can also import positioned nodes from the NodeDB cached by a local
+Meshtastic device. This uses the Python client `interface.nodesByNum` data that
+backs `meshtastic --nodes`, not the pretty-printed table. Use TCP for a network
+device, or omit `--nodedb-host` to use Meshtastic serial auto-detection. For a
+quick local-device run, pass the device address and cap the imported node count:
+
+```python3 loraMesh.py --from-nodedb --nodedb-host 192.168.1.23 --map-limit 50 --no-gui```
+
+NodeDB often contains old or far-away positions. Add `--map-bbox` when you want
+to restrict the run to one local area:
+
+```python3 loraMesh.py --from-nodedb --nodedb-host 192.168.1.23 --map-bbox 41.50,41.50,41.82,41.86 --map-limit 50 --no-gui```
+
+Imported nodes use the same `HM` antenna height and `hopLimit` defaults as
+generated and file-backed scenarios. Change those config values when the
+position source does not carry the simulation value you want.
+
+Terrain obstruction can be added to map, NodeDB, or origin-backed scenario inputs
+without creating a custom terrain file. `--terrain-srtm` downloads missing SRTM
+HGT tiles from Mapzen Terrain Tiles on AWS into a local cache and feeds the
+terrain grid directly into terrain-aware node geometry:
+
+```python3 loraMesh.py --from-nodedb --nodedb-host 192.168.1.23 --map-limit 50 --terrain-srtm --no-gui```
+
+With an explicit `--map-bbox`, SRTM samples that whole requested rectangle. When
+the terrain bbox is derived from imported or file-backed nodes, Meshtasticator
+keeps the download smaller: it loads tiles around the selected nodes and along
+flat-link candidate paths, instead of downloading every tile in a large
+edge-to-edge rectangle. That candidate-path selection scales with the number of
+node pairs, so combine `--terrain-srtm` with `--map-limit` when importing a
+broad map region. When publishing screenshots, reports, or derived
+datasets from this terrain source, attribute the terrain data to
+[Mapzen Terrain Tiles on AWS](https://registry.opendata.aws/terrain-tiles/),
+SRTM/NASA, and their underlying open elevation sources:
+
+```python3 loraMesh.py --from-map https://meshtastic.liamcottle.net/api/v1/nodes --map-bbox 41.50,41.50,41.82,41.86 --map-limit 50 --terrain-srtm --no-gui```
+
+Map payload `altitude` values are absolute GPS/MSL altitude, not antenna height,
+so map import keeps using `HM` as the fallback antenna height above local
+ground. When `--terrain-srtm` is enabled, each map node is checked
+against its own SRTM ground sample: plausible positive map altitudes are used as
+absolute node altitude, while missing, below-ground, or implausibly high values
+fall back to `SRTM ground + antenna height` for 3D distance calculations.
+
+Land-cover clutter is a separate optional CSV grid. Use it for broad urban,
+open, water, or forest excess-loss inputs without pretending Meshtasticator is a
+building-level ray tracer:
+
+```python3 loraMesh.py --from-file nodeConfig.yaml --terrain-srtm --clutter-grid clutter.csv --no-gui```
+
+`tools/osm_to_clutter_csv.py` can build a coarse clutter grid from public
+OpenStreetMap building, landuse, natural, and water polygons. The simulator
+never fetches OpenStreetMap data implicitly.
 
 If you placed the nodes yourself, after a simulation the number of nodes, their coordinates and configuration are automatically saved and you can rerun the scenario with:
 

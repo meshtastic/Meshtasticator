@@ -6,14 +6,20 @@ import random
 
 import simpy
 
-from lib.common import find_random_position
+from lib.common import find_random_position, node_antenna_height
 from lib.config import Config
 from lib.discrete_event_sim_components import SimulationState, SimulationDataTracking
+from lib.geo import valid_lat_lon
 from lib.mac import set_transmit_delay, get_retransmission_msec
 from lib.phy import check_collision, is_channel_active, airtime
 from lib.packet import NODENUM_BROADCAST, MeshPacket, MeshMessage
 from lib.phy import estimate_path_loss
 from lib.point import Point
+from lib.terrain import (
+    NODE_Z_REFERENCE_SEA_LEVEL,
+    apply_terrain_altitude,
+    terrain_obstruction_loss,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +65,7 @@ class MeshNodeStats:
 class NodeConfig:
     """Specific configuration for a node
     """
-    def __init__(self, node_id: int, position: Point, period: int, tx_power: int, freq: float, role: MESHTASTIC_ROLE = MESHTASTIC_ROLE.CLIENT, antenna_gain: float = 0, hop_limit: int = 3, neighbor_info: bool = False):
+    def __init__(self, node_id: int, position: Point, period: int, tx_power: int = 30, freq: float = 902e6, role: MESHTASTIC_ROLE = MESHTASTIC_ROLE.CLIENT, antenna_gain: float = 0, hop_limit: int = 3, neighbor_info: bool = False, antenna_height=None, absolute_altitude=None):
         """Initial configuration of a node
 
         Arguments:
@@ -72,6 +78,8 @@ class NodeConfig:
         antenna_gain -- antenna gain in dBi. Default 0
         hop_limit -- hop limit. Default 3
         neighbor_info -- if neighbor info is enabled. Default False
+        antenna_height -- antenna height above local ground. Default: position.z
+        absolute_altitude -- optional map-reported absolute altitude in meters
         """
         self.node_id = node_id
         self.position = position.copy() # make sure we keep our own point
@@ -82,6 +90,8 @@ class NodeConfig:
         self.antenna_gain = antenna_gain
         self.hop_limit = hop_limit
         self.neighbor_info = neighbor_info
+        self.antenna_height = position.z if antenna_height is None else antenna_height
+        self.absolute_altitude = absolute_altitude
 
     @classmethod
     def from_gen_scenario_output(cls, node_id: int, node_dict: {}, period: int, tx_power: int, freq: float):
@@ -118,7 +128,9 @@ class NodeConfig:
         else:
             role = MESHTASTIC_ROLE.CLIENT
 
-        return NodeConfig(node_id, position, period, tx_power, freq, role, nd['antennaGain'], nd['hopLimit'], nd['neighborInfo'])
+        antenna_height = nd.get("antennaHeight", nd["z"])
+        absolute_altitude = nd.get("absoluteAltitude")
+        return NodeConfig(node_id, position, period, tx_power, freq, role, nd['antennaGain'], nd['hopLimit'], nd['neighborInfo'], antenna_height, absolute_altitude)
 
     def compute_rssi_and_pathloss_to(self, rx_nodeconf, conf: Config) -> (float, float):
         """Compute RSSI and pathloss from this node config as the transmitting node
@@ -136,10 +148,63 @@ class NodeConfig:
 
         # compute path loss
         dist = self.position.euclidean_distance(rx_nodeconf.position)
-        pl = estimate_path_loss(conf, dist, self.freq, self.position.z, rx_nodeconf.position.z)
+        pl = estimate_path_loss(conf, dist, self.freq, node_antenna_height(self), node_antenna_height(rx_nodeconf))
+        pl += terrain_obstruction_loss(conf, self.position, rx_nodeconf.position, self.freq)
         rssi = self.tx_power + self.antenna_gain + rx_nodeconf.antenna_gain - pl
 
         return (rssi, pl)
+
+
+def node_configs_from_yaml(raw_config, period: int, tx_power: int = 30, freq: float = 902e6) -> list[NodeConfig]:
+    """Convert saved node YAML into NodeConfig objects.
+
+    The GUI writes a plain `{node_id: node_fields}` map. Real-mesh scenario
+    files may wrap the same map under `nodes` so they can also store geographic
+    origin metadata. Accept both shapes here so saved scenarios can be fed back
+    into the normal simulator CLI.
+    """
+    if isinstance(raw_config, dict) and "nodes" in raw_config:
+        node_map = raw_config["nodes"]
+    else:
+        node_map = raw_config
+
+    if not isinstance(node_map, dict):
+        raise ValueError("node YAML must be a node map or an object with a 'nodes' map")
+
+    configs = []
+    for sim_node_id, node_dict in enumerate(node_map.values()):
+        configs.append(NodeConfig.from_gen_scenario_output(sim_node_id, node_dict, period, tx_power, freq))
+    return configs
+
+
+def origin_from_yaml(raw_config):
+    """Return `(lat, lon)` origin metadata from wrapped scenario YAML if present."""
+    if not isinstance(raw_config, dict):
+        return None
+
+    origin = raw_config.get("origin")
+    if origin is None:
+        return None
+    if not isinstance(origin, dict):
+        raise ValueError("origin must be a map with lat and lon")
+
+    lat_key = "lat" if "lat" in origin else "latitude" if "latitude" in origin else None
+    lon_key = "lon" if "lon" in origin else "longitude" if "longitude" in origin else None
+    if lat_key is None or lon_key is None:
+        raise ValueError("origin must provide both lat and lon")
+
+    try:
+        lat = float(origin[lat_key])
+        lon = float(origin[lon_key])
+    except (TypeError, ValueError) as err:
+        raise ValueError("origin.lat and origin.lon must be finite numbers") from err
+
+    if not math.isfinite(lat) or not math.isfinite(lon):
+        raise ValueError("origin.lat and origin.lon must be finite numbers")
+    if not valid_lat_lon(lat, lon):
+        raise ValueError("origin.lat and origin.lon must be valid latitude/longitude degrees")
+
+    return lat, lon
 
 class MeshNode:
     """Class containing all the particular state of a MeshNode, references to necessary
@@ -174,6 +239,8 @@ class MeshNode:
         self.role = self.node_conf.role
         self.hopLimit = self.node_conf.hop_limit
         self.antennaGain = self.node_conf.antenna_gain
+        self.antennaHeight = self.node_conf.antenna_height
+        self.absolute_altitude = self.node_conf.absolute_altitude
         self.period = self.node_conf.period
 
         # using this more like a struct than a proper object.
@@ -294,6 +361,12 @@ class MeshNode:
 
             # Update node’s position
             self.position.update_xy(new_x, new_y)
+            if (
+                self.conf.TERRAIN_ENABLED
+                and self.conf.TERRAIN_GRID is not None
+                and self.conf.NODE_Z_REFERENCE == NODE_Z_REFERENCE_SEA_LEVEL
+            ):
+                apply_terrain_altitude(self.conf.TERRAIN_GRID, self)
 
             # update connectivity map:
             # - update for this node: we may have gained and lost reachable nodes
@@ -579,12 +652,6 @@ def default_generate_node_list(conf: Config) -> [NodeConfig]:
 
         # role
         isRouter = conf.router
-        isRepeater = False
-        isClientMute = False
-
-        # other default values
-        hopLimit = conf.hopLimit
-        antennaGain = conf.GL
 
         # map misc. booleans into single role
         if isRouter:
