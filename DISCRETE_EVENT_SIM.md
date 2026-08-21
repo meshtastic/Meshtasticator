@@ -9,7 +9,7 @@ To start one simulation with the default configurations, run:
 
 ```python3 loraMesh.py [nr_nodes]```
 
-If no argument is given, you first have to place the nodes on a plot. After you place a node, you can change its [role](https://meshtastic.org/docs/settings/config/device#role), hopLimit, height (elevation) and antenna gain. These settings will automatically save when you place a new node or when you start the simulation.
+If no argument is given, you first have to place the nodes on a plot. After you place a node, you can change its [role](https://meshtastic.org/docs/settings/config/device#role), hopLimit, antenna height above local ground, and antenna gain. These settings will automatically save when you place a new node or when you start the simulation.
 
 ![](/img/configNode.png)
 
@@ -22,6 +22,107 @@ For non-interactive smoke tests or CI runs, pass `--no-gui` together with either
 Short deterministic smoke runs can also override the configured duration and message period from the command line:
 
 ```python3 loraMesh.py 2 --no-gui --simtime-seconds 5 --period-seconds 0.5```
+
+The same headless path can import positioned real-mesh nodes. `--from-map`
+reads a Meshtastic map `/api/v1/nodes` JSON endpoint; the public default is
+`https://meshtastic.liamcottle.net/api/v1/nodes`, but you can pass another
+compatible endpoint URL. These map endpoints usually return a broad node list,
+so pass a local area-of-interest bounding box. `--map-bbox` uses the common
+`min_lat,min_lon,max_lat,max_lon` order that most GIS tools call
+`south,west,north,east`; you can copy those four numbers from OpenStreetMap's
+Export panel, geojson.io's bbox readout, QGIS, or any other tool that shows the
+extent of the map view or selected polygon. Keep the box tight enough for the
+local scenario you want to simulate:
+
+```python3 loraMesh.py --from-map https://meshtastic.liamcottle.net/api/v1/nodes --map-bbox 41.50,41.50,41.82,41.86 --map-limit 50 --no-gui```
+
+You can also import positioned nodes from the NodeDB cached by a local
+Meshtastic device. This uses the Python client `interface.nodesByNum` data that
+backs `meshtastic --nodes`, not the pretty-printed table. Use TCP for a network
+device, or omit `--nodedb-host` to use Meshtastic serial auto-detection. For a
+quick local-device run, pass the device address and cap the imported node count:
+
+```python3 loraMesh.py --from-nodedb --nodedb-host 192.168.1.23 --map-limit 50 --no-gui```
+
+NodeDB often contains old or far-away positions. Add `--map-bbox` when you want
+to restrict the run to one local area:
+
+```python3 loraMesh.py --from-nodedb --nodedb-host 192.168.1.23 --map-bbox 41.50,41.50,41.82,41.86 --map-limit 50 --no-gui```
+
+Imported nodes use the same `HM` antenna height and `hopLimit` defaults as
+generated and file-backed scenarios. Change those config values when the
+position source does not carry the simulation value you want.
+
+Terrain obstruction can be added to map, NodeDB, or origin-backed scenario inputs
+without creating a custom terrain file. `--terrain-srtm` downloads missing SRTM
+HGT tiles from Mapzen Terrain Tiles on AWS into a local cache and feeds the
+terrain grid directly into terrain-aware node geometry:
+
+```python3 loraMesh.py --from-nodedb --nodedb-host 192.168.1.23 --map-limit 50 --terrain-srtm --no-gui```
+
+With an explicit `--map-bbox`, SRTM samples that whole requested rectangle. When
+the terrain bbox is derived from imported or file-backed nodes, Meshtasticator
+keeps the download smaller: it loads tiles around the selected nodes and along
+flat-link candidate paths, instead of downloading every tile in a large
+edge-to-edge rectangle. That candidate-path selection scales with the number of
+node pairs, so combine `--terrain-srtm` with `--map-limit` when importing a
+broad map region. When publishing screenshots, reports, or derived
+datasets from this terrain source, attribute the terrain data to
+[Mapzen Terrain Tiles on AWS](https://registry.opendata.aws/terrain-tiles/),
+SRTM/NASA, and their underlying open elevation sources:
+
+```python3 loraMesh.py --from-map https://meshtastic.liamcottle.net/api/v1/nodes --map-bbox 41.50,41.50,41.82,41.86 --map-limit 50 --terrain-srtm --no-gui```
+
+Map payload `altitude` values are absolute GPS/MSL altitude, not antenna height,
+so map import keeps using `HM` as the fallback antenna height above local
+ground. When `--terrain-srtm` is enabled, each map node is checked
+against its own SRTM ground sample: plausible positive map altitudes are used as
+absolute node altitude, while missing, below-ground, or implausibly high values
+fall back to `SRTM ground + antenna height` for 3D distance calculations.
+
+Land-cover clutter is a separate optional CSV grid. Use it for broad urban,
+open, water, or forest excess-loss inputs without pretending Meshtasticator is a
+building-level ray tracer:
+
+```python3 loraMesh.py --from-file nodeConfig.yaml --terrain-srtm --clutter-grid clutter.csv --no-gui```
+
+`tools/osm_to_clutter_csv.py` can build a coarse clutter grid from public
+OpenStreetMap building, landuse, natural, and water polygons. The simulator
+never fetches OpenStreetMap data implicitly.
+
+Two optional RF models can make dense or weak-link runs less binary:
+
+```python3 loraMesh.py 20 --no-gui --phy-loss-model --capture-collision-model```
+
+`--phy-loss-model` keeps RSSI/sensitivity as the hearability gate, then applies
+a smooth SNR-to-payload-success curve that depends on packet size and LoRa
+coding rate. `--capture-collision-model` keeps CAD-detectable but undecodable
+packets on the RF timeline as interference energy, and uses capture/preamble
+overlap rules instead of treating every overlap as identical.
+
+Packaged real-mesh presets can be listed and loaded directly:
+
+```python3 loraMesh.py --list-presets```
+
+The `batumi` preset includes sanitized Batumi/Georgia-area node geometry, a
+matching bundled terrain grid, an OpenStreetMap-derived land-cover clutter grid,
+and an aggregate radio calibration over generated path features. Terrain,
+clutter, and the fitted link-calibration model are enabled automatically for the
+preset; use `--terrain-srtm` for a fresh SRTM terrain sample, `--clutter-grid`
+for a different land-cover grid, or `--no-clutter` for old-style comparison
+runs. The calibration report is in `docs/batumi_radio_calibration.md`.
+
+```python3 loraMesh.py --preset batumi --no-gui --simtime-seconds 5 --period-seconds 2 --phy-loss-model --capture-collision-model```
+
+Dynamic Coding Rate is opt-in and chooses LoRa CR 4/5..4/8 per outgoing packet
+without changing the preset's SF or bandwidth:
+
+```python3 loraMesh.py 20 --no-gui --phy-loss-model --capture-collision-model --dcr```
+
+The policy keeps ordinary first-attempt traffic compact, spends extra FEC on
+quiet retries, ACKs, non-busy direct relays, and last-hop relays, then records
+`dcrTxByCr` and `dcrAirtimeByCr` in simulation results. This keeps idle airtime
+as a reserve instead of turning every quiet packet into CR 4/8.
 
 If you placed the nodes yourself, after a simulation the number of nodes, their coordinates and configuration are automatically saved and you can rerun the scenario with:
 
@@ -41,16 +142,23 @@ To simulate different parameters, you will have to change the *batchSim.py* scri
 Here we list some of the configurations, which you can change to model your scenario in */lib/config.py*. These apply to all nodes, except those that you configure per node when using the plot.
 ### Modem
 The LoRa modem ([see Meshtastic radio settings](https://meshtastic.org/docs/overview/radio-settings#predefined-channels)) that is used, as defined below:
-|Modem  | Name | Bandwidth (kHz) | Coding rate | Spreading Factor | Data rate (kbps)
-|--|--|--|--|--|--|
-| 0 |Short Fast|250|4/8|7|6.8
-| 1 |Short Slow|250|4/8|8|3.9
-| 2 |Mid Fast|250|4/8|9|2.2
-| 3 |Mid Slow|250|4/8|10|1.2
-| 4 |Long Fast|250|4/8|11|0.67
-| 5 |Long Moderate|125|4/8|11|0.335
-| 6 |Long Slow|125|4/8|12|0.18
-| 7 |Very Long Slow|62.5|4/8|12|0.09
+| Modem | Name | Bandwidth (kHz) | Base coding rate | Spreading Factor | Nominal data rate (kbps) |
+|--|--|--:|--:|--:|--:|
+| 0 | Short Turbo | 500 | 4/5 | 7 | 21.9 |
+| 1 | Short Fast | 250 | 4/5 | 7 | 10.9 |
+| 2 | Short Slow | 250 | 4/5 | 8 | 6.25 |
+| 3 | Medium Fast | 250 | 4/5 | 9 | 3.52 |
+| 4 | Medium Slow | 250 | 4/5 | 10 | 1.95 |
+| 5 | Long Turbo | 500 | 4/8 | 11 | 1.34 |
+| 6 | Long Fast | 250 | 4/5 | 11 | 1.07 |
+| 7 | Long Moderate | 125 | 4/8 | 11 | 0.336 |
+| 8 | Long Slow | 125 | 4/8 | 12 | 0.183 |
+| 9 | Very Long Slow | 62.5 | 4/8 | 12 | 0.0916 |
+
+The simulator stores coding rates as their LoRa denominators (`5` through
+`8`, meaning CR 4/5 through 4/8). This table shows the configured base CR; when
+`--dcr` is enabled, the simulator may select a different CR for each outgoing
+packet while leaving the preset's SF and bandwidth unchanged.
 
 ### Period
 Mean period (in ms) with which the nodes generate a new message following an exponential distribution. E.g. if you set it to 300s, each node will generate a message on average once every five minutes.

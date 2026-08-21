@@ -2,6 +2,7 @@ import logging
 import random
 
 from lib.phy import airtime, get_current_slot_time
+from lib.radio_loss import estimate_snr
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +20,9 @@ def set_transmit_delay(node, packet):  # from RadioLibInterface::setTransmitDela
 
 
 def get_tx_delay_msec_weighted(node, rssi):  # from RadioInterface::getTxDelayMsecWeighted
-    snr = rssi - node.conf.NOISE_LEVEL
+    # Use the same reported-SNR estimate as the packet-loss model so calibrated
+    # presets do not drive relay delay from an impossible near-field SNR tail.
+    snr = estimate_snr(node.conf, rssi)
     SNR_MIN = -20
     SNR_MAX = 10
     slot_time_msec = get_current_slot_time()
@@ -53,8 +56,9 @@ def get_tx_delay_msec(node):  # from RadioInterface::getTxDelayMsec
 
 
 def get_retransmission_msec(node, packet):  # from RadioInterface::getRetransmissionMsec
-    preset = node.conf.current_preset
-    packetAirtime = int(airtime(node.conf, preset["sf"], preset["cr"], packet.packetLen, preset["bw"]))
+    # Retransmission timeout has to follow the physical airtime of the packet
+    # that was actually sent. With DCR disabled this is still the preset CR.
+    packetAirtime = int(airtime(node.conf, packet.sf, packet.cr, packet.packetLen, packet.bw))
     channelUtil = node.airUtilization / node.env.now * 100
     CWsize = int(channelUtil * (CWmax - CWmin) / 100 + CWmin)
     return 2 * packetAirtime + (2 ** CWsize + 2 * CWmax + 2 ** (int((CWmax + CWmin) / 2))) * get_current_slot_time() + PROCESSING_TIME_MSEC

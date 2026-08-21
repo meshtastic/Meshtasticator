@@ -1,0 +1,264 @@
+"""Input adapter for public Meshtastic map and positioned node locations.
+
+The public map is useful as a location source, but it is not a simulator data
+model. This adapter only converts map nodes with valid positions into the same
+NodeConfig shape the GUI YAML path already uses. Link quality, terrain, and PER
+remain simulator concerns configured elsewhere.
+"""
+
+import json
+import math
+import statistics
+import urllib.error
+import urllib.request
+
+from lib.geo import valid_lat_lon
+from lib.node import NodeConfig
+from lib.terrain import latlon_to_xy
+
+
+DEFAULT_MAP_NODES_URL = "https://meshtastic.liamcottle.net/api/v1/nodes"
+
+
+def decode_map_coordinate(value, integer_scaled=False):
+    """Decode Meshtastic map integer coordinates into decimal degrees."""
+    if value is None:
+        return None
+    if integer_scaled and isinstance(value, int) and not isinstance(value, bool):
+        return value / 1e7
+    if integer_scaled and isinstance(value, str):
+        stripped = value.strip()
+        if stripped and stripped.lstrip("+-").isdigit():
+            return int(stripped) / 1e7
+    coordinate = float(value)
+    if abs(coordinate) > 180:
+        coordinate /= 1e7
+    return coordinate
+
+
+def decode_map_altitude(value):
+    """Return a finite positive map altitude in meters, or None for placeholders."""
+    if value is None:
+        return None
+    try:
+        altitude = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(altitude) or altitude <= 0:
+        return None
+    return altitude
+
+
+def parse_bbox(value):
+    """Parse `min_lat,min_lon,max_lat,max_lon` into a numeric tuple.
+
+    Longitude ranges may cross the antimeridian by using min_lon > max_lon.
+    """
+    parts = [part.strip() for part in value.split(",")]
+    if len(parts) != 4:
+        raise ValueError("map bbox must be min_lat,min_lon,max_lat,max_lon")
+
+    min_lat, min_lon, max_lat, max_lon = [float(part) for part in parts]
+    if not all(
+        math.isfinite(value)
+        for value in (min_lat, min_lon, max_lat, max_lon)
+    ):
+        raise ValueError("map bbox values must be finite")
+    if not valid_lat_lon(min_lat, min_lon) or not valid_lat_lon(max_lat, max_lon):
+        raise ValueError("map bbox values must be valid latitude/longitude degrees")
+    if min_lat > max_lat:
+        raise ValueError("map bbox minimum latitude must be less than maximum latitude")
+    return min_lat, min_lon, max_lat, max_lon
+
+
+def bbox_crosses_antimeridian(bbox):
+    """Return whether a bbox uses wrapped longitudes across the antimeridian."""
+    _, min_lon, _, max_lon = bbox
+    return min_lon > max_lon
+
+
+def bbox_contains_latlon(bbox, lat, lon):
+    """Return whether a lat/lon point is inside a bbox, including wrapped bboxes."""
+    min_lat, min_lon, max_lat, max_lon = bbox
+    if not (min_lat <= lat <= max_lat):
+        return False
+    if bbox_crosses_antimeridian(bbox):
+        return lon >= min_lon or lon <= max_lon
+    return min_lon <= lon <= max_lon
+
+
+def fetch_map_payload(url=DEFAULT_MAP_NODES_URL):
+    request = urllib.request.Request(url, headers={
+        "User-Agent": "Meshtasticator map input",
+        "Accept": "application/json",
+    })
+    try:
+        with urllib.request.urlopen(request, timeout=60) as response:
+            return json.load(response)
+    except (OSError, urllib.error.URLError, json.JSONDecodeError) as err:
+        raise ValueError(f"could not fetch map payload from {url}: {err}") from err
+
+
+def role_name_for_node(node):
+    role_name = node.get("role_name")
+    if role_name:
+        return str(role_name).upper()
+
+    # Fallback for map rows where the numeric role is known but the name is not
+    # populated. Public map rows may carry this as either an integer or a string.
+    # Unrecognized roles stay CLIENT-like unless explicitly mapped.
+    raw_role = node.get("role")
+    try:
+        role_value = int(raw_role)
+    except (TypeError, ValueError):
+        return str(raw_role).upper() if raw_role is not None else "CLIENT"
+
+    return {
+        1: "CLIENT_MUTE",
+        2: "ROUTER",
+        3: "ROUTER_CLIENT",
+        4: "REPEATER",
+        11: "ROUTER_LATE",
+        12: "CLIENT_BASE",
+    }.get(role_value, "CLIENT")
+
+
+def payload_nodes(payload):
+    """Return node rows from accepted public-map payload shapes.
+
+    Current map data is normally wrapped as {"nodes": [...]}, but accepting a
+    top-level list keeps tests and cached exports from needing a fake envelope.
+    """
+    if isinstance(payload, dict):
+        nodes = payload.get("nodes", [])
+    elif isinstance(payload, list):
+        nodes = payload
+    else:
+        raise ValueError("map payload must be a JSON object with nodes or a node list")
+
+    if not isinstance(nodes, list):
+        raise ValueError("map payload nodes must be a list")
+    return nodes
+
+
+def filter_positioned_map_nodes(nodes, bbox=None):
+    positioned = []
+    for node in nodes:
+        if not isinstance(node, dict):
+            continue
+
+        try:
+            lat = decode_map_coordinate(node.get("latitude"))
+            if lat is None:
+                lat = decode_map_coordinate(node.get("latitudeI"), integer_scaled=True)
+            lon = decode_map_coordinate(node.get("longitude"))
+            if lon is None:
+                lon = decode_map_coordinate(node.get("longitudeI"), integer_scaled=True)
+        except (TypeError, ValueError):
+            continue
+        if lat is None or lon is None:
+            continue
+        if not valid_lat_lon(lat, lon):
+            continue
+
+        if bbox is not None:
+            if not bbox_contains_latlon(bbox, lat, lon):
+                continue
+
+        positioned.append((node, lat, lon))
+    return positioned
+
+
+def center_longitude(longitudes):
+    """Return an antimeridian-aware center longitude for positioned rows."""
+    sin_sum = sum(math.sin(math.radians(lon)) for lon in longitudes)
+    cos_sum = sum(math.cos(math.radians(lon)) for lon in longitudes)
+    if abs(sin_sum) < 1e-12 and abs(cos_sum) < 1e-12:
+        return statistics.median(longitudes)
+    return math.degrees(math.atan2(sin_sum, cos_sum))
+
+
+def node_configs_from_positioned_rows(
+    positioned,
+    period,
+    antenna_height=1.5,
+    hop_limit=3,
+    tx_power=30,
+    freq=902e6,
+    origin=None,
+    return_origin=False,
+):
+    """Build NodeConfig objects from `(node, lat, lon)` positioned rows."""
+    if origin is None:
+        origin_lat = statistics.median([lat for _, lat, _ in positioned])
+        origin_lon = center_longitude([lon for _, _, lon in positioned])
+    else:
+        try:
+            origin_lat, origin_lon = (float(origin[0]), float(origin[1]))
+        except (TypeError, ValueError, IndexError) as err:
+            raise ValueError("map origin must be valid finite latitude/longitude degrees") from err
+
+        if not valid_lat_lon(origin_lat, origin_lon):
+            raise ValueError("map origin must be valid finite latitude/longitude degrees")
+
+    configs = []
+    origin_tuple = (origin_lat, origin_lon)
+    for sim_node_id, (node, lat, lon) in enumerate(positioned):
+        x, y = latlon_to_xy(lat, lon, origin_lat, origin_lon)
+        role_name = role_name_for_node(node)
+        node_dict = {
+            "x": round(x, 2),
+            "y": round(y, 2),
+            # Meshtastic map altitude is absolute altitude, not antenna height.
+            # Keep z as antenna height unless SRTM is present to sanity-check
+            # and apply the optional absolute altitude per node.
+            "z": antenna_height,
+            "absoluteAltitude": decode_map_altitude(node.get("altitude")),
+            # CLIENT_BASE rebroadcasts like ROUTER_LATE in current firmware, so
+            # simulate it on the router side rather than as a plain client.
+            "isRouter": role_name
+            in {"ROUTER", "ROUTER_CLIENT", "ROUTER_LATE", "CLIENT_BASE"},
+            "isRepeater": role_name == "REPEATER",
+            "isClientMute": role_name == "CLIENT_MUTE",
+            "hopLimit": hop_limit,
+            "antennaGain": 0,
+            "neighborInfo": False,
+        }
+        configs.append(NodeConfig.from_gen_scenario_output(sim_node_id, node_dict, period, tx_power, freq))
+
+    if return_origin:
+        return configs, origin_tuple
+    return configs
+
+
+def node_configs_from_map_payload(
+    payload,
+    period,
+    bbox=None,
+    limit=None,
+    antenna_height=1.5,
+    hop_limit=3,
+    tx_power=30,
+    freq=902e6,
+    origin=None,
+    return_origin=False,
+):
+    """Build NodeConfig objects from a Meshtastic map `/api/v1/nodes` payload."""
+    positioned = filter_positioned_map_nodes(payload_nodes(payload), bbox)
+    if limit is not None:
+        if limit < 1:
+            raise ValueError("map limit must be at least 1")
+        positioned = positioned[:limit]
+    if not positioned:
+        raise ValueError("map payload produced no positioned nodes")
+
+    return node_configs_from_positioned_rows(
+        positioned,
+        period,
+        antenna_height=antenna_height,
+        hop_limit=hop_limit,
+        tx_power=tx_power,
+        freq=freq,
+        origin=origin,
+        return_origin=return_origin,
+    )
