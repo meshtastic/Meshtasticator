@@ -12,7 +12,6 @@ import math
 from pathlib import Path
 
 from lib.csv_validation import finite_float, finite_lat_lon
-from lib.terrain import latlon_to_xy, terrain_ground_elevation
 
 
 class ClutterGrid:
@@ -38,6 +37,8 @@ class ClutterGrid:
                     if origin_lat is None or origin_lon is None:
                         raise ValueError("lat/lon clutter CSV requires GEO_ORIGIN_LAT and GEO_ORIGIN_LON")
                     lat, lon = finite_lat_lon(row, "clutter", row_number)
+                    from lib.terrain import latlon_to_xy
+
                     x, y = latlon_to_xy(lat, lon, origin_lat, origin_lon)
                 else:
                     raise ValueError("clutter CSV needs x_m/y_m or lat/lon columns")
@@ -170,6 +171,8 @@ def clutter_path_features(conf, tx_point, rx_point):
 
 
 def _is_high_vantage(conf, point):
+    from lib.terrain import terrain_ground_elevation
+
     ground = terrain_ground_elevation(conf, point)
     return ground is not None and ground >= conf.CLUTTER_HIGH_VANTAGE_ELEVATION_M
 
